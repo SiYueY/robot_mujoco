@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>mujoco_hardware</name>
+  <version>0.1.0</version>
+  <description>ros2_control SystemInterface plugin backed by mujoco_simulation.</description>
+  <maintainer email="todo@example.com">TODO</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>hardware_interface</depend>
+  <depend>mujoco_simulation</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>sensor_msgs</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

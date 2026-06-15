@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robot_mujoco"
+version = "0.1.0"
+description = "Workspace-level Python helpers for the robot_mujoco MuJoCo stack"
+readme = "README.md"
+requires-python = "==3.10.12"
+dependencies = []
+
+[project.scripts]
+robot-mujoco-robocasa-scene = "robot_mujoco.robocasa.scene_runner_cli:main"
+
+[project.optional-dependencies]
+robocasa = ["numpy", "PyYAML", "scipy"]
+
+[tool.setuptools.packages.find]
+include = ["robot_mujoco*"]

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>mujoco_simulation</name>
+  <version>0.1.0</version>
+  <description>Reusable MuJoCo simulation backend and device components for ROS 2.</description>
+  <maintainer email="todo@example.com">TODO</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>hardware_interface</depend>
+  <depend>libglfw3-dev</depend>
+  <depend>mujoco_vendor</depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
