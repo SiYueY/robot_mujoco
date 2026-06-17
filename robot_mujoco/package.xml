@@ -13,6 +13,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
+  <depend>mujoco_simulation_ros</depend>
   <depend>mujoco_simulation</depend>
   <depend>mujoco_hardware</depend>
   <exec_depend>ament_index_python</exec_depend>

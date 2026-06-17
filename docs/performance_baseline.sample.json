@@ -1,0 +1,153 @@
+{
+  "generated_at_epoch_seconds": 0,
+  "repeat": 1,
+  "scenarios": [
+    {
+      "aggregated": {
+        "jitter_ms_mean_mean": 1.03237,
+        "jitter_ms_mean_p95": 1.03237,
+        "jitter_ms_p95_mean": 1.08742,
+        "jitter_ms_p95_p95": 1.08742,
+        "realtime_factor_mean": 1.0004,
+        "realtime_factor_p95": 1.0004,
+        "scenario": "scheduler_1khz",
+        "sim_seconds_mean": 1.999,
+        "sim_seconds_p95": 1.999,
+        "steps_mean": 2000.0,
+        "steps_p95": 2000.0,
+        "throughput_hz_mean": 1000.9,
+        "throughput_hz_p95": 1000.9,
+        "wall_seconds_mean": 1.9982,
+        "wall_seconds_p95": 1.9982
+      },
+      "command": [
+        "build/mujoco_simulation/perf_runtime_scenarios",
+        "--scenario",
+        "scheduler_1khz",
+        "--steps",
+        "2000"
+      ],
+      "name": "scheduler_1khz",
+      "runs": [
+        {
+          "jitter_ms_mean": 1.03237,
+          "jitter_ms_p95": 1.08742,
+          "realtime_factor": 1.0004,
+          "scenario": "scheduler_1khz",
+          "sim_seconds": 1.999,
+          "steps": 2000.0,
+          "throughput_hz": 1000.9,
+          "wall_seconds": 1.9982
+        }
+      ]
+    },
+    {
+      "aggregated": {
+        "sample_frequency_hz_mean": 50.8333,
+        "sample_frequency_hz_p95": 50.8333,
+        "sample_latency_ms_mean_mean": 1.63441,
+        "sample_latency_ms_mean_p95": 1.63441,
+        "sample_latency_ms_p95_mean": 5.0443,
+        "sample_latency_ms_p95_p95": 5.0443,
+        "samples_mean": 61.0,
+        "samples_p95": 61.0,
+        "scenario": "headless_camera",
+        "sim_seconds_mean": 1.2,
+        "sim_seconds_p95": 1.2,
+        "steps_mean": 240.0,
+        "steps_p95": 240.0,
+        "wall_seconds_mean": 0.10244,
+        "wall_seconds_p95": 0.10244
+      },
+      "command": [
+        "build/mujoco_simulation/perf_runtime_scenarios",
+        "--scenario",
+        "headless_camera",
+        "--steps",
+        "240"
+      ],
+      "name": "headless_camera",
+      "runs": [
+        {
+          "sample_frequency_hz": 50.8333,
+          "sample_latency_ms_mean": 1.63441,
+          "sample_latency_ms_p95": 5.0443,
+          "samples": 61.0,
+          "scenario": "headless_camera",
+          "sim_seconds": 1.2,
+          "steps": 240.0,
+          "wall_seconds": 0.10244
+        }
+      ]
+    },
+    {
+      "aggregated": {
+        "iterations_mean": 200.0,
+        "iterations_p95": 200.0,
+        "loop_ms_mean_mean": 0.178192,
+        "loop_ms_mean_p95": 0.178192,
+        "loop_ms_p95_mean": 0.929712,
+        "loop_ms_p95_p95": 0.929712,
+        "read_ms_mean_mean": 0.0786256,
+        "read_ms_mean_p95": 0.0786256,
+        "read_ms_p95_mean": 0.129542,
+        "read_ms_p95_p95": 0.129542,
+        "scenario": "hardware_read_write_loop",
+        "wall_seconds_mean": 0.247216,
+        "wall_seconds_p95": 0.247216,
+        "write_ms_mean_mean": 0.0995662,
+        "write_ms_mean_p95": 0.0995662,
+        "write_ms_p95_mean": 0.860191,
+        "write_ms_p95_p95": 0.860191
+      },
+      "command": [
+        "build/mujoco_hardware/perf_read_write_loop",
+        "--iterations",
+        "200"
+      ],
+      "name": "hardware_read_write_loop",
+      "runs": [
+        {
+          "iterations": 200.0,
+          "loop_ms_mean": 0.178192,
+          "loop_ms_p95": 0.929712,
+          "read_ms_mean": 0.0786256,
+          "read_ms_p95": 0.129542,
+          "scenario": "hardware_read_write_loop",
+          "wall_seconds": 0.247216,
+          "write_ms_mean": 0.0995662,
+          "write_ms_p95": 0.860191
+        }
+      ]
+    }
+  ],
+  "soak": {
+    "command": [
+      "build/mujoco_hardware/perf_read_write_loop"
+    ],
+    "duration_seconds": 5,
+    "result": {
+      "iterations": 4020,
+      "rss_kb_first": 376,
+      "rss_kb_growth_kb": 8,
+      "rss_kb_growth_ratio": 1.000082525273365,
+      "rss_kb_head_median": 96940,
+      "rss_kb_last": 96948,
+      "rss_kb_max": 96948,
+      "rss_kb_min": 376,
+      "rss_kb_samples": 6,
+      "rss_kb_series": [
+        376,
+        96940,
+        96944,
+        96948,
+        96948,
+        96948
+      ],
+      "rss_kb_stable_samples": 5,
+      "rss_kb_tail_median": 96948,
+      "wall_seconds": 5.00171
+    }
+  },
+  "workspace_root": "$WORKSPACE_ROOT"
+}

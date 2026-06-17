@@ -1,7 +1,6 @@
 #include "mujoco_hardware/mujoco_hardware_interface.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -9,13 +8,17 @@
 #include <vector>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
-#include "mujoco_hardware/sensor_bridge.hpp"
-#include "pluginlib/class_list_macros.hpp"
+#include "mujoco_simulation_ros/simulation_ros_bridge.hpp"
 #include "rclcpp/node.hpp"
-#include "sensor_msgs/msg/camera_info.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 namespace mujoco_hardware {
 namespace {
+
+const rclcpp::Logger& hardware_logger() {
+  static const rclcpp::Logger logger = rclcpp::get_logger("mujoco_hardware");
+  return logger;
+}
 
 rclcpp::Time to_ros_time(double sim_seconds) {
   const auto nanoseconds = static_cast<int64_t>(sim_seconds * 1e9);
@@ -39,15 +42,29 @@ bool split_interface_key(const std::string& interface_key, std::string* joint_na
   return true;
 }
 
-void assign_camera_intrinsics(const sensor_msgs::msg::CameraInfo& source, CameraData* target) {
-  if (target == nullptr) {
-    return;
+mujoco_simulation_ros::SimulationRosBridgeConfig make_ros_bridge_config(
+    const std::string& node_name, const HardwareConfig& config) {
+  mujoco_simulation_ros::SimulationRosBridgeConfig bridge_config;
+  bridge_config.node_name = node_name;
+  for (const auto& imu : config.imus) {
+    bridge_config.imus.push_back({.name = imu.name, .frame_id = imu.frame_id, .topic = imu.topic});
   }
-  target->intrinsics.distortion_model = source.distortion_model;
-  target->intrinsics.distortion_coefficients = source.d;
-  target->intrinsics.intrinsic_matrix = source.k;
-  target->intrinsics.rectification_matrix = source.r;
-  target->intrinsics.projection_matrix = source.p;
+  for (const auto& camera : config.cameras) {
+    bridge_config.cameras.push_back({.name = camera.name,
+                                     .frame_id = camera.frame_id,
+                                     .rgb_topic = camera.rgb_topic,
+                                     .depth_topic = camera.depth_topic,
+                                     .camera_info_topic = camera.camera_info_topic,
+                                     .width = static_cast<std::uint32_t>(camera.config.width),
+                                     .height = static_cast<std::uint32_t>(camera.config.height),
+                                     .enable_rgb = camera.config.enable_rgb,
+                                     .enable_depth = camera.config.enable_depth});
+  }
+  for (const auto& lidar : config.lidars) {
+    bridge_config.lidars.push_back(
+        {.name = lidar.name, .frame_id = lidar.frame_id, .topic = lidar.topic});
+  }
+  return bridge_config;
 }
 
 }  // namespace
@@ -84,45 +101,168 @@ void MuJoCoHardwareInterface::initialize_command_buffers() {
   }
 }
 
-bool MuJoCoHardwareInterface::update_runtime_state() {
-  std::string err;
-  const auto stamp = to_ros_time(simulation_ == nullptr ? 0.0 : simulation_->simulation_time());
-  sensor_bridge_->set_time(stamp);
-  for (auto& joint : config_.joints) {
-    if (!simulation_->read_joint(joint.name, &joint.state, err)) {
-      return false;
+mujoco_simulation::Status MuJoCoHardwareInterface::request_start_status() {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  if (!simulation_started_) {
+    const mujoco_simulation::Status status = simulation_->start();
+    if (!status.ok()) {
+      return status;
     }
+    simulation_started_ = true;
+  }
+  return mujoco_simulation::Status::Ok();
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::request_stop_status() {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  if (simulation_started_) {
+    const mujoco_simulation::Status status = simulation_->stop();
+    if (!status.ok()) {
+      return status;
+    }
+    simulation_started_ = false;
+  }
+  return mujoco_simulation::Status::Ok();
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::request_pause_status() {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  if (!simulation_started_) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not running.");
+  }
+  return simulation_->pause();
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::request_resume_status() {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  if (!simulation_started_) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not running.");
+  }
+  return simulation_->resume();
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::request_step_status(uint32_t steps) {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  return simulation_->step(steps);
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::request_set_realtime_factor_status(
+    double realtime_factor) {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  return simulation_->set_realtime_factor(realtime_factor);
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::request_keyframe_reset_status(
+    const std::string& keyframe) {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  return simulation_->reset({.keyframe_name = keyframe});
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::request_reset_status() {
+  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
+  if (simulation_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation is not initialized.");
+  }
+  return simulation_->request_reset();
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::update_runtime_state() {
+  const std::shared_ptr<const mujoco_simulation::SimulationStateSnapshot> snapshot =
+      simulation_ == nullptr ? nullptr : simulation_->state_snapshot();
+  if (snapshot == nullptr) {
+    return mujoco_simulation::Status::invalid_state("Simulation state snapshot is not available.");
+  }
+  return update_runtime_state_from_snapshot(*snapshot);
+}
+
+mujoco_simulation::Status MuJoCoHardwareInterface::update_runtime_state_from_snapshot(
+    const mujoco_simulation::SimulationStateSnapshot& snapshot) {
+  if (ros_bridge_ == nullptr) {
+    return mujoco_simulation::Status::invalid_state(
+        "ROS bridge is not initialized for mujoco_hardware.");
+  }
+  const auto stamp = to_ros_time(snapshot.simulation_time);
+  ros_bridge_->set_time(stamp);
+  for (auto& joint : config_.joints) {
+    const auto it = snapshot.joints.find(joint.name);
+    if (it == snapshot.joints.end()) {
+      return mujoco_simulation::Status::not_found(
+          "Joint state is missing from the simulation snapshot: " + joint.name);
+    }
+    joint.state = it->second;
   }
   for (auto& imu : config_.imus) {
-    if (!simulation_->read_imu(imu.name, &imu.state, err)) {
-      return false;
+    const auto it = snapshot.imus.find(imu.name);
+    if (it == snapshot.imus.end()) {
+      return mujoco_simulation::Status::not_found(
+          "IMU sample is missing from the simulation snapshot: " + imu.name);
     }
-    if (!sensor_bridge_->publish_imu(imu)) {
-      return false;
+    imu.sample = it->second;
+    const mujoco_simulation::Status publish_status = ros_bridge_->publish_imu(imu.name, it->second);
+    if (!publish_status.ok()) {
+      return publish_status;
     }
   }
   for (auto& camera : config_.cameras) {
-    if (!simulation_->read_camera(camera.name, &camera.state, err)) {
-      return false;
+    const mujoco_simulation::Result<std::shared_ptr<const mujoco_simulation::CameraSample>> sample =
+        simulation_->camera_sample(camera.name);
+    if (!sample.ok() || sample.value() == nullptr) {
+      if (!sample.ok()) {
+        return sample.status();
+      }
+      return mujoco_simulation::Status::invalid_state("Camera sample is not available for '" +
+                                                      camera.name + "'.");
     }
-    if (!sensor_bridge_->publish_camera(camera)) {
-      return false;
+    camera.sample = *sample.value();
+    const mujoco_simulation::Status publish_status =
+        ros_bridge_->publish_camera(camera.name, *sample.value());
+    if (!publish_status.ok()) {
+      return publish_status;
     }
   }
   for (auto& lidar : config_.lidars) {
-    if (!simulation_->read_lidar(lidar.name, &lidar.state, err)) {
-      return false;
+    const auto it = snapshot.lidars.find(lidar.name);
+    if (it == snapshot.lidars.end()) {
+      return mujoco_simulation::Status::not_found(
+          "Lidar sample is missing from the simulation snapshot: " + lidar.name);
     }
-    if (!sensor_bridge_->publish_lidar(lidar)) {
-      return false;
+    lidar.sample = it->second;
+    const mujoco_simulation::Status publish_status =
+        ros_bridge_->publish_lidar(lidar.name, it->second);
+    if (!publish_status.ok()) {
+      return publish_status;
     }
   }
   for (auto& mobile_base : config_.mobile_bases) {
-    if (!simulation_->read_mobile_base(mobile_base.name, &mobile_base.state, err)) {
-      return false;
+    const auto it = snapshot.mobile_bases.find(mobile_base.name);
+    if (it == snapshot.mobile_bases.end()) {
+      return mujoco_simulation::Status::not_found(
+          "Mobile base state is missing from the simulation snapshot: " + mobile_base.name);
     }
+    mobile_base.state = it->second;
   }
-  return true;
+  return mujoco_simulation::Status::Ok();
 }
 
 hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_init(
@@ -138,49 +278,34 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_init(
   }
 
   sensor_node_name_ = parameter_or(hardware_info.hardware_parameters, "sensor_node_name",
-                                   hardware_info.name + "_sensor_bridge");
+                                   hardware_info.name + "_simulation_ros_bridge");
 
-  simulation_ = std::make_unique<mujoco_simulation::MuJoCoSimulation>();
-  if (!simulation_->initialize(config_.simulation, error_message)) {
+  simulation_ = std::make_unique<mujoco_simulation::Simulation>();
+  const mujoco_simulation::Status initialize_status = simulation_->initialize(config_.simulation);
+  if (!initialize_status.ok()) {
+    error_message = initialize_status.message();
     return hardware_interface::CallbackReturn::ERROR;
-  }
-  for (const auto& joint : config_.joints) {
-    if (!simulation_->register_joint(joint.info, error_message)) {
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-  }
-  for (const auto& imu : config_.imus) {
-    if (!simulation_->register_imu(imu.info, error_message)) {
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-  }
-  for (const auto& camera : config_.cameras) {
-    if (!simulation_->register_camera(camera.info, error_message)) {
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-  }
-  for (const auto& lidar : config_.lidars) {
-    if (!simulation_->register_lidar(lidar.info, error_message)) {
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-  }
-  for (const auto& mobile_base : config_.mobile_bases) {
-    if (!simulation_->register_mobile_base(mobile_base.info, error_message)) {
-      return hardware_interface::CallbackReturn::ERROR;
-    }
   }
 
   for (auto& camera : config_.cameras) {
-    sensor_msgs::msg::CameraInfo camera_info;
-    if (!fill_camera_info(camera.info.camera_name, camera.info.width, camera.info.height,
-                          &camera_info, error_message)) {
+    const auto sample = simulation_->camera_sample(camera.name);
+    if (!sample.ok() || sample.value() == nullptr) {
+      error_message = sample.ok() ? "Camera sample is not available." : sample.status().message();
       return hardware_interface::CallbackReturn::ERROR;
     }
-    assign_camera_intrinsics(camera_info, &camera);
+    camera.sample = *sample.value();
   }
 
-  sensor_bridge_ = std::make_unique<SensorBridge>(sensor_node_name_, &config_.imus,
-                                                  &config_.cameras, &config_.lidars);
+  ros_bridge_ = std::make_unique<mujoco_simulation_ros::SimulationRosBridge>(
+      make_ros_bridge_config(sensor_node_name_, config_), nullptr,
+      [this]() { return request_reset_status(); }, [this]() { return request_start_status(); },
+      [this]() { return request_stop_status(); }, [this]() { return request_pause_status(); },
+      [this]() { return request_resume_status(); },
+      [this](uint32_t steps) { return request_step_status(steps); },
+      [this](double realtime_factor) {
+        return request_set_realtime_factor_status(realtime_factor);
+      },
+      [this](const std::string& keyframe) { return request_keyframe_reset_status(keyframe); });
 
   active_joint_modes_.clear();
   pending_mode_switch_.next_modes.clear();
@@ -210,25 +335,25 @@ std::vector<hardware_interface::StateInterface> MuJoCoHardwareInterface::export_
   for (auto& imu : config_.imus) {
     for (const auto& interface_name : imu.state_interfaces) {
       if (interface_name == "orientation.x") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.orientation[0]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.orientation[0]);
       } else if (interface_name == "orientation.y") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.orientation[1]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.orientation[1]);
       } else if (interface_name == "orientation.z") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.orientation[2]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.orientation[2]);
       } else if (interface_name == "orientation.w") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.orientation[3]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.orientation[3]);
       } else if (interface_name == "angular_velocity.x") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.angular_velocity[0]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.angular_velocity[0]);
       } else if (interface_name == "angular_velocity.y") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.angular_velocity[1]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.angular_velocity[1]);
       } else if (interface_name == "angular_velocity.z") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.angular_velocity[2]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.angular_velocity[2]);
       } else if (interface_name == "linear_acceleration.x") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.linear_acceleration[0]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.linear_acceleration[0]);
       } else if (interface_name == "linear_acceleration.y") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.linear_acceleration[1]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.linear_acceleration[1]);
       } else if (interface_name == "linear_acceleration.z") {
-        state_interfaces.emplace_back(imu.name, interface_name, &imu.state.linear_acceleration[2]);
+        state_interfaces.emplace_back(imu.name, interface_name, &imu.sample.linear_acceleration[2]);
       }
     }
   }
@@ -337,9 +462,18 @@ hardware_interface::return_type MuJoCoHardwareInterface::perform_command_mode_sw
     return hardware_interface::return_type::ERROR;
   }
 
-  std::string err;
   for (const auto& [joint_name, mode] : pending_mode_switch_.next_modes) {
-    if (!simulation_->configure_joint_command_mode(joint_name, mode, err)) {
+    JointData* joint = find_joint(joint_name);
+    if (joint == nullptr) {
+      return hardware_interface::return_type::ERROR;
+    }
+    const auto previous_config = joint->config;
+    joint->config.command_mode = mode;
+    const mujoco_simulation::Status status =
+        simulation_->reconfigure_component(mujoco_simulation::ComponentConfig{joint->config});
+    if (!status.ok()) {
+      joint->config = previous_config;
+      RCLCPP_ERROR(hardware_logger(), "%s", status.message().c_str());
       return hardware_interface::return_type::ERROR;
     }
   }
@@ -351,13 +485,16 @@ hardware_interface::return_type MuJoCoHardwareInterface::perform_command_mode_sw
 
 hardware_interface::return_type MuJoCoHardwareInterface::read(const rclcpp::Time&,
                                                               const rclcpp::Duration&) {
-  return update_runtime_state() ? hardware_interface::return_type::OK
-                                : hardware_interface::return_type::ERROR;
+  const mujoco_simulation::Status status = update_runtime_state();
+  if (!status.ok()) {
+    RCLCPP_ERROR(hardware_logger(), "%s", status.message().c_str());
+    return hardware_interface::return_type::ERROR;
+  }
+  return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type MuJoCoHardwareInterface::write(const rclcpp::Time&,
                                                                const rclcpp::Duration&) {
-  std::string err;
   for (const auto& joint : config_.joints) {
     const auto it = active_joint_modes_.find(joint.name);
     const auto mode = it == active_joint_modes_.end()
@@ -366,12 +503,17 @@ hardware_interface::return_type MuJoCoHardwareInterface::write(const rclcpp::Tim
     if (mode == mujoco_simulation::CommandInterfaceType::None) {
       continue;
     }
-    if (!simulation_->write_joint(joint.command, err)) {
+    const mujoco_simulation::Status status = simulation_->set_joint_command(joint.command);
+    if (!status.ok()) {
+      RCLCPP_ERROR(hardware_logger(), "%s", status.message().c_str());
       return hardware_interface::return_type::ERROR;
     }
   }
   for (const auto& mobile_base : config_.mobile_bases) {
-    if (!simulation_->write_mobile_base(mobile_base.name, mobile_base.command, err)) {
+    const mujoco_simulation::Status status =
+        simulation_->set_mobile_base_command(mobile_base.name, mobile_base.command);
+    if (!status.ok()) {
+      RCLCPP_ERROR(hardware_logger(), "%s", status.message().c_str());
       return hardware_interface::return_type::ERROR;
     }
   }
@@ -380,8 +522,14 @@ hardware_interface::return_type MuJoCoHardwareInterface::write(const rclcpp::Tim
 
 hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_activate(
     const rclcpp_lifecycle::State&) {
-  simulation_->start();
-  if (!update_runtime_state()) {
+  const mujoco_simulation::Status start_status = request_start_status();
+  if (!start_status.ok()) {
+    RCLCPP_ERROR(hardware_logger(), "%s", start_status.message().c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+  const mujoco_simulation::Status read_status = update_runtime_state();
+  if (!read_status.ok()) {
+    RCLCPP_ERROR(hardware_logger(), "%s", read_status.message().c_str());
     return hardware_interface::CallbackReturn::ERROR;
   }
   initialize_command_buffers();
@@ -390,7 +538,11 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_activate(
 
 hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_deactivate(
     const rclcpp_lifecycle::State&) {
-  simulation_->stop();
+  const mujoco_simulation::Status stop_status = request_stop_status();
+  if (!stop_status.ok()) {
+    RCLCPP_ERROR(hardware_logger(), "%s", stop_status.message().c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
   for (auto& [joint_name, mode] : active_joint_modes_) {
     mode = mujoco_simulation::CommandInterfaceType::None;
     pending_mode_switch_.next_modes[joint_name] = mujoco_simulation::CommandInterfaceType::None;
@@ -399,45 +551,4 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_deactivate(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-bool MuJoCoHardwareInterface::fill_camera_info(const std::string& camera_name, int width,
-                                               int height, sensor_msgs::msg::CameraInfo* info,
-                                               std::string& error_message) const {
-  if (info == nullptr) {
-    error_message = "CameraInfo output pointer must not be null.";
-    return false;
-  }
-  if (width <= 0 || height <= 0) {
-    error_message = "Camera dimensions must be positive.";
-    return false;
-  }
-  if (simulation_ == nullptr) {
-    error_message = "MuJoCo simulation is not available.";
-    return false;
-  }
-
-  double fovy_degrees = 0.0;
-  if (!simulation_->camera_fovy(camera_name, &fovy_degrees, error_message)) {
-    return false;
-  }
-
-  const double aspect = static_cast<double>(width) / static_cast<double>(height);
-  const double fovy_radians = fovy_degrees * M_PI / 180.0;
-  const double fy = static_cast<double>(height) / (2.0 * std::tan(fovy_radians / 2.0));
-  const double fovx_radians = 2.0 * std::atan(aspect * std::tan(fovy_radians / 2.0));
-  const double fx = static_cast<double>(width) / (2.0 * std::tan(fovx_radians / 2.0));
-  const double cx = (static_cast<double>(width) - 1.0) / 2.0;
-  const double cy = (static_cast<double>(height) - 1.0) / 2.0;
-  info->width = static_cast<uint32_t>(width);
-  info->height = static_cast<uint32_t>(height);
-  info->distortion_model = "plumb_bob";
-  info->d.assign(5, 0.0);
-  info->k = {fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0};
-  info->r = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
-  info->p = {fx, 0.0, cx, 0.0, 0.0, fy, cy, 0.0, 0.0, 0.0, 1.0, 0.0};
-  error_message.clear();
-  return true;
-}
-
 }  // namespace mujoco_hardware
-PLUGINLIB_EXPORT_CLASS(mujoco_hardware::MuJoCoHardwareInterface,
-                       hardware_interface::SystemInterface)

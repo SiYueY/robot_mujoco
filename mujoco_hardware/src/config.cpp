@@ -153,17 +153,21 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
   }
 
   HardwareConfig parsed;
-  parsed.simulation.model_path =
+  parsed.simulation.model.model_path =
       parameter_or(hardware_info.hardware_parameters, "mujoco_model_path");
-  if (parsed.simulation.model_path.empty()) {
+  if (parsed.simulation.model.model_path.empty()) {
     error_message = "Missing required hardware parameter 'mujoco_model_path'.";
     return false;
   }
 
-  parsed.simulation.initial_keyframe =
+  parsed.simulation.model.initial_keyframe =
       parameter_or(hardware_info.hardware_parameters, "initial_keyframe");
   if (!parse_double_parameter(hardware_info.hardware_parameters, "sim_speed_factor", 1.0,
-                              &parsed.simulation.sim_speed_factor, error_message)) {
+                              &parsed.simulation.scheduler.realtime_factor, error_message)) {
+    return false;
+  }
+  if (!parse_double_parameter(hardware_info.hardware_parameters, "viewer_update_rate", 60.0,
+                              &parsed.simulation.scheduler.viewer_update_rate, error_message)) {
     return false;
   }
   try {
@@ -177,9 +181,9 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
   for (const auto& joint : hardware_info.joints) {
     JointData joint_data;
     joint_data.name = joint.name;
-    joint_data.info.name = joint.name;
-    joint_data.info.actuator_name = parameter_or(joint.parameters, "actuator_name");
-    joint_data.info.command_mode = mujoco_simulation::CommandInterfaceType::None;
+    joint_data.config.name = joint.name;
+    joint_data.config.actuator_name = parameter_or(joint.parameters, "actuator_name");
+    joint_data.config.command_mode = mujoco_simulation::CommandInterfaceType::None;
     joint_data.command.name = joint.name;
     joint_data.state.name = joint.name;
 
@@ -201,6 +205,7 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
     }
 
     parsed.joints.push_back(std::move(joint_data));
+    parsed.simulation.components.emplace_back(parsed.joints.back().config);
   }
 
   for (const auto& sensor : hardware_info.sensors) {
@@ -209,15 +214,21 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
       imu_data.name = sensor.name;
       imu_data.frame_id = parameter_or(sensor.parameters, "frame_id", sensor.name);
       imu_data.topic = parameter_or(sensor.parameters, "topic", sensor.name + "/imu");
-      imu_data.info.name = sensor.name;
-      imu_data.info.framequat_sensor_name =
+      imu_data.config.common.name = sensor.name;
+      imu_data.config.common.frame_id = imu_data.frame_id;
+      imu_data.config.framequat_sensor_name =
           parameter_or(sensor.parameters, "mujoco_orientation_sensor");
-      imu_data.info.gyro_sensor_name = parameter_or(sensor.parameters, "mujoco_gyro_sensor");
-      imu_data.info.accelerometer_sensor_name =
+      imu_data.config.gyro_sensor_name = parameter_or(sensor.parameters, "mujoco_gyro_sensor");
+      imu_data.config.accelerometer_sensor_name =
           parameter_or(sensor.parameters, "mujoco_accel_sensor");
+      if (!parse_double_parameter(sensor.parameters, "update_rate", 200.0,
+                                  &imu_data.config.common.update_rate, error_message)) {
+        return false;
+      }
 
-      if (imu_data.info.framequat_sensor_name.empty() || imu_data.info.gyro_sensor_name.empty() ||
-          imu_data.info.accelerometer_sensor_name.empty()) {
+      if (imu_data.config.framequat_sensor_name.empty() ||
+          imu_data.config.gyro_sensor_name.empty() ||
+          imu_data.config.accelerometer_sensor_name.empty()) {
         error_message =
             "IMU '" + sensor.name +
             "' requires mujoco_orientation_sensor, mujoco_gyro_sensor, and mujoco_accel_sensor.";
@@ -225,14 +236,19 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
       }
 
       if (!parse_covariance_parameter(sensor.parameters, "orientation_covariance",
-                                      &imu_data.state.orientation_covariance, error_message) ||
+                                      &imu_data.sample.orientation_covariance, error_message) ||
           !parse_covariance_parameter(sensor.parameters, "angular_velocity_covariance",
-                                      &imu_data.state.angular_velocity_covariance, error_message) ||
+                                      &imu_data.sample.angular_velocity_covariance,
+                                      error_message) ||
           !parse_covariance_parameter(sensor.parameters, "linear_acceleration_covariance",
-                                      &imu_data.state.linear_acceleration_covariance,
+                                      &imu_data.sample.linear_acceleration_covariance,
                                       error_message)) {
         return false;
       }
+      imu_data.config.orientation_covariance = imu_data.sample.orientation_covariance;
+      imu_data.config.angular_velocity_covariance = imu_data.sample.angular_velocity_covariance;
+      imu_data.config.linear_acceleration_covariance =
+          imu_data.sample.linear_acceleration_covariance;
 
       for (const auto& state_interface : sensor.state_interfaces) {
         if (!is_imu_state_interface(state_interface.name)) {
@@ -244,15 +260,11 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
       }
 
       parsed.imus.push_back(std::move(imu_data));
+      parsed.simulation.components.emplace_back(parsed.imus.back().config);
       continue;
     }
 
     if (is_sensor_type(sensor, "camera", error_message)) {
-      if (parsed.simulation.render_mode != mujoco_simulation::RenderMode::Viewer) {
-        error_message = "Camera '" + sensor.name + "' requires render_mode=viewer.";
-        return false;
-      }
-
       CameraData camera_data;
       camera_data.name = sensor.name;
       camera_data.frame_id = parameter_or(sensor.parameters, "optical_frame_id",
@@ -263,19 +275,24 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
           parameter_or(sensor.parameters, "depth_topic", sensor.name + "/depth/image_raw");
       camera_data.camera_info_topic =
           parameter_or(sensor.parameters, "camera_info_topic", sensor.name + "/camera_info");
-      camera_data.info.name = sensor.name;
-      camera_data.info.camera_name =
+      camera_data.config.common.name = sensor.name;
+      camera_data.config.camera_name =
           parameter_or(sensor.parameters, "mujoco_camera_name", sensor.name);
-      camera_data.info.enable_rgb = parameter_as_bool(sensor.parameters, "enable_rgb", true);
-      camera_data.info.enable_depth = parameter_as_bool(sensor.parameters, "enable_depth", false);
-      if (!parse_int_parameter(sensor.parameters, "width", 640, &camera_data.info.width,
+      camera_data.config.common.frame_id = parameter_or(sensor.parameters, "frame_id", sensor.name);
+      camera_data.config.optical_frame_id = camera_data.frame_id;
+      camera_data.config.enable_rgb = parameter_as_bool(sensor.parameters, "enable_rgb", true);
+      camera_data.config.enable_depth = parameter_as_bool(sensor.parameters, "enable_depth", false);
+      if (!parse_double_parameter(sensor.parameters, "update_rate", 30.0,
+                                  &camera_data.config.common.update_rate, error_message) ||
+          !parse_int_parameter(sensor.parameters, "width", 640, &camera_data.config.width,
                                error_message) ||
-          !parse_int_parameter(sensor.parameters, "height", 480, &camera_data.info.height,
+          !parse_int_parameter(sensor.parameters, "height", 480, &camera_data.config.height,
                                error_message)) {
         return false;
       }
 
       parsed.cameras.push_back(std::move(camera_data));
+      parsed.simulation.components.emplace_back(parsed.cameras.back().config);
       continue;
     }
 
@@ -284,23 +301,27 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
       lidar_data.name = sensor.name;
       lidar_data.frame_id = parameter_or(sensor.parameters, "frame_id", sensor.name);
       lidar_data.topic = parameter_or(sensor.parameters, "scan_topic", sensor.name + "/scan");
-      lidar_data.info.name = sensor.name;
-      lidar_data.info.frame_name = lidar_data.frame_id;
-      lidar_data.info.sensor_prefix = parameter_or(sensor.parameters, "sensor_prefix", sensor.name);
-      if (!parse_double_parameter(sensor.parameters, "angle_min", 0.0, &lidar_data.info.angle_min,
+      lidar_data.config.common.name = sensor.name;
+      lidar_data.config.common.frame_id = lidar_data.frame_id;
+      lidar_data.config.sensor_prefix =
+          parameter_or(sensor.parameters, "sensor_prefix", sensor.name);
+      if (!parse_double_parameter(sensor.parameters, "update_rate", 10.0,
+                                  &lidar_data.config.common.update_rate, error_message) ||
+          !parse_double_parameter(sensor.parameters, "angle_min", 0.0, &lidar_data.config.angle_min,
                                   error_message) ||
-          !parse_double_parameter(sensor.parameters, "angle_max", 0.0, &lidar_data.info.angle_max,
+          !parse_double_parameter(sensor.parameters, "angle_max", 0.0, &lidar_data.config.angle_max,
                                   error_message) ||
           !parse_double_parameter(sensor.parameters, "angle_increment", 0.0,
-                                  &lidar_data.info.angle_increment, error_message) ||
-          !parse_double_parameter(sensor.parameters, "range_min", 0.0, &lidar_data.info.range_min,
+                                  &lidar_data.config.angle_increment, error_message) ||
+          !parse_double_parameter(sensor.parameters, "range_min", 0.0, &lidar_data.config.range_min,
                                   error_message) ||
-          !parse_double_parameter(sensor.parameters, "range_max", 0.0, &lidar_data.info.range_max,
+          !parse_double_parameter(sensor.parameters, "range_max", 0.0, &lidar_data.config.range_max,
                                   error_message)) {
         return false;
       }
 
       parsed.lidars.push_back(std::move(lidar_data));
+      parsed.simulation.components.emplace_back(parsed.lidars.back().config);
     }
   }
 
@@ -315,62 +336,99 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
 
     MobileBaseData mb;
     mb.name = raw_name;
-    mb.info.name = raw_name;
+    mb.config.name = raw_name;
     mb.command = {};
     mb.state = {};
 
     const std::string type_str = parameter_or(hardware_info.hardware_parameters,
                                               "mobile_base_" + std::to_string(i) + "_type");
     if (type_str == "differential") {
-      mb.info.type = mujoco_simulation::MobileBaseType::Differential;
+      mb.config.type = mujoco_simulation::MobileBaseType::Differential;
     } else if (type_str == "omnidirectional") {
-      mb.info.type = mujoco_simulation::MobileBaseType::Omnidirectional;
+      mb.config.type = mujoco_simulation::MobileBaseType::Omnidirectional;
     } else {
       error_message = "Invalid mobile_base type '" + type_str + "' for '" + raw_name +
                       "'. Must be 'differential' or 'omnidirectional'.";
       return false;
     }
 
-    const std::string joints_str = parameter_or(
-        hardware_info.hardware_parameters, "mobile_base_" + std::to_string(i) + "_traction_joints");
-    if (joints_str.empty()) {
-      error_message = "Mobile base '" + raw_name + "' requires traction_joints parameter.";
-      return false;
-    }
-    {
-      std::stringstream joint_stream(joints_str);
-      std::string joint_name;
-      while (std::getline(joint_stream, joint_name, ',')) {
-        mb.info.traction_joint_names.push_back(joint_name);
+    if (mb.config.type == mujoco_simulation::MobileBaseType::Differential) {
+      mb.config.left_wheel_joint =
+          parameter_or(hardware_info.hardware_parameters,
+                       "mobile_base_" + std::to_string(i) + "_left_wheel_joint");
+      mb.config.right_wheel_joint =
+          parameter_or(hardware_info.hardware_parameters,
+                       "mobile_base_" + std::to_string(i) + "_right_wheel_joint");
+      if (mb.config.left_wheel_joint.empty() || mb.config.right_wheel_joint.empty()) {
+        error_message = "Differential mobile base '" + raw_name +
+                        "' requires left_wheel_joint and right_wheel_joint parameters.";
+        return false;
+      }
+    } else {
+      mb.config.front_left_joint =
+          parameter_or(hardware_info.hardware_parameters,
+                       "mobile_base_" + std::to_string(i) + "_front_left_joint");
+      mb.config.front_right_joint =
+          parameter_or(hardware_info.hardware_parameters,
+                       "mobile_base_" + std::to_string(i) + "_front_right_joint");
+      mb.config.rear_left_joint =
+          parameter_or(hardware_info.hardware_parameters,
+                       "mobile_base_" + std::to_string(i) + "_rear_left_joint");
+      mb.config.rear_right_joint =
+          parameter_or(hardware_info.hardware_parameters,
+                       "mobile_base_" + std::to_string(i) + "_rear_right_joint");
+      if (mb.config.front_left_joint.empty() || mb.config.front_right_joint.empty() ||
+          mb.config.rear_left_joint.empty() || mb.config.rear_right_joint.empty()) {
+        error_message = "Omnidirectional mobile base '" + raw_name +
+                        "' requires front_left_joint, front_right_joint, rear_left_joint, and "
+                        "rear_right_joint parameters.";
+        return false;
       }
     }
 
     if (!parse_double_parameter(hardware_info.hardware_parameters,
                                 "mobile_base_" + std::to_string(i) + "_wheel_radius", 0.0,
-                                &mb.info.wheel_radius, error_message)) {
+                                &mb.config.wheel_radius, error_message)) {
       return false;
     }
     if (!parse_double_parameter(hardware_info.hardware_parameters,
                                 "mobile_base_" + std::to_string(i) + "_track_width", 0.0,
-                                &mb.info.track_width, error_message)) {
+                                &mb.config.track_width, error_message)) {
       return false;
     }
-    if (mb.info.type == mujoco_simulation::MobileBaseType::Omnidirectional) {
+    if (mb.config.type == mujoco_simulation::MobileBaseType::Omnidirectional) {
       if (!parse_double_parameter(hardware_info.hardware_parameters,
                                   "mobile_base_" + std::to_string(i) + "_wheel_base", 0.0,
-                                  &mb.info.wheel_base, error_message)) {
+                                  &mb.config.wheel_base, error_message)) {
         return false;
       }
     }
 
-    mb.info.base_frame_id =
+    mb.config.base_frame_id =
         parameter_or(hardware_info.hardware_parameters,
                      "mobile_base_" + std::to_string(i) + "_base_frame_id", "base_link");
-    mb.info.odom_frame_id =
+    mb.config.odom_frame_id =
         parameter_or(hardware_info.hardware_parameters,
                      "mobile_base_" + std::to_string(i) + "_odom_frame_id", "odom");
+    mb.config.base_body_name =
+        parameter_or(hardware_info.hardware_parameters,
+                     "mobile_base_" + std::to_string(i) + "_base_body_name", "");
+
+    const std::string odometry_source =
+        parameter_or(hardware_info.hardware_parameters,
+                     "mobile_base_" + std::to_string(i) + "_odometry_source", "wheel_integration");
+    if (odometry_source == "wheel_integration") {
+      mb.config.odometry_source = mujoco_simulation::OdometrySource::WheelIntegration;
+    } else if (odometry_source == "ground_truth_body_pose") {
+      mb.config.odometry_source = mujoco_simulation::OdometrySource::GroundTruthBodyPose;
+    } else {
+      error_message = "Unsupported odometry_source for mobile base '" + raw_name +
+                      "'. Must be 'wheel_integration' or 'ground_truth_body_pose'.";
+      return false;
+    }
 
     parsed.mobile_bases.push_back(std::move(mb));
+    parsed.simulation.components.emplace_back(parsed.mobile_bases.back().config);
   }
 
   *config = std::move(parsed);

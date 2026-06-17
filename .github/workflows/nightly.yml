@@ -1,0 +1,150 @@
+name: nightly
+
+permissions:
+  actions: read
+  contents: read
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  tsan:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            libglfw3-dev \
+            libegl1-mesa-dev \
+            libopengl-dev
+      - name: Run TSan subset or preflight
+        run: ./scripts/ci/run_tsan_subset.sh
+      - name: Upload TSan artifacts and summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-results
+          path: |
+            build_tsan/**
+            log_tsan/**
+
+  soak-and-perf:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            libglfw3-dev \
+            libegl1-mesa-dev \
+            libopengl-dev
+      - name: Run soak and performance baseline
+        env:
+          SOAK_SECONDS: 3600
+          OUTPUT_PATH: build/performance_baseline.json
+          BASELINE_REFERENCE: docs/performance_baseline.sample.json
+          COMPARISON_OUTPUT: build/performance_comparison.json
+          COMPARISON_MARKDOWN_OUTPUT: build/performance_comparison.md
+        run: ./scripts/ci/run_soak_and_perf.sh
+      - name: Upload soak and perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-and-perf-results
+          path: |
+            build/performance_baseline.json
+            build/performance_comparison.json
+            build/performance_comparison.md
+            build/**/test_results/**
+
+  nightly-summary:
+    runs-on: ubuntu-22.04
+    needs:
+      - tsan
+      - soak-and-perf
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download TSan artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tsan-results
+          path: nightly_artifacts/tsan-results
+      - name: Download soak and perf artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: soak-and-perf-results
+          path: nightly_artifacts/soak-and-perf-results
+      - name: Download previous nightly summary if available
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p nightly_artifacts/previous
+          python3 scripts/ci/fetch_previous_nightly_artifact.py \
+            --server-url "${GITHUB_SERVER_URL}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow nightly.yml \
+            --current-run-id "${GITHUB_RUN_ID}" \
+            --artifact-name nightly-summary \
+            --output-dir nightly_artifacts/previous \
+            --token "${GITHUB_TOKEN}" \
+            --max-runs 7 || true
+      - name: Run CI script unit tests
+        run: python3 scripts/ci/tests/test_nightly_ci_scripts.py
+      - name: Build nightly summary
+        run: |
+          python3 scripts/ci/summarize_nightly_results.py \
+            --perf-comparison-json nightly_artifacts/soak-and-perf-results/build/performance_comparison.json \
+            --perf-comparison-markdown nightly_artifacts/soak-and-perf-results/build/performance_comparison.md \
+            --tsan-summary-json nightly_artifacts/tsan-results/log_tsan/tsan_summary.json \
+            --tsan-summary-markdown nightly_artifacts/tsan-results/log_tsan/tsan_summary.md \
+            --json-output nightly_artifacts/nightly_summary.json \
+            --markdown-output nightly_artifacts/nightly_summary.md \
+            --metrics-output nightly_artifacts/nightly_metrics.json
+      - name: Build nightly trend
+        run: |
+          python3 scripts/ci/compare_nightly_metrics.py \
+            --current nightly_artifacts/nightly_metrics.json \
+            --previous nightly_artifacts/previous/latest/nightly_metrics.json \
+            --json-output nightly_artifacts/nightly_trend.json \
+            --markdown-output nightly_artifacts/nightly_trend.md
+      - name: Build nightly history
+        run: |
+          python3 scripts/ci/summarize_nightly_history.py \
+            --current nightly_artifacts/nightly_metrics.json \
+            --previous-pattern 'nightly_artifacts/previous/run_*/nightly_metrics.json' \
+            --json-output nightly_artifacts/nightly_history.json \
+            --markdown-output nightly_artifacts/nightly_history.md
+      - name: Publish nightly step summary
+        run: |
+          cat nightly_artifacts/nightly_summary.md >> "${GITHUB_STEP_SUMMARY}"
+          printf '\n' >> "${GITHUB_STEP_SUMMARY}"
+          cat nightly_artifacts/nightly_trend.md >> "${GITHUB_STEP_SUMMARY}"
+          printf '\n' >> "${GITHUB_STEP_SUMMARY}"
+          cat nightly_artifacts/nightly_history.md >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload nightly combined summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-summary
+          path: |
+            nightly_artifacts/nightly_summary.json
+            nightly_artifacts/nightly_summary.md
+            nightly_artifacts/nightly_metrics.json
+            nightly_artifacts/nightly_trend.json
+            nightly_artifacts/nightly_trend.md
+            nightly_artifacts/nightly_history.json
+            nightly_artifacts/nightly_history.md

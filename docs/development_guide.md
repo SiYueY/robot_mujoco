@@ -1,5 +1,7 @@
 # robot_mujoco 项目代码架构导读
 
+> 说明：本文件保留为阶段性设计推导记录。自 2026-06-16 起，当前真实包边界与迁移入口以 [`current_architecture.md`](./current_architecture.md) 和 [`migration_guide.md`](./migration_guide.md) 为准；ROS publisher/service 已从 `mujoco_hardware::SensorBridge` 迁移到 `mujoco_simulation_ros::SimulationRosBridge`。
+
 ## 1. 项目定位与包划分
 
 `robot_mujoco` 是一个面向 ROS 2 的通用 MuJoCo 仿真工作区。仓库当前默认示例机器人是 Franka / Panda，但代码结构本身并不绑定某一台具体机器人，目标是提供一套可复用的 MuJoCo 运行时、设备抽象和 `ros2_control` 接入层。
@@ -135,12 +137,12 @@ MuJoCoSimulation read_*()
 
 ### 3.3 `MuJoCoHardwareInterface` 与仿真层的直接连接
 
-当前代码已经移除了 `mujoco_hardware::Robot` 这一层薄包装，`MuJoCoHardwareInterface` 直接持有 `std::unique_ptr<mujoco_simulation::MuJoCoSimulation>`。
+当前代码已经移除了 `mujoco_hardware::Robot` 这一层薄包装，`MuJoCoHardwareInterface` 直接持有 `std::unique_ptr<mujoco_simulation::Simulation>`。
 
 这意味着它当前同时承担三类职责：
 
-1. **仿真生命周期管理**：创建 `MuJoCoSimulation`，注册 joint / imu / camera / lidar，并在 activate / deactivate 时直接控制 `start()` / `stop()`
-2. **模式切换与读写转发**：直接调用 `configure_joint_command_mode()`、`write_joint()` 和各类 `read_*()`
+1. **仿真生命周期管理**：创建 `Simulation`，准备组件配置，并在 activate / deactivate 时直接控制 `start()` / `stop()`
+2. **模式切换与读写转发**：直接调用 `reconfigure_component(...)`、`set_joint_command()`、`state_snapshot()` 和 `camera_sample()`
 3. **相机内参推导**：通过本地 `fill_camera_info()` helper 将 MuJoCo camera 几何参数映射为 ROS `CameraInfo`
 
 这一改动的直接收益是调用链缩短、状态来源减少，也让 `mujoco_hardware` 内部不再保留一个纯转发型 façade。
@@ -409,7 +411,7 @@ RoboCasa YAML config
 ```text
 ┌─ 硬件插件层 (mujoco_hardware) ────────────────────────────────────────┐
 │  JointData { name, command_interfaces, state_interfaces,              │
-│              mujoco_simulation::JointInfo info,                        │
+│              mujoco_simulation::JointConfig info,                        │
 │              mujoco_simulation::JointCommand command,                  │
 │              mujoco_simulation::JointState state }                     │
 │  定义于: mujoco_hardware/data.hpp                                      │
@@ -426,7 +428,7 @@ RoboCasa YAML config
 └────────────────────────────────────────────────────────────────────────┘
 
 ┌─ 设备层 (mujoco_simulation/hardware) ─────────────────────────────────┐
-│  JointInfo { name, joint_type, actuator_type, ... }                    │
+│  JointConfig { name, joint_type, actuator_type, ... }                    │
 │  JointCommand { position, velocity, effort }                           │
 │  JointState { position, velocity, effort }                             │
 │  定义于: mujoco_simulation/hardware/joint.hpp                           │
@@ -443,7 +445,7 @@ RoboCasa YAML config
 
 **优化方向：**
 
-1. **以设备层类型为权威定义**：仿真公开接口 `MuJoCoSimulation` 直接使用 `JointInfo` / `JointCommand` / `JointState`（即设备层类型），删除 `SimulationJointConfiguration` 等中间类型
+1. **以设备层类型为权威定义**：仿真公开接口 `MuJoCoSimulation` 直接使用 `JointConfig` / `JointCommand` / `JointState`（即设备层类型），删除 `SimulationJointConfiguration` 等中间类型
 2. **`JointData` 简化为薄包装**：只持有设备层类型 + ROS 专有字段（`command_interfaces` / `state_interfaces` 字符串数组），不再重复定义数据字段
 3. **`mujoco_hardware` 侧的转换代码大幅减少**：因为 `JointData` 的 info/command/state 子对象就是 `MuJoCoSimulation` 接受的类型
 
@@ -451,11 +453,11 @@ RoboCasa YAML config
 
 ```text
 config.cpp 解析 HardwareInfo
-  → 直接填充 JointInfo / JointCommand 字段
+  → 直接填充 JointConfig / JointCommand 字段
   → 存入 JointData.info / JointData.command
     → MuJoCoHardwareInterface 直接传递 JointData.info
-      → MuJoCoSimulation::register_joint(JointInfo)
-        → HardwareManager::register_joint(JointInfo)
+      → MuJoCoSimulation::register_joint(JointConfig)
+        → HardwareManager::register_joint(JointConfig)
 ```
 
 注意：这一优化的前提是确认 `mujoco_simulation.hpp` 中的公开类型不被外部依赖锁定。若已有稳定 API 约定，可先标记旧类型为 deprecated，逐步迁移。
@@ -484,10 +486,10 @@ config.cpp 解析 HardwareInfo
 
 ```cpp
 // 改造前：nullptr 默认值允许调用者静默丢弃错误信息
-bool register_joint(const JointInfo& info, std::string* error_message = nullptr);
+bool register_joint(const JointConfig& info, std::string* error_message = nullptr);
 
 // 改造后：引用语义，编译器强制调用者提供 error_message
-bool register_joint(const JointInfo& info, std::string& error_message);
+bool register_joint(const JointConfig& info, std::string& error_message);
 ```
 
 改动仅一个字符（`*` → `&`，删除 `= nullptr`），效果是调用者无法再写 `register_joint(info)` 而不处理错误——编译器直接报错。
@@ -511,11 +513,11 @@ if (!manager.register_joint(info, err)) { /* 处理 */ }
 ```cpp
 // 无返回值操作（初始化、注册）—— string& 跟在最后一个业务参数之后
 bool initialize(const Config& config, std::string& error_message);
-bool register_joint(const JointInfo& info, std::string& error_message);
+bool register_joint(const JointConfig& info, std::string& error_message);
 
 // 有返回值操作（读取状态）—— T* 输出参数 + string& 错误信息
 bool read_joint(const std::string& name, JointState* state, std::string& error_message);
-bool read_imu(const std::string& name, ImuState* state, std::string& error_message);
+bool read_imu(const std::string& name, ImuSample* state, std::string& error_message);
 ```
 
 调用侧风格一致且直接：
@@ -798,7 +800,7 @@ bool MuJoCoSimulation::register_joint(const SimulationJointConfiguration& config
   std::lock_guard<std::mutex> lock(mutex_);
   // ... 空值检查 ...
 
-  JointInfo data;                                          // 创建后端类型
+  JointConfig data;                                          // 创建后端类型
   data.name = configuration.name;                          // 逐字段复制
   data.actuator_name = configuration.actuator_name;        // 逐字段复制
   data.command_mode = to_backend_command_mode(              // 枚举转换
@@ -817,7 +819,7 @@ bool MuJoCoSimulation::register_joint(const SimulationJointConfiguration& config
 
 #### 根源
 
-`mujoco_simulation.hpp` 定义的 `SimulationJointConfiguration` / `SimulationJointState` 等公开类型，与 `hardware/joint.hpp` 定义的 `JointInfo` / `JointState` 等设备层类型，在语义上等价但类型上不同。这是"三层重复"中"仿真公开接口层"的体现。
+`mujoco_simulation.hpp` 定义的 `SimulationJointConfiguration` / `SimulationJointState` 等公开类型，与 `hardware/joint.hpp` 定义的 `JointConfig` / `JointState` 等设备层类型，在语义上等价但类型上不同。这是"三层重复"中"仿真公开接口层"的体现。
 
 #### 解决方案
 
@@ -829,7 +831,7 @@ bool MuJoCoSimulation::register_joint(const SimulationJointConfiguration& config
   bool read_joint(const string&, SimulationJointState*, string*);
 
 改造后：
-  bool register_joint(const JointInfo&, string*);
+  bool register_joint(const JointConfig&, string*);
   bool read_joint(const string&, JointState*, string*);
 ```
 
@@ -837,7 +839,7 @@ bool MuJoCoSimulation::register_joint(const SimulationJointConfiguration& config
 - `mujoco_simulation.hpp`：删除所有 `Simulation*` 结构体定义和对应方法签名
 - `mujoco_simulation.cpp`：删除 `to_public_joint_state()` / `to_public_imu_state()` 等匿名命名空间转换函数
 - `robot.cpp`：`register_joint(JointData)` 中直接传 `joint.info` 而非逐字段复制到 `SimulationJointConfiguration`
-- `mujoco_hardware/data.hpp`：`JointData` 已持有 `JointInfo` / `JointCommand` / `JointState`，无需更改
+- `mujoco_hardware/data.hpp`：`JointData` 已持有 `JointConfig` / `JointCommand` / `JointState`，无需更改
 
 这项工作现已完成：`MuJoCoSimulation` 公开 API 直接使用设备层类型，`mujoco_hardware` 侧也不再需要额外的中间适配类型或纯转发包装层。
 
@@ -908,21 +910,21 @@ struct MjContext {
 class MuJoCoSimulation::Impl {
  public:
   std::unique_ptr<HardwareManager> hardware_manager;  // 内部有 joints_/imus_ 等 maps
-  std::map<std::string, JointInfo> joints;       // ← 仍与 HardwareManager 重复
-  std::map<std::string, ImuInfo> imus;           // ← 仍与 HardwareManager 重复
-  std::map<std::string, CameraSpec> cameras;     // ← 仍与 HardwareManager 重复
-  std::map<std::string, LidarInfo> lidars;       // ← 仍与 HardwareManager 重复
+  std::map<std::string, JointConfig> joints;       // ← 仍与 HardwareManager 重复
+  std::map<std::string, ImuConfig> imus;           // ← 仍与 HardwareManager 重复
+  std::map<std::string, CameraConfig> cameras;     // ← 仍与 HardwareManager 重复
+  std::map<std::string, LidarConfig> lidars;       // ← 仍与 HardwareManager 重复
 };
 ```
 
-`configure_joint_command_mode()` 需要同时更新 `HardwareManager`（unregister + re-register）和 `Impl::joints` map（更新配置）。这是经典的"同一事实的两个记录"问题——两者可能在代码演进中不同步。
+历史上的 joint mode switch 需要同时更新 `HardwareManager`（unregister + re-register）和 `Impl::joints` map（更新配置）。这是经典的"同一事实的两个记录"问题——两者可能在代码演进中不同步。
 
 **当前结果：**
 
 - `Impl` 中的 `joints / imus / cameras / lidars` 配置 maps 已删除
 - `load_model()` 只重建 `hardware_manager`，不再同步清理额外配置副本
 - 设备是否已注册、相应配置快照以及 camera 的 pending spec 都由 `HardwareManager` 单点维护
-- `configure_joint_command_mode()` 已直接通过 `HardwareManager` 完成重配置，不再跨层同步状态
+- 当前公开入口已经进一步收口为 `Simulation::reconfigure_component(ComponentConfig{updated_joint})`
 
 因此，这个“双重维护”问题在 `MuJoCoSimulation` 这一层已经被消除；后续若继续优化，重点应放在 `HardwareManager` 内部接口的清晰度，而不是继续在上层保存镜像状态。
 

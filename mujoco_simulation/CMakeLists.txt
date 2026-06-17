@@ -6,11 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(glfw3 REQUIRED)
-find_package(hardware_interface REQUIRED)
 find_package(mujoco_vendor QUIET)
-find_package(OpenGL REQUIRED COMPONENTS OpenGL)
-find_package(rclcpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
+find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
 find_package(Threads REQUIRED)
 
 if(mujoco_vendor_FOUND)
@@ -91,37 +88,84 @@ target_link_libraries(mujoco_official_simulate PRIVATE
 )
 set_target_properties(mujoco_official_simulate PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_library(${PROJECT_NAME} SHARED
-  src/hardware/camera.cpp
-  src/hardware/hardware_manager.cpp
-  src/hardware/imu.cpp
-  src/hardware/joint.cpp
-  src/hardware/lidar.cpp
-  src/hardware/mobile_base.cpp
-  src/mujoco_simulation.cpp
-  src/viewer/viewer.cpp
-)
-target_include_directories(${PROJECT_NAME} PUBLIC
+set(MUJOCO_SIMULATION_PUBLIC_INCLUDE_DIRS
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${MUJOCO_INCLUDE_DIR}
 )
-target_include_directories(${PROJECT_NAME} PRIVATE
+
+add_library(mujoco_simulation_headers INTERFACE)
+target_include_directories(mujoco_simulation_headers INTERFACE
+  ${MUJOCO_SIMULATION_PUBLIC_INCLUDE_DIRS}
+)
+
+add_library(mujoco_simulation_components STATIC
+  src/component/component_manager.cpp
+  src/component/component_registry.cpp
+  src/component/camera/camera_component.cpp
+  src/component/imu/imu_component.cpp
+  src/component/joint/joint_component.cpp
+  src/component/lidar/lidar_component.cpp
+  src/component/mobile_base/mobile_base_component.cpp
+  src/scheduler/sensor_scheduler.cpp
+)
+target_link_libraries(mujoco_simulation_components PUBLIC
+  mujoco_simulation_headers
+)
+set_target_properties(mujoco_simulation_components PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(mujoco_simulation_runtime STATIC
+  src/runtime/model_runtime.cpp
+  src/runtime/simulation_scheduler.cpp
+)
+target_link_libraries(mujoco_simulation_runtime PUBLIC
+  mujoco_simulation_headers
+)
+set_target_properties(mujoco_simulation_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(mujoco_simulation_camera STATIC
+  src/component/camera/camera_renderer.cpp
+)
+target_link_libraries(mujoco_simulation_camera PUBLIC
+  mujoco_simulation_headers
+)
+target_link_libraries(mujoco_simulation_camera PRIVATE
+  ${MUJOCO_LIB}
+  OpenGL::EGL
+  glfw
+)
+set_target_properties(mujoco_simulation_camera PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(mujoco_simulation_viewer_support STATIC
+  src/viewer/viewer.cpp
+)
+target_link_libraries(mujoco_simulation_viewer_support PUBLIC
+  mujoco_simulation_headers
+)
+target_include_directories(mujoco_simulation_viewer_support PRIVATE
   src/viewer/simulate
   src/viewer/lodepng
 )
-ament_target_dependencies(${PROJECT_NAME}
-  hardware_interface
-  rclcpp
-  sensor_msgs
-)
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(mujoco_simulation_viewer_support PRIVATE
   ${MUJOCO_LIB}
-  Threads::Threads
-)
-target_link_libraries(${PROJECT_NAME}
   mujoco_official_simulate
   glfw
+)
+set_target_properties(mujoco_simulation_viewer_support PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(${PROJECT_NAME} SHARED
+  src/simulation.cpp
+)
+target_link_libraries(${PROJECT_NAME} PUBLIC
+  mujoco_simulation_headers
+  ${MUJOCO_LIB}
+)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  Threads::Threads
+  mujoco_simulation_components
+  mujoco_simulation_runtime
+  mujoco_simulation_camera
+  mujoco_simulation_viewer_support
 )
 if(MUJOCO_RUNTIME_LIBRARY_DIR)
   set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -131,7 +175,7 @@ if(MUJOCO_RUNTIME_LIBRARY_DIR)
 endif()
 
 install(
-  TARGETS ${PROJECT_NAME} mujoco_official_simulate lodepng
+  TARGETS ${PROJECT_NAME} mujoco_simulation_headers
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -139,10 +183,136 @@ install(
 )
 install(DIRECTORY include/ DESTINATION include)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  add_executable(perf_runtime_scenarios
+    test/performance/perf_runtime_scenarios.cpp
+  )
+  target_link_libraries(perf_runtime_scenarios ${PROJECT_NAME})
+
+  ament_add_gtest(test_model_runtime
+    test/unit/test_model_runtime.cpp
+  )
+  if(TARGET test_model_runtime)
+    target_link_libraries(test_model_runtime ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_status
+    test/unit/test_status.cpp
+  )
+  if(TARGET test_status)
+    target_link_libraries(test_status mujoco_simulation_headers)
+  endif()
+
+  ament_add_gtest(test_simulation_scheduler
+    test/unit/test_simulation_scheduler.cpp
+  )
+  if(TARGET test_simulation_scheduler)
+    target_link_libraries(test_simulation_scheduler mujoco_simulation_runtime)
+  endif()
+
+  ament_add_gtest(test_joint_component
+    test/unit/test_joint_component.cpp
+  )
+  if(TARGET test_joint_component)
+    target_link_libraries(test_joint_component ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_component_registry
+    test/unit/test_component_registry.cpp
+  )
+  if(TARGET test_component_registry)
+    target_link_libraries(test_component_registry ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_component_config
+    test/unit/test_component_config.cpp
+  )
+  if(TARGET test_component_config)
+    target_link_libraries(test_component_config ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_mobile_base
+    test/unit/test_mobile_base.cpp
+  )
+  if(TARGET test_mobile_base)
+    target_link_libraries(test_mobile_base ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_buffered_simulation
+    test/unit/test_buffered_simulation.cpp
+  )
+  if(TARGET test_buffered_simulation)
+    target_link_libraries(test_buffered_simulation ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_command_buffer
+    test/unit/test_command_buffer.cpp
+  )
+  if(TARGET test_command_buffer)
+    target_link_libraries(test_command_buffer mujoco_simulation_headers)
+  endif()
+
+  ament_add_gtest(test_sensor_scheduler
+    test/unit/test_sensor_scheduler.cpp
+  )
+  if(TARGET test_sensor_scheduler)
+    target_link_libraries(test_sensor_scheduler mujoco_simulation_components)
+  endif()
+
+  ament_add_gtest(test_sensor_sampling
+    test/unit/test_sensor_sampling.cpp
+  )
+  if(TARGET test_sensor_sampling)
+    target_link_libraries(test_sensor_sampling ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_camera_buffer
+    test/unit/test_camera_buffer.cpp
+  )
+  if(TARGET test_camera_buffer)
+    target_link_libraries(test_camera_buffer ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_state_buffer
+    test/unit/test_state_buffer.cpp
+  )
+  if(TARGET test_state_buffer)
+    target_link_libraries(test_state_buffer ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_camera_sample
+    test/unit/test_camera_sample.cpp
+  )
+  if(TARGET test_camera_sample)
+    target_link_libraries(test_camera_sample ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_camera_rendering
+    test/unit/test_camera_rendering.cpp
+  )
+  if(TARGET test_camera_rendering)
+    target_link_libraries(test_camera_rendering ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_camera_runtime
+    test/unit/test_camera_runtime.cpp
+  )
+  if(TARGET test_camera_runtime)
+    target_link_libraries(test_camera_runtime ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_viewer
+    test/unit/test_viewer.cpp
+  )
+  if(TARGET test_viewer)
+    target_link_libraries(test_viewer ${PROJECT_NAME})
+  endif()
+endif()
+
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(
-  hardware_interface
-  rclcpp
-  sensor_msgs
-)
+if(mujoco_vendor_FOUND)
+  ament_export_dependencies(mujoco_vendor)
+endif()
 ament_package()

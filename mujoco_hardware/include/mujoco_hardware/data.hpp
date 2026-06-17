@@ -1,16 +1,22 @@
 #pragma once
 
-#include <array>
 #include <string>
 #include <vector>
 
 #include "hardware_interface/hardware_info.hpp"
-#include "mujoco_simulation/hardware/camera.hpp"
-#include "mujoco_simulation/hardware/imu.hpp"
-#include "mujoco_simulation/hardware/joint.hpp"
-#include "mujoco_simulation/hardware/lidar.hpp"
-#include "mujoco_simulation/hardware/mobile_base.hpp"
-#include "mujoco_simulation/mujoco_simulation.hpp"
+#include "mujoco_simulation/component/camera/camera_config.hpp"
+#include "mujoco_simulation/component/camera/camera_sample.hpp"
+#include "mujoco_simulation/component/imu/imu_config.hpp"
+#include "mujoco_simulation/component/imu/imu_sample.hpp"
+#include "mujoco_simulation/component/joint/joint_command.hpp"
+#include "mujoco_simulation/component/joint/joint_config.hpp"
+#include "mujoco_simulation/component/joint/joint_state.hpp"
+#include "mujoco_simulation/component/lidar/lidar_config.hpp"
+#include "mujoco_simulation/component/lidar/lidar_sample.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_command.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_config.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_state.hpp"
+#include "mujoco_simulation/simulation.hpp"
 
 namespace mujoco_hardware {
 
@@ -18,7 +24,7 @@ struct JointData {
   std::string name;
   std::vector<std::string> command_interfaces;
   std::vector<std::string> state_interfaces;
-  mujoco_simulation::JointInfo info;
+  mujoco_simulation::JointConfig config;
   mujoco_simulation::JointCommand command;
   mujoco_simulation::JointState state;
 };
@@ -28,16 +34,8 @@ struct ImuData {
   std::vector<std::string> state_interfaces;
   std::string frame_id;
   std::string topic;
-  mujoco_simulation::ImuInfo info;
-  mujoco_simulation::ImuState state;
-};
-
-struct CameraIntrinsics {
-  std::string distortion_model{"plumb_bob"};
-  std::vector<double> distortion_coefficients;
-  std::array<double, 9> intrinsic_matrix{};
-  std::array<double, 9> rectification_matrix{};
-  std::array<double, 12> projection_matrix{};
+  mujoco_simulation::ImuConfig config;
+  mujoco_simulation::ImuSample sample;
 };
 
 struct CameraData {
@@ -51,24 +49,21 @@ struct CameraData {
   std::string depth_topic;
   std::string camera_info_topic;
 
-  // Pinhole intrinsics derived from MuJoCo camera geometry and output resolution.
-  CameraIntrinsics intrinsics;
-
-  mujoco_simulation::CameraSpec info;
-  mujoco_simulation::CameraState state;
+  mujoco_simulation::CameraConfig config;
+  mujoco_simulation::CameraSample sample;
 };
 
 struct LidarData {
   std::string name;
   std::string frame_id;
   std::string topic;
-  mujoco_simulation::LidarInfo info;
-  mujoco_simulation::LidarState state;
+  mujoco_simulation::LidarConfig config;
+  mujoco_simulation::LidarSample sample;
 };
 
 struct MobileBaseData {
   std::string name;
-  mujoco_simulation::MobileBaseInfo info;
+  mujoco_simulation::MobileBaseConfig config;
   mujoco_simulation::MobileBaseCommand command;
   mujoco_simulation::MobileBaseState state;
 };

@@ -1,0 +1,16 @@
+{
+  "scenarios": [
+    {
+      "name": "scheduler_1khz",
+      "command": ["build/mujoco_simulation/perf_runtime_scenarios", "--scenario", "scheduler_1khz", "--steps", "2000"]
+    },
+    {
+      "name": "headless_camera",
+      "command": ["build/mujoco_simulation/perf_runtime_scenarios", "--scenario", "headless_camera", "--steps", "240"]
+    },
+    {
+      "name": "hardware_read_write_loop",
+      "command": ["build/mujoco_hardware/perf_read_write_loop", "--iterations", "200"]
+    }
+  ]
+}

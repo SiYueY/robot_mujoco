@@ -1,0 +1,7 @@
+# Mesa/LLVM allocations reachable from viewer GL setup are reported as leaks
+# under ASan on Ubuntu 22.04 even after a clean viewer shutdown. Keep the
+# suppressions narrowly scoped to the external driver/runtime libraries.
+leak:iris_dri.so
+leak:libLLVM-15.so.1
+leak:libGLX_mesa.so.0
+leak:libEGL_mesa.so.0

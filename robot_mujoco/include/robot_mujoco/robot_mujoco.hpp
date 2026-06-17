@@ -9,13 +9,14 @@
 //   #include <robot_mujoco/robot_mujoco.hpp>
 //
 // Re-exports:
-//   mujoco_simulation  — MuJoCoSimulation, device types, HardwareManager
-//   mujoco_hardware    — MuJoCoHardwareInterface, HardwareConfig, SensorBridge
+//   mujoco_simulation  — Simulation, device types, HardwareManager
+//   mujoco_hardware    — MuJoCoHardwareInterface, HardwareConfig
+//   mujoco_simulation_ros — SimulationRosBridge, bridge config types
 
 #include "mujoco_hardware/data.hpp"
 #include "mujoco_hardware/mujoco_hardware_interface.hpp"
-#include "mujoco_hardware/sensor_bridge.hpp"
-#include "mujoco_simulation/mujoco_simulation.hpp"
+#include "mujoco_simulation/simulation.hpp"
+#include "mujoco_simulation_ros/simulation_ros_bridge.hpp"
 
 namespace robot_mujoco {
 

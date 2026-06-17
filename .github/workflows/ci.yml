@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci-script-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run CI script unit tests
+        run: python3 scripts/ci/tests/test_nightly_ci_scripts.py
+
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            clang-tidy \
+            libglfw3-dev \
+            libegl1-mesa-dev \
+            libopengl-dev
+      - name: Build and test
+        run: ./scripts/ci/build_and_test.sh
+
+  asan-ubsan:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            libglfw3-dev \
+            libegl1-mesa-dev \
+            libopengl-dev
+      - name: Run ASan/UBSan core suite
+        run: ./scripts/ci/run_sanitizers.sh
+
+  clang-tidy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            clang-tidy \
+            libglfw3-dev \
+            libegl1-mesa-dev \
+            libopengl-dev
+      - name: Run clang-tidy
+        run: ./scripts/ci/run_clang_tidy.sh
