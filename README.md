@@ -57,9 +57,12 @@ Install the vendored submodules in editable mode:
 
 ```bash
 uv pip install --upgrade pip setuptools wheel
+uv pip install "mujoco==3.3.1"
 uv pip install -e "robosuite@third_party/robosuite"
 uv pip install -e "robocasa@third_party/robocasa"
 ```
+
+`robocasa` currently asserts on `mujoco==3.3.1`, so do not leave this package floating.
 
 ### 5. Initialize robosuite and RoboCasa private macros
 
@@ -120,7 +123,39 @@ print("robocasa:", robocasa.__file__)
 PY
 ```
 
-### 8. Validate RoboCasa environment creation
+### 8. Build the ROS 2 workspace
+
+```bash
+source /opt/ros/humble/setup.bash
+colcon build --packages-select robot_mujoco mujoco_simulation robot_mujoco_ros2
+```
+
+### 9. Source the unified workspace environment
+
+`ros2 launch` uses the ROS 2 system Python, not the `.venv` interpreter directly.
+Because of that, activating `.venv` alone is not enough for RoboCasa launch mode.
+Always source the repository helper before running launch commands:
+
+```bash
+source /home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/scripts/robot_mujoco.bash
+```
+
+This script:
+
+- sources `/opt/ros/humble/setup.bash`
+- activates `.venv` if present
+- sources `install/setup.bash` if the workspace was built
+- prepends the `.venv` `site-packages` directory to `PYTHONPATH`
+- prepends `third_party/robosuite` and `third_party/robocasa` so `ros2 launch` can resolve editable installs from `/usr/bin/python3`
+- exports `PYTHONNOUSERSITE=1` so user-level packages under `~/.local` do not override the pinned `.venv` dependencies
+
+When `use_robocasa_scene:=true`, the launch path also clears the static-scene default
+`initial_keyframe:=home`, because RoboCasa-generated MJCF does not define that keyframe.
+If `render_mode:=viewer` is requested without a graphical display, launch automatically
+falls back to `render_mode:=headless`.
+If `use_rviz:=true` is requested without a graphical display, launch automatically skips `rviz2`.
+
+### 10. Validate RoboCasa environment creation
 
 Run a minimal environment creation check:
 
@@ -147,7 +182,7 @@ Ignore non-fatal warnings during the first setup unless the import or environmen
 
 - `robot_mujoco`
 - `mujoco_simulation`
-- `mujoco_hardware`
+- `robot_mujoco_ros2`
 
 Runtime rendering currently remains viewer-only:
 
@@ -167,26 +202,28 @@ After building and sourcing the workspace, use the unified `robot_mujoco` entry 
 
 ```bash
 source /opt/ros/humble/setup.bash
-colcon build --packages-select robot_mujoco mujoco_simulation mujoco_hardware
-source install/setup.bash
+source /home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/scripts/robot_mujoco.bash
 uv run robot-mujoco-robocasa-scene \
-  --config robot_mujoco/config/robocasa_fr3_scene.yaml \
+  --config robot_mujoco/config/franka_fr3/robocasa_scene.yaml \
   --output /tmp/robot_mujoco_robocasa_scene.xml
 ```
 
-When `--task`, `--layout`, or `--style` are omitted, the command enters an interactive terminal menu. It writes a composed MJCF file, then launches `ros2_control_node`, `robot_state_publisher`, and the default FR3 controllers through `robot_mujoco/launch/sim.launch.py`.
+When `--task`, `--layout`, or `--style` are omitted, the command enters an interactive terminal menu. It writes a composed MJCF file, then launches `ros2_control_node`, `robot_state_publisher`, and the default FR3 controllers through `robot_mujoco/launch/robot_mujoco.launch.py`.
 
 Use `--no-launch` when you only want to generate the MJCF:
 
 ```bash
 uv run robot-mujoco-robocasa-scene \
-  --config robot_mujoco/config/robocasa_fr3_scene.yaml \
+  --config robot_mujoco/config/franka_fr3/robocasa_scene.yaml \
   --output /tmp/robot_mujoco_robocasa_scene.xml \
   --no-launch
 ```
 
-## robot_mujoco FR3 example
+## Example Packages
 
-This repository still includes the standalone resource/example package at [example/franka_fr3_mujoco](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/example/franka_fr3_mujoco).
+This repository provides standalone MuJoCo example packages under [examples](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/examples):
 
-It vendors the MuJoCo Menagerie FR3 MJCF under `example/franka_fr3_mujoco/model` and remains the source of the default FR3 model used by the unified RoboCasa scene flow.
+- [examples/franka_fr3_mujoco](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/examples/franka_fr3_mujoco) -> ROS 2 package `franka_fr3_mujoco`
+- [examples/turtlebot3_mujoco](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/examples/turtlebot3_mujoco) -> ROS 2 package `turtlebot3_mujoco`
+
+The FR3 example vendors the MuJoCo Menagerie FR3 MJCF under `examples/franka_fr3_mujoco/model` and remains the default FR3 model source used by the unified RoboCasa scene flow.

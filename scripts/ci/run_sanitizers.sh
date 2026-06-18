@@ -11,8 +11,7 @@ INSTALL_BASE="${INSTALL_BASE:-install_asan_ubsan}"
 LOG_BASE="${LOG_BASE:-log_asan_ubsan}"
 BUILD_PACKAGES=(
   mujoco_simulation
-  mujoco_simulation_ros
-  mujoco_hardware
+  robot_mujoco_ros2
 )
 TEST_PACKAGES=(
   mujoco_simulation
@@ -38,7 +37,7 @@ colcon_cmd \
 source_if_exists "${WORKSPACE_ROOT}/${INSTALL_BASE}/setup.bash"
 cd "${WORKSPACE_ROOT}"
 # Keep the ASan/UBSan gate on the runtime core. ROS 2 node construction inside
-# `mujoco_simulation_ros` / `mujoco_hardware` currently triggers upstream
+# `robot_mujoco_ros2` currently triggers upstream
 # `rclcpp` / `rmw` sanitizer failures on Humble, while viewer-backed tests hit
 # MuJoCo simulate / Mesa driver sanitizer noise that is outside the runtime
 # core we own here.

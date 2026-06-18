@@ -2,7 +2,7 @@
 
 // robot_mujoco — Workspace-level C++ convenience header
 //
-// Aggregates the key types from both mujoco_simulation and mujoco_hardware
+// Aggregates the key types from both mujoco_simulation and robot_mujoco_ros2
 // so that application code only needs a single dependency:
 //
 //   find_package(robot_mujoco REQUIRED)
@@ -10,13 +10,12 @@
 //
 // Re-exports:
 //   mujoco_simulation  — Simulation, device types, HardwareManager
-//   mujoco_hardware    — MuJoCoHardwareInterface, HardwareConfig
-//   mujoco_simulation_ros — SimulationRosBridge, bridge config types
+//   robot_mujoco_ros2 — MuJoCoHardwareInterface, HardwareConfig, SimulationRosBridge
 
-#include "mujoco_hardware/data.hpp"
-#include "mujoco_hardware/mujoco_hardware_interface.hpp"
 #include "mujoco_simulation/simulation.hpp"
-#include "mujoco_simulation_ros/simulation_ros_bridge.hpp"
+#include "robot_mujoco_ros2/data.hpp"
+#include "robot_mujoco_ros2/mujoco_hardware_interface.hpp"
+#include "robot_mujoco_ros2/simulation_ros_bridge.hpp"
 
 namespace robot_mujoco {
 

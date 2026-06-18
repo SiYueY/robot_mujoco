@@ -40,6 +40,9 @@ class Viewer;
 
 class Simulation {
  public:
+  using SnapshotObserver =
+      std::function<void(std::shared_ptr<const SimulationStateSnapshot> snapshot)>;
+
   Simulation();
   ~Simulation();
 
@@ -73,6 +76,7 @@ class Simulation {
   SimulationStatus status() const;
   double simulation_time() const;
   std::shared_ptr<const SimulationStateSnapshot> state_snapshot() const;
+  void set_snapshot_observer(SnapshotObserver observer);
 
  private:
   struct PendingStateSnapshot {
@@ -83,9 +87,14 @@ class Simulation {
   Status initialize_scheduler();
   Status initialize_components();
   Status load_model(const ModelConfig &model_config);
-  Status apply_component_reconfiguration_locked(const ComponentConfig &updated_component);
+  Status apply_component_reconfiguration_locked(
+      const ComponentConfig &updated_component,
+      std::shared_ptr<const SimulationStateSnapshot> *published_snapshot);
+  Status publish_state_snapshot(bool increment_step_count);
   Status read_component_states_locked(bool increment_step_count);
-  Status publish_state_snapshot_locked(bool increment_step_count);
+  Status publish_state_snapshot_locked(
+      bool increment_step_count,
+      std::shared_ptr<const SimulationStateSnapshot> *published_snapshot);
   Status scheduler_apply_commands_locked();
   Status scheduler_read_components_locked(bool increment_step_count);
   Status scheduler_step_physics_locked();
@@ -111,6 +120,7 @@ class Simulation {
   std::string runtime_error_;
   std::uint64_t state_snapshot_sequence_{0};
   std::uint64_t state_snapshot_step_count_{0};
+  SnapshotObserver snapshot_observer_;
 
   mutable std::mutex mutex_;
 };

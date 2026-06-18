@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_mujoco_ros2</name>
+  <version>0.1.0</version>
+  <description>Unified ROS 2 adapter package for robot_mujoco: ros2_control hardware plugin, sensor bridge, clock publisher, and simulation control services.</description>
+  <maintainer email="todo@example.com">TODO</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>hardware_interface</depend>
+  <depend>mujoco_simulation</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>realtime_tools</depend>
+  <depend>robot_mujoco_msgs</depend>
+  <depend>rosgraph_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

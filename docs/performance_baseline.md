@@ -12,7 +12,7 @@
 
 - scheduler 1 kHz step 吞吐、实时因子、step jitter
 - headless camera sample 延迟与采样频率
-- `mujoco_hardware` read/write 主循环耗时
+- `robot_mujoco_ros2` read/write 主循环耗时
 - 长时运行 RSS 曲线
 
 ## 2. 固定入口
@@ -21,7 +21,7 @@
 
 - [`mujoco_simulation/test/performance/baseline_scenarios.json`](../mujoco_simulation/test/performance/baseline_scenarios.json)
 - [`mujoco_simulation/test/performance/perf_runtime_scenarios.cpp`](../mujoco_simulation/test/performance/perf_runtime_scenarios.cpp)
-- [`mujoco_hardware/tests/performance/perf_read_write_loop.cpp`](../mujoco_hardware/tests/performance/perf_read_write_loop.cpp)
+- [`robot_mujoco_ros2/tests/performance/perf_read_write_loop.cpp`](../robot_mujoco_ros2/tests/performance/perf_read_write_loop.cpp)
 
 ### 2.2 统一采集脚本
 
@@ -96,8 +96,8 @@ python3 scripts/ci/compare_performance_baseline.py \
 
 说明：
 
-- 使用 `MuJoCoHardwareInterface` 真正走 `on_init -> activate -> write/read`
-- 包含 `mujoco_simulation_ros` publisher/service bridge 接线开销
+- 使用 `robot_mujoco_ros2::MuJoCoHardwareInterface` 真正走 `on_init -> activate -> write/read`
+- 包含 `robot_mujoco_ros2` 内部 publisher/service bridge 接线开销
 
 ### 3.4 Soak / RSS
 
@@ -192,7 +192,7 @@ python3 scripts/ci/compare_performance_baseline.py \
 ```bash
 source ../install/setup.bash
 source install/setup.bash
-colcon build --packages-select mujoco_simulation mujoco_simulation_ros mujoco_hardware
+colcon build --packages-select mujoco_simulation robot_mujoco_ros2
 python3 mujoco_simulation/test/performance/run_baseline.py \
   --workspace-root "$(pwd)" \
   --output build/performance_baseline.json

@@ -7,8 +7,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 PACKAGES=(
   mujoco_simulation
-  mujoco_simulation_ros
-  mujoco_hardware
+  robot_mujoco_ros2
   robot_mujoco
 )
 mapfile -d '' -t BUILD_OVERRIDE_ARGS < <(workspace_override_args "${PACKAGES[@]}")

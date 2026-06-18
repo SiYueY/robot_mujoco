@@ -189,15 +189,28 @@ Status Simulation::step(uint32_t steps) {
 }
 
 Status Simulation::reconfigure_component(const ComponentConfig& updated_component) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (model_ == nullptr) {
-    return Status::invalid_state("MuJoCo model is not loaded.");
+  std::shared_ptr<const SimulationStateSnapshot> published_snapshot;
+  SnapshotObserver snapshot_observer;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (model_ == nullptr) {
+      return Status::invalid_state("MuJoCo model is not loaded.");
+    }
+    const Status status = component_manager_.reconfigure_component(*model_, updated_component);
+    if (!status.ok()) {
+      return status;
+    }
+    const Status apply_status =
+        apply_component_reconfiguration_locked(updated_component, &published_snapshot);
+    if (!apply_status.ok()) {
+      return apply_status;
+    }
+    snapshot_observer = snapshot_observer_;
   }
-  const Status status = component_manager_.reconfigure_component(*model_, updated_component);
-  if (!status.ok()) {
-    return status;
+  if (snapshot_observer != nullptr && published_snapshot != nullptr) {
+    snapshot_observer(std::move(published_snapshot));
   }
-  return apply_component_reconfiguration_locked(updated_component);
+  return Status::Ok();
 }
 
 Status Simulation::set_joint_command(const JointCommand& command) {
@@ -290,6 +303,11 @@ std::shared_ptr<const SimulationStateSnapshot> Simulation::state_snapshot() cons
   return state_buffer_ == nullptr ? nullptr : state_buffer_->read();
 }
 
+void Simulation::set_snapshot_observer(SnapshotObserver observer) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  snapshot_observer_ = std::move(observer);
+}
+
 Status Simulation::initialize_scheduler() {
   camera_buffer_ = std::make_unique<CameraBuffer>();
   camera_renderer_ = std::make_unique<CameraRenderer>(config_.camera_renderer);
@@ -304,10 +322,7 @@ Status Simulation::initialize_scheduler() {
   callbacks.write_commands = [this]() { return scheduler_apply_commands_locked(); };
   callbacks.step_physics = [this]() { return scheduler_step_physics_locked(); };
   callbacks.read_components = [this]() { return scheduler_read_components_locked(true); };
-  callbacks.publish_state_snapshot = [this]() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return publish_state_snapshot_locked(true);
-  };
+  callbacks.publish_state_snapshot = [this]() { return publish_state_snapshot(true); };
   callbacks.sync_viewer_if_due = [this]() { return scheduler_sync_viewer_if_due(); };
   callbacks.reset_runtime = [this](const ResetOptions& options) {
     return scheduler_reset_locked(options);
@@ -328,19 +343,21 @@ Status Simulation::initialize_scheduler() {
 }
 
 Status Simulation::initialize_components() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (model_ == nullptr) {
-    return Status::invalid_state("MuJoCo model is not loaded.");
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (model_ == nullptr) {
+      return Status::invalid_state("MuJoCo model is not loaded.");
+    }
+    Status status = component_manager_.build(*model_, config_.components);
+    if (!status.ok()) {
+      return status;
+    }
+    status = read_component_states_locked(false);
+    if (!status.ok()) {
+      return status;
+    }
   }
-  Status status = component_manager_.build(*model_, config_.components);
-  if (!status.ok()) {
-    return status;
-  }
-  status = read_component_states_locked(false);
-  if (!status.ok()) {
-    return status;
-  }
-  return publish_state_snapshot_locked(false);
+  return publish_state_snapshot(false);
 }
 
 Status Simulation::load_model(const ModelConfig& model_config) {
@@ -363,7 +380,8 @@ Status Simulation::load_model(const ModelConfig& model_config) {
 }
 
 Status Simulation::apply_component_reconfiguration_locked(
-    const ComponentConfig& updated_component) {
+    const ComponentConfig& updated_component,
+    std::shared_ptr<const SimulationStateSnapshot>* published_snapshot) {
   if (!replace_component_config(config_.components, updated_component)) {
     return Status::internal(
         "Component '" + std::string(component_config_name(updated_component)) +
@@ -374,7 +392,7 @@ Status Simulation::apply_component_reconfiguration_locked(
   if (!read_status.ok()) {
     return read_status;
   }
-  return publish_state_snapshot_locked(false);
+  return publish_state_snapshot_locked(false, published_snapshot);
 }
 
 Status Simulation::scheduler_step_physics_locked() {
@@ -421,7 +439,25 @@ Status Simulation::read_component_states_locked(bool increment_step_count) {
   return Status::Ok();
 }
 
-Status Simulation::publish_state_snapshot_locked(bool increment_step_count) {
+Status Simulation::publish_state_snapshot(bool increment_step_count) {
+  std::shared_ptr<const SimulationStateSnapshot> published_snapshot;
+  SnapshotObserver snapshot_observer;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const Status status = publish_state_snapshot_locked(increment_step_count, &published_snapshot);
+    if (!status.ok()) {
+      return status;
+    }
+    snapshot_observer = snapshot_observer_;
+  }
+  if (snapshot_observer != nullptr && published_snapshot != nullptr) {
+    snapshot_observer(std::move(published_snapshot));
+  }
+  return Status::Ok();
+}
+
+Status Simulation::publish_state_snapshot_locked(
+    bool increment_step_count, std::shared_ptr<const SimulationStateSnapshot>* published_snapshot) {
   if (state_buffer_ == nullptr || model_runtime_ == nullptr || !model_runtime_->is_loaded() ||
       model_ == nullptr || data_ == nullptr) {
     return Status::failed_precondition("MuJoCo state snapshotting is not initialized.");
@@ -462,53 +498,66 @@ Status Simulation::publish_state_snapshot_locked(bool increment_step_count) {
                                ? 0
                                : static_cast<std::uint64_t>(snapshot->simulation_time * 1.0e9);
   snapshot->step_count = snapshot_step_count;
-  state_buffer_->publish(std::move(snapshot));
+  std::shared_ptr<const SimulationStateSnapshot> published = snapshot;
+  state_buffer_->publish(published);
   state_snapshot_step_count_ = snapshot_step_count;
+  if (published_snapshot != nullptr) {
+    *published_snapshot = std::move(published);
+  }
   return Status::Ok();
 }
 
 Status Simulation::scheduler_reset_locked(const ResetOptions& options) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (model_runtime_ == nullptr || !model_runtime_->is_loaded()) {
-    return Status::failed_precondition("MuJoCo model is not loaded.");
-  }
+  std::shared_ptr<const SimulationStateSnapshot> published_snapshot;
+  SnapshotObserver snapshot_observer;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (model_runtime_ == nullptr || !model_runtime_->is_loaded()) {
+      return Status::failed_precondition("MuJoCo model is not loaded.");
+    }
 
-  Status status = model_runtime_->reset(options);
-  if (!status.ok()) {
-    return status;
-  }
-
-  if (options.reset_components && model_ != nullptr && data_ != nullptr) {
-    status = component_manager_.reset_all(*model_, *data_);
+    Status status = model_runtime_->reset(options);
     if (!status.ok()) {
       return status;
     }
-  }
-  if (options.clear_commands && command_buffer_ != nullptr) {
-    command_buffer_->clear();
-  }
-  if (options.clear_state_buffer && state_buffer_ != nullptr) {
-    state_buffer_->clear();
-  }
-  if (options.clear_camera_buffer && camera_buffer_ != nullptr) {
-    camera_buffer_->clear();
-  }
-  pending_state_snapshot_.reset();
-  next_viewer_sync_time_ = std::chrono::steady_clock::now();
-  if (options.reset_statistics) {
-    state_snapshot_step_count_ = 0;
-    state_snapshot_sequence_ = 0;
-  }
 
-  status = read_component_states_locked(false);
-  if (!status.ok()) {
-    return status;
-  }
-  if (state_buffer_ != nullptr) {
-    status = publish_state_snapshot_locked(false);
+    if (options.reset_components && model_ != nullptr && data_ != nullptr) {
+      status = component_manager_.reset_all(*model_, *data_);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+    if (options.clear_commands && command_buffer_ != nullptr) {
+      command_buffer_->clear();
+    }
+    if (options.clear_state_buffer && state_buffer_ != nullptr) {
+      state_buffer_->clear();
+    }
+    if (options.clear_camera_buffer && camera_buffer_ != nullptr) {
+      camera_buffer_->clear();
+    }
+    pending_state_snapshot_.reset();
+    next_viewer_sync_time_ = std::chrono::steady_clock::now();
+    if (options.reset_statistics) {
+      state_snapshot_step_count_ = 0;
+      state_snapshot_sequence_ = 0;
+    }
+
+    status = read_component_states_locked(false);
     if (!status.ok()) {
       return status;
     }
+    if (state_buffer_ != nullptr) {
+      status = publish_state_snapshot_locked(false, &published_snapshot);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+    snapshot_observer = snapshot_observer_;
+  }
+
+  if (snapshot_observer != nullptr && published_snapshot != nullptr) {
+    snapshot_observer(std::move(published_snapshot));
   }
 
   return Status::Ok();

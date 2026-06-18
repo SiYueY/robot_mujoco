@@ -6,18 +6,15 @@
 
 ## 1. 当前包边界
 
-截至 2026-06-17，`robot_mujoco` 工作区内与 MuJoCo 运行时直接相关的 C++ 包边界固定为：
+截至 2026-06-18，`robot_mujoco` 工作区内与 MuJoCo 运行时直接相关的 C++ 包边界固定为：
 
 - `mujoco_simulation`
   - 纯 MuJoCo 运行时内核。
   - 负责 `Simulation`、`Status/Result`、`ModelRuntime`、`SimulationScheduler`、`ComponentManager`、`CameraRenderer`、`Viewer`。
   - 不依赖 `rclcpp`、ROS message header 或 `hardware_interface`。
-- `mujoco_simulation_ros`
-  - ROS bridge 包。
-  - 负责 `/clock`、IMU/Camera/Lidar publisher、simulation control services、`Status -> ROS response` 适配、ROS node/executor 生命周期。
-- `mujoco_hardware`
-  - `ros2_control` 适配包。
-  - 负责 `HardwareInfo -> HardwareConfig` 解析、`Simulation` 生命周期、state/command interface、模式切换、通过组合 `mujoco_simulation_ros::SimulationRosBridge` 获得 ROS 发布/服务能力。
+- `robot_mujoco_ros2`
+  - 统一 ROS 2 adapter 包。
+  - 同时负责 `ros2_control` `SystemInterface`、`HardwareInfo -> HardwareConfig` 解析、`Simulation` 生命周期、state/command interface、模式切换、`/clock`、IMU/Camera/Lidar publisher、simulation control services、`Status -> ROS response` 适配、ROS node/executor 生命周期与 pluginlib 导出。
 - `robot_mujoco`
   - 工作区聚合入口。
   - 提供头文件聚合、launch/config、Python 侧场景封装。
@@ -26,7 +23,7 @@
 
 ```text
 ros2_control controller manager
-  -> mujoco_hardware::MuJoCoHardwareInterface
+  -> robot_mujoco_ros2::MuJoCoHardwareInterface
     -> mujoco_simulation::Simulation
       -> runtime::ModelRuntime
       -> runtime::SimulationScheduler
@@ -34,7 +31,7 @@ ros2_control controller manager
       -> buffer::CommandBuffer / StateBuffer / CameraBuffer
 
 MuJoCoHardwareInterface
-  -> mujoco_simulation_ros::SimulationRosBridge
+  -> robot_mujoco_ros2::SimulationRosBridge
     -> /clock
     -> sensor publishers
     -> simulation control services
@@ -102,15 +99,15 @@ MuJoCoHardwareInterface::read()
 其中：
 
 - `reset()` / `request_reset()` 统一通过 `ResetOptions` 表达 keyframe 与缓存清理策略
-- `reconfigure_component()` 是唯一公开运行时组件重配置入口；`mujoco_hardware` 的 joint mode switch 已通过更新后的 `JointConfig` 走该入口
+- `reconfigure_component()` 是唯一公开运行时组件重配置入口；`robot_mujoco_ros2` 的 joint mode switch 已通过更新后的 `JointConfig` 走该入口
 
 ## 6. 当前验证状态
 
 当前代码树已验证：
 
-- `colcon build --packages-select mujoco_simulation mujoco_simulation_ros mujoco_hardware robot_mujoco`
-- `colcon test --packages-select mujoco_simulation mujoco_simulation_ros mujoco_hardware --return-code-on-test-failure`
+- `colcon build --packages-select mujoco_simulation robot_mujoco_ros2 robot_mujoco`
+- `colcon test --packages-select mujoco_simulation robot_mujoco_ros2 --return-code-on-test-failure`
 - 基线采集入口固定为：
   - `mujoco_simulation/test/performance/perf_runtime_scenarios.cpp`
-  - `mujoco_hardware/tests/performance/perf_read_write_loop.cpp`
+  - `robot_mujoco_ros2/tests/performance/perf_read_write_loop.cpp`
   - `mujoco_simulation/test/performance/run_baseline.py`

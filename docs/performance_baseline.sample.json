@@ -101,7 +101,7 @@
         "write_ms_p95_p95": 0.860191
       },
       "command": [
-        "build/mujoco_hardware/perf_read_write_loop",
+        "build/robot_mujoco_ros2/perf_read_write_loop",
         "--iterations",
         "200"
       ],
@@ -122,9 +122,9 @@
     }
   ],
   "soak": {
-    "command": [
-      "build/mujoco_hardware/perf_read_write_loop"
-    ],
+      "command": [
+        "build/robot_mujoco_ros2/perf_read_write_loop"
+      ],
     "duration_seconds": 5,
     "result": {
       "iterations": 4020,

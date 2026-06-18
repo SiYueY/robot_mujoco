@@ -9,49 +9,53 @@ baseline 入口与样例见 [`performance_baseline.md`](./performance_baseline.m
 本指南面向仍按旧包边界或旧顶层类型接入 `robot_mujoco` 的下游代码。当前推荐入口如下：
 
 - 运行时 API：`mujoco_simulation::Simulation`
-- ROS bridge：`mujoco_simulation_ros::SimulationRosBridge`
-- ros2_control 适配：`mujoco_hardware::MuJoCoHardwareInterface`
+- ROS 2 adapter / ROS bridge / ros2_control 适配：`robot_mujoco_ros2`
+- 主硬件插件：`robot_mujoco_ros2::MuJoCoHardwareInterface`
+- ROS bridge：`robot_mujoco_ros2::SimulationRosBridge`
 
 更细的 `Simulation` API 迁移说明见 [`mujoco_simulation/docs/simulation_api_migration.md`](../mujoco_simulation/docs/simulation_api_migration.md)。
 
 ## 2. 包边界迁移
 
-### 2.1 从 `mujoco_hardware::SensorBridge` 迁移
+### 2.1 从旧分裂包迁移到 `robot_mujoco_ros2`
 
 旧结构：
 
 ```text
 mujoco_hardware
-  -> SensorBridge
+  -> ros2_control adapter
+mujoco_simulation_ros
   -> ROS publishers / services
 ```
 
 新结构：
 
 ```text
-mujoco_hardware
+robot_mujoco_ros2
+  -> MuJoCoHardwareInterface
   -> SimulationRosBridgeConfig
-  -> mujoco_simulation_ros::SimulationRosBridge
+  -> SimulationRosBridge
 ```
 
 迁移要点：
 
-- 删除对 `mujoco_hardware/sensor_bridge.hpp` 的包含。
-- 改为依赖 `mujoco_simulation_ros/simulation_ros_bridge.hpp`。
+- 删除对 `mujoco_hardware/*` 和 `mujoco_simulation_ros/*` 公共头的依赖。
+- bridge 相关代码改为依赖 `robot_mujoco_ros2/simulation_ros_bridge.hpp`。
+- hardware plugin 相关代码改为依赖 `robot_mujoco_ros2/mujoco_hardware_interface.hpp`。
 - ROS service callback 统一改成返回 `mujoco_simulation::Status`。
 - ROS response 的错误消息只来自 `status.message()`。
 
-### 2.2 `mujoco_hardware` 依赖面变化
+### 2.2 `robot_mujoco_ros2` 依赖面
 
-`mujoco_hardware` 继续依赖：
+`robot_mujoco_ros2` 统一依赖：
 
 - `hardware_interface`
 - `rclcpp`
 - `rclcpp_lifecycle`
 - `mujoco_simulation`
-- `mujoco_simulation_ros`
+- `pluginlib`
 
-`sensor_msgs`、`rosgraph_msgs`、`std_srvs`、`mujoco_ros2_bridge_msgs` 的 publisher/service 实现职责已经迁出 `mujoco_hardware` 本体。
+`sensor_msgs`、`rosgraph_msgs`、`std_srvs`、`robot_mujoco_msgs` 的 publisher/service/plugin 实现职责现在都收敛在 `robot_mujoco_ros2` 中。
 
 ## 3. 公开命名迁移
 
@@ -92,15 +96,15 @@ if (!status.ok()) {
 当前标准构建集为：
 
 ```bash
-colcon build --packages-select mujoco_simulation mujoco_simulation_ros mujoco_hardware robot_mujoco
+colcon build --packages-select mujoco_simulation robot_mujoco_ros2 robot_mujoco
 ```
 
 如果工作区依赖外层 underlay 提供 `mujoco_ros2_bridge_msgs`，先 source 外层安装空间，再 source 当前 `robot_mujoco/install`。
 
 ## 6. 测试迁移
 
-- 旧 `test_sensor_bridge.cpp` 已迁入 `mujoco_simulation_ros/tests/test_simulation_ros_bridge.cpp`
-- `mujoco_hardware` 测试现在只保留 ros2_control 适配、模式切换、读写和 bridge 接线验证
+- bridge 测试位于 `robot_mujoco_ros2/tests/test_simulation_ros_bridge.cpp`
+- hardware plugin 测试位于 `robot_mujoco_ros2/tests/test_mujoco_hardware_interface.cpp`
 - 性能与 soak 入口统一改为：
 
 ```bash

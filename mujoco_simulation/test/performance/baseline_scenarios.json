@@ -10,7 +10,7 @@
     },
     {
       "name": "hardware_read_write_loop",
-      "command": ["build/mujoco_hardware/perf_read_write_loop", "--iterations", "200"]
+      "command": ["build/robot_mujoco_ros2/perf_read_write_loop", "--iterations", "200"]
     }
   ]
 }

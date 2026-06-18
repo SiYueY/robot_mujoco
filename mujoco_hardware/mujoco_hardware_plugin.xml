@@ -1,8 +1,0 @@
-<library path="mujoco_hardware">
-  <class
-    name="mujoco_hardware/MuJoCoHardwareInterface"
-    type="mujoco_hardware::MuJoCoHardwareInterface"
-    base_class_type="hardware_interface::SystemInterface">
-    <description>MuJoCo-backed ros2_control SystemInterface.</description>
-  </class>
-</library>

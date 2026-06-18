@@ -1,0 +1,16 @@
+robocasa:
+  task_name: PickPlaceCounterToCabinet
+  layout_id: 2
+  style_id: 2
+  placeholder_robot: PandaMobile
+  placeholder_robot_body_name: robot0_base
+  controller: OSC_POSE
+  control_freq: 20
+
+robot:
+  xml_path: __DEFAULT_FR3_XML__
+  root_body_name: base
+
+output:
+  write_generated_xml: true
+  generated_xml_path: /tmp/robot_mujoco_robocasa_franka_fr3.xml

@@ -12,8 +12,7 @@ fi
 
 BUILD_PACKAGES=(
   mujoco_simulation
-  mujoco_simulation_ros
-  mujoco_hardware
+  robot_mujoco_ros2
 )
 mapfile -d '' -t BUILD_OVERRIDE_ARGS < <(workspace_override_args "${BUILD_PACKAGES[@]}")
 
@@ -26,10 +25,8 @@ cd "${WORKSPACE_ROOT}"
 mapfile -t SOURCES < <(rg --files \
   mujoco_simulation/src \
   mujoco_simulation/include \
-  mujoco_simulation_ros/src \
-  mujoco_simulation_ros/include \
-  mujoco_hardware/src \
-  mujoco_hardware/include \
+  robot_mujoco_ros2/src \
+  robot_mujoco_ros2/include \
   -g'*.cpp' -g'*.cc' -g'*.hpp')
 
 for source_file in "${SOURCES[@]}"; do

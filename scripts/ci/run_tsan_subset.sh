@@ -11,9 +11,9 @@ LOG_BASE="${LOG_BASE:-log_tsan}"
 TSAN_PREFLIGHT_REPORT="${TSAN_PREFLIGHT_REPORT:-${LOG_BASE}/tsan_preflight.json}"
 TSAN_SUMMARY_JSON="${TSAN_SUMMARY_JSON:-${LOG_BASE}/tsan_summary.json}"
 TSAN_SUMMARY_MARKDOWN="${TSAN_SUMMARY_MARKDOWN:-${LOG_BASE}/tsan_summary.md}"
-TSAN_CTEST_REGEX="${TSAN_CTEST_REGEX:-(test_status|test_command_buffer|test_sensor_scheduler|test_simulation_scheduler|test_simulation_ros_bridge)}"
-TSAN_PACKAGES=(mujoco_simulation mujoco_simulation_ros mujoco_hardware)
-TSAN_TEST_PACKAGES=(mujoco_simulation mujoco_simulation_ros)
+TSAN_CTEST_REGEX="${TSAN_CTEST_REGEX:-(test_status|test_command_buffer|test_sensor_scheduler|test_simulation_scheduler|test_robot_mujoco_ros2_simulation_ros_bridge)}"
+TSAN_PACKAGES=(mujoco_simulation robot_mujoco_ros2)
+TSAN_TEST_PACKAGES=(mujoco_simulation robot_mujoco_ros2)
 mapfile -d '' -t BUILD_OVERRIDE_ARGS < <(workspace_override_args "${TSAN_PACKAGES[@]}")
 
 workspace_path() {

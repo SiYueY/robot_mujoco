@@ -1,0 +1,210 @@
+<?xml version="1.0"?>
+<robot name="turtlebot3_waffle_pi">
+  <material name="tb3_black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+  <material name="tb3_dark">
+    <color rgba="0.3 0.3 0.3 1.0"/>
+  </material>
+  <material name="tb3_grey">
+    <color rgba="0.5 0.5 0.5 1.0"/>
+  </material>
+
+  <link name="base_footprint"/>
+
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="-0.064 0 0.01" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.266 0.266 0.11"/>
+      </geometry>
+      <material name="tb3_black"/>
+    </visual>
+  </link>
+
+  <joint name="wheel_left" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_left_link"/>
+    <origin xyz="0.0 0.144 0.033" rpy="-1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <link name="wheel_left_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.033" length="0.018"/>
+      </geometry>
+      <material name="tb3_dark"/>
+    </visual>
+  </link>
+
+  <joint name="wheel_right" type="continuous">
+    <parent link="base_link"/>
+    <child link="wheel_right_link"/>
+    <origin xyz="0.0 -0.144 0.033" rpy="-1.57079632679 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <link name="wheel_right_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.033" length="0.018"/>
+      </geometry>
+      <material name="tb3_dark"/>
+    </visual>
+  </link>
+
+  <joint name="caster_back_right_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_back_right_link"/>
+    <origin xyz="-0.177 -0.064 0.005" rpy="0 0 0"/>
+  </joint>
+
+  <link name="caster_back_right_link">
+    <visual>
+      <geometry>
+        <sphere radius="0.01"/>
+      </geometry>
+      <material name="tb3_grey"/>
+    </visual>
+  </link>
+
+  <joint name="caster_back_left_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_back_left_link"/>
+    <origin xyz="-0.177 0.064 0.005" rpy="0 0 0"/>
+  </joint>
+
+  <link name="caster_back_left_link">
+    <visual>
+      <geometry>
+        <sphere radius="0.01"/>
+      </geometry>
+      <material name="tb3_grey"/>
+    </visual>
+  </link>
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0.068" rpy="0 0 0"/>
+  </joint>
+
+  <link name="imu_link"/>
+
+  <joint name="scan_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="base_scan"/>
+    <origin xyz="-0.064 0 0.122" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_scan">
+    <visual>
+      <geometry>
+        <cylinder radius="0.055" length="0.0315"/>
+      </geometry>
+      <material name="tb3_dark"/>
+    </visual>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.073 -0.011 0.084" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_link"/>
+
+  <joint name="camera_rgb_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_rgb_frame"/>
+    <origin xyz="0.003 0.011 0.009" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_rgb_frame"/>
+
+  <joint name="camera_rgb_optical_joint" type="fixed">
+    <parent link="camera_rgb_frame"/>
+    <child link="camera_rgb_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+  </joint>
+
+  <link name="camera_rgb_optical_frame"/>
+
+  <ros2_control name="turtlebot3_mujoco_system" type="system">
+    <hardware>
+      <plugin>robot_mujoco_ros2/MuJoCoHardwareInterface</plugin>
+      <param name="mujoco_model_path">__MUJOCO_MODEL_PATH__</param>
+      <param name="render_mode">__RENDER_MODE__</param>
+      <param name="initial_keyframe">__INITIAL_KEYFRAME__</param>
+      <param name="sim_speed_factor">1.0</param>
+      <param name="viewer_update_rate">60.0</param>
+    </hardware>
+
+    <joint name="wheel_left">
+      <param name="actuator_name">wheel_left</param>
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="wheel_right">
+      <param name="actuator_name">wheel_right</param>
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <sensor name="imu">
+      <state_interface name="orientation.x"/>
+      <state_interface name="orientation.y"/>
+      <state_interface name="orientation.z"/>
+      <state_interface name="orientation.w"/>
+      <state_interface name="angular_velocity.x"/>
+      <state_interface name="angular_velocity.y"/>
+      <state_interface name="angular_velocity.z"/>
+      <state_interface name="linear_acceleration.x"/>
+      <state_interface name="linear_acceleration.y"/>
+      <state_interface name="linear_acceleration.z"/>
+      <param name="frame_id">imu_link</param>
+      <param name="topic">/imu</param>
+      <param name="update_rate">200.0</param>
+      <param name="mujoco_orientation_sensor">tb3_imu_quat</param>
+      <param name="mujoco_gyro_sensor">tb3_imu_gyro</param>
+      <param name="mujoco_accel_sensor">tb3_imu_accel</param>
+    </sensor>
+
+    <sensor name="front_camera">
+      <param name="mujoco_type">camera</param>
+      <param name="frame_id">camera_rgb_frame</param>
+      <param name="optical_frame_id">camera_rgb_optical_frame</param>
+      <param name="mujoco_camera_name">front_camera</param>
+      <param name="image_topic">/camera/image_raw</param>
+      <param name="camera_info_topic">/camera/camera_info</param>
+      <param name="width">640</param>
+      <param name="height">480</param>
+      <param name="enable_rgb">true</param>
+      <param name="enable_depth">false</param>
+      <param name="update_rate">15.0</param>
+    </sensor>
+
+    <sensor name="scan">
+      <param name="mujoco_type">lidar</param>
+      <param name="frame_id">base_scan</param>
+      <param name="scan_topic">/scan</param>
+      <param name="sensor_prefix">scan_beam</param>
+      <param name="angle_min">-3.14159265359</param>
+      <param name="angle_max">3.14159265359</param>
+      <param name="angle_increment">0.349065850399</param>
+      <param name="range_min">0.12</param>
+      <param name="range_max">6.0</param>
+      <param name="update_rate">15.0</param>
+    </sensor>
+  </ros2_control>
+</robot>

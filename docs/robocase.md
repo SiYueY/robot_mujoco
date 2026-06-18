@@ -151,7 +151,7 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 
 uv run robot-mujoco-robocasa-scene \
-  --config robot_mujoco/config/robocasa_fr3_scene.yaml \
+  --config robot_mujoco/config/franka_fr3/robocasa_scene.yaml \
   --output /tmp/robot_mujoco_robocasa_scene.xml
 ```
 
@@ -161,7 +161,7 @@ uv run robot-mujoco-robocasa-scene \
 2. 若未显式传 `task/layout/style`，进入交互式菜单选择场景
 3. 生成厨房场景并删除占位机器人 `robot0_base`
 4. 插入默认 FR3 MJCF，并写出组合后的 MuJoCo XML
-5. 通过 `robot_mujoco/launch/sim.launch.py` 启动 viewer 仿真
+5. 通过 `robot_mujoco/launch/robot_mujoco.launch.py` 启动 viewer 仿真
 
 交互规则参考 RoboCasa 官方脚本：
 
@@ -173,7 +173,7 @@ uv run robot-mujoco-robocasa-scene \
 
 ```bash
 uv run robot-mujoco-robocasa-scene \
-  --config robot_mujoco/config/robocasa_fr3_scene.yaml \
+  --config robot_mujoco/config/franka_fr3/robocasa_scene.yaml \
   --output /tmp/robot_mujoco_robocasa_scene.xml \
   --no-launch
 ```
@@ -182,7 +182,7 @@ uv run robot-mujoco-robocasa-scene \
 
 ```bash
 uv run robot-mujoco-robocasa-scene \
-  --config robot_mujoco/config/robocasa_fr3_scene.yaml \
+  --config robot_mujoco/config/franka_fr3/robocasa_scene.yaml \
   --output /tmp/robot_mujoco_robocasa_scene.xml \
   --task OpenDrawer \
   --layout 3 \
@@ -198,7 +198,7 @@ uv run robot-mujoco-robocasa-scene \
 - 插入项目机器人 MJCF：`robot.xml_path`
 - 若 RoboCasa 提供推荐初始位姿，则写入 `robot.root_body_name`
 
-默认示例配置文件为 [robot_mujoco/config/robocasa_fr3_scene.yaml](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/robot_mujoco/config/robocasa_fr3_scene.yaml)。
+默认示例配置文件为 [robot_mujoco/config/franka_fr3/robocasa_scene.yaml](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/robot_mujoco/config/franka_fr3/robocasa_scene.yaml)。
 
 其中：
 
@@ -222,4 +222,4 @@ scene = SceneGenerator().generate(config)
 配置示例参考：
 
 - [robot_mujoco/config/robocasa_scene.example.yaml](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/robot_mujoco/config/robocasa_scene.example.yaml)
-- [robot_mujoco/config/robocasa_fr3_scene.yaml](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/robot_mujoco/config/robocasa_fr3_scene.yaml)
+- [robot_mujoco/config/franka_fr3/robocasa_scene.yaml](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/robot_mujoco/config/franka_fr3/robocasa_scene.yaml)

@@ -7,7 +7,11 @@ from dataclasses import replace
 from pathlib import Path
 import sys
 
-from robot_mujoco.runtime import default_fr3_model_path, launch_viewer_simulation
+from robot_mujoco.runtime import (
+    FRANKA_FR3_PRIMARY_CONTROLLER,
+    default_fr3_model_path,
+    launch_viewer_simulation,
+)
 
 from .cli_options import TASK_CHOICES, choose_option, choose_randomized_scene_ids
 from .exceptions import RoboCasaIntegrationError
@@ -79,7 +83,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.no_launch:
             return 0
 
-        return launch_viewer_simulation(mujoco_model_path=output_path)
+        return launch_viewer_simulation(
+            mujoco_model_path=output_path,
+            robot_name="franka_fr3",
+            primary_controller=FRANKA_FR3_PRIMARY_CONTROLLER,
+        )
     except RoboCasaIntegrationError as exc:
         print(str(exc), file=sys.stderr)
         return 1

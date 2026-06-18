@@ -6,9 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
-find_package(mujoco_simulation_ros REQUIRED)
 find_package(mujoco_simulation REQUIRED)
-find_package(mujoco_hardware REQUIRED)
+find_package(robot_mujoco_ros2 REQUIRED)
 
 # ---------------------------------------------------------------------------
 # C++ convenience library (header-only INTERFACE target)
@@ -20,8 +19,7 @@ target_include_directories(${PROJECT_NAME} INTERFACE
 )
 target_link_libraries(${PROJECT_NAME} INTERFACE
   mujoco_simulation::mujoco_simulation
-  mujoco_simulation_ros::mujoco_simulation_ros
-  mujoco_hardware::mujoco_hardware
+  robot_mujoco_ros2::robot_mujoco_ros2
 )
 
 # ---------------------------------------------------------------------------
@@ -49,7 +47,11 @@ install(
   DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
+install(
+  DIRECTORY model/
+  DESTINATION share/${PROJECT_NAME}/model
+)
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(mujoco_simulation mujoco_simulation_ros mujoco_hardware)
+ament_export_dependencies(mujoco_simulation robot_mujoco_ros2)
 ament_package()

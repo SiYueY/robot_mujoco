@@ -161,7 +161,7 @@ def main() -> int:
             }
         )
 
-    soak_command = ["build/mujoco_hardware/perf_read_write_loop"]
+    soak_command = ["build/robot_mujoco_ros2/perf_read_write_loop"]
     report["soak"] = {
         "command": soak_command,
         "duration_seconds": args.soak_seconds,

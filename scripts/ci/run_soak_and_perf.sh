@@ -10,7 +10,7 @@ OUTPUT_PATH="${OUTPUT_PATH:-build/performance_baseline.json}"
 BASELINE_REFERENCE="${BASELINE_REFERENCE:-}"
 COMPARISON_OUTPUT="${COMPARISON_OUTPUT:-build/performance_comparison.json}"
 COMPARISON_MARKDOWN_OUTPUT="${COMPARISON_MARKDOWN_OUTPUT:-build/performance_comparison.md}"
-BUILD_PACKAGES=(mujoco_simulation mujoco_simulation_ros mujoco_hardware)
+BUILD_PACKAGES=(mujoco_simulation robot_mujoco_ros2)
 mapfile -d '' -t BUILD_OVERRIDE_ARGS < <(workspace_override_args "${BUILD_PACKAGES[@]}")
 
 colcon_cmd build --packages-select "${BUILD_PACKAGES[@]}" "${BUILD_OVERRIDE_ARGS[@]}"

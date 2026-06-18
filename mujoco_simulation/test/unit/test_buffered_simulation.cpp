@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 
 #include "mujoco_simulation/simulation.hpp"
@@ -153,6 +154,55 @@ TEST_F(BufferedSimulationTest, ConfiguredDevicesAppearInSnapshotBeforeStepping) 
   ASSERT_NE(snapshot, nullptr);
   EXPECT_NE(snapshot->joints.find("hinge"), snapshot->joints.end());
   EXPECT_NE(snapshot->imus.find("imu"), snapshot->imus.end());
+}
+
+TEST_F(BufferedSimulationTest, SnapshotObserverReceivesInitialAndStepSnapshots) {
+  Simulation simulation;
+  const std::string model_path = write_model(R"(
+<mujoco model="buffered_simulation">
+  <option timestep="0.001"/>
+  <worldbody>
+    <body>
+      <joint name="hinge" type="hinge"/>
+      <geom type="capsule" size="0.05 0.2"/>
+    </body>
+  </worldbody>
+</mujoco>)");
+
+  std::mutex mutex;
+  int callback_count = 0;
+  std::uint64_t last_sequence = 0;
+  double last_simulation_time = -1.0;
+  simulation.set_snapshot_observer([&mutex, &callback_count, &last_sequence, &last_simulation_time](
+                                       std::shared_ptr<const SimulationStateSnapshot> snapshot) {
+    ASSERT_NE(snapshot, nullptr);
+    std::lock_guard<std::mutex> lock(mutex);
+    ++callback_count;
+    last_sequence = snapshot->sequence;
+    last_simulation_time = snapshot->simulation_time;
+  });
+
+  SimulationConfig config;
+  config.model.model_path = model_path;
+  config.components = {
+      ComponentConfig{JointConfig{.name = "hinge", .command_mode = CommandInterfaceType::None}}};
+  ASSERT_OK_STATUS(simulation.initialize(config));
+
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    EXPECT_EQ(callback_count, 1);
+    EXPECT_EQ(last_sequence, 1U);
+    EXPECT_DOUBLE_EQ(last_simulation_time, 0.0);
+  }
+
+  ASSERT_OK_STATUS(simulation.step(1));
+
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    EXPECT_EQ(callback_count, 2);
+    EXPECT_EQ(last_sequence, 2U);
+    EXPECT_GT(last_simulation_time, 0.0);
+  }
 }
 
 TEST_F(BufferedSimulationTest, InitializeAppliesConfiguredInitialKeyframeThroughModelLoad) {

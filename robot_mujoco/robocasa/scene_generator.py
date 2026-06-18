@@ -109,16 +109,16 @@ class SceneGenerator:
         except ImportError as exc:
             raise RoboCasaDependencyError(
                 "robosuite is required for RoboCasa scene generation. "
-                "Install dependencies with scripts/install_robocasa_deps.sh."
+                "Install it in .venv and source robot_mujoco.bash before launching."
             ) from exc
 
         # Importing robocasa registers RoboCasa environments with robosuite.
         try:
             import robocasa  # noqa: F401
-        except ImportError as exc:
+        except Exception as exc:
             raise RoboCasaDependencyError(
-                "robocasa is required for RoboCasa scene generation. "
-                "Install dependencies with scripts/install_robocasa_deps.sh."
+                "robocasa could not be imported for RoboCasa scene generation. "
+                "Install it in .venv, pin mujoco==3.3.1, and source robot_mujoco.bash before launching."
             ) from exc
 
         try:

@@ -5,6 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 
+from robot_mujoco.launch_utils import package_share_dir
+
+FRANKA_FR3_PRIMARY_CONTROLLER = "arm_position_controller"
+
 
 def repo_root() -> Path:
     """Return the repository root."""
@@ -15,48 +19,12 @@ def repo_root() -> Path:
 def default_fr3_model_path() -> Path:
     """Return the default FR3 MJCF path used for RoboCasa composition."""
 
-    candidates = []
-
-    try:
-        from ament_index_python.packages import get_package_share_directory
-    except ImportError:
-        get_package_share_directory = None
-
-    if get_package_share_directory is not None:
-        try:
-            candidates.append(
-                Path(get_package_share_directory("franka_fr3_mujoco")) / "model" / "fr3.xml"
-            )
-        except Exception:
-            pass
-
-    candidates.extend(
-        [
-            repo_root() / "example" / "franka_fr3_mujoco" / "model" / "fr3.xml",
-            Path.cwd() / "example" / "franka_fr3_mujoco" / "model" / "fr3.xml",
-        ]
-    )
-
-    for candidate in candidates:
-        resolved = candidate.expanduser().resolve()
-        if resolved.exists():
-            return resolved
-
-    return candidates[0].expanduser().resolve()
-
-
-def package_share_dir() -> Path:
-    """Return the installed robot_mujoco share directory when available."""
-
-    try:
-        from ament_index_python.packages import get_package_share_directory
-    except ImportError:
-        return repo_root() / "robot_mujoco"
-
-    try:
-        return Path(get_package_share_directory("robot_mujoco"))
-    except Exception:
-        return repo_root() / "robot_mujoco"
+    share_dir = package_share_dir()
+    candidates = [
+        share_dir / "model" / "franka_fr3" / "franka_fr3.xml",
+        repo_root() / "robot_mujoco" / "model" / "franka_fr3" / "franka_fr3.xml",
+    ]
+    return _first_existing_path(candidates)
 
 
 def default_robot_description_template() -> Path:
@@ -64,9 +32,8 @@ def default_robot_description_template() -> Path:
 
     share_dir = package_share_dir()
     candidates = [
-        share_dir / "config" / "fr3.urdf.template",
-        share_dir / "fr3.urdf.template",
-        repo_root() / "robot_mujoco" / "config" / "fr3.urdf.template",
+        share_dir / "config" / "franka_fr3" / "franka_fr3.urdf.template",
+        repo_root() / "robot_mujoco" / "config" / "franka_fr3" / "franka_fr3.urdf.template",
     ]
     return _first_existing_path(candidates)
 
@@ -76,9 +43,8 @@ def default_controllers_yaml() -> Path:
 
     share_dir = package_share_dir()
     candidates = [
-        share_dir / "config" / "fr3_controllers.yaml",
-        share_dir / "fr3_controllers.yaml",
-        repo_root() / "robot_mujoco" / "config" / "fr3_controllers.yaml",
+        share_dir / "config" / "franka_fr3" / "controllers.yaml",
+        repo_root() / "robot_mujoco" / "config" / "franka_fr3" / "controllers.yaml",
     ]
     return _first_existing_path(candidates)
 
@@ -99,6 +65,10 @@ def launch_viewer_simulation(
     robot_description_template: str | Path | None = None,
     controllers_yaml: str | Path | None = None,
     initial_keyframe: str = "",
+    robot_name: str = "franka_fr3",
+    primary_controller: str = FRANKA_FR3_PRIMARY_CONTROLLER,
+    use_rviz: bool = False,
+    rviz_config: str | Path | None = None,
 ) -> int:
     """Launch the ROS 2 MuJoCo viewer pipeline and return its exit code."""
 
@@ -117,13 +87,19 @@ def launch_viewer_simulation(
         "ros2",
         "launch",
         str(launch_path),
+        f"robot_name:={robot_name}",
         f"mujoco_model_path:={model_path}",
         f"robot_description_template:={template_path}",
         f"controllers_yaml:={controllers_path}",
+        f"primary_controller:={primary_controller}",
+        f"use_rviz:={'true' if use_rviz else 'false'}",
+        "use_robocasa_scene:=false",
     ]
 
     if initial_keyframe:
         command.append(f"initial_keyframe:={initial_keyframe}")
+    if rviz_config is not None:
+        command.append(f"rviz_config:={Path(rviz_config).expanduser().resolve()}")
 
     completed = subprocess.run(command, check=False)
     return int(completed.returncode)
@@ -134,8 +110,7 @@ def default_launch_file() -> Path:
 
     share_dir = package_share_dir()
     candidates = [
-        share_dir / "launch" / "sim.launch.py",
-        share_dir / "sim.launch.py",
-        repo_root() / "robot_mujoco" / "launch" / "sim.launch.py",
+        share_dir / "launch" / "robot_mujoco.launch.py",
+        repo_root() / "robot_mujoco" / "launch" / "robot_mujoco.launch.py",
     ]
     return _first_existing_path(candidates)

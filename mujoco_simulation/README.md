@@ -62,10 +62,8 @@ Simulation
 
 - `mujoco_simulation`
   - 仿真运行时和设备抽象层
-- `mujoco_hardware`
-  - `ros2_control` 适配层，负责把 ROS 配置翻译成 `mujoco_simulation` 调用
-- `mujoco_simulation_ros`
-  - ROS bridge 层，负责 `/clock`、传感器 publisher 和 simulation control services
+- `robot_mujoco_ros2`
+  - 统一 ROS 2 adapter 层，同时承载 `ros2_control` 适配、ROS bridge、`/clock`、传感器 publisher 和 simulation control services
 - `robot_mujoco`
   - 工作区聚合入口和上层运行封装
 
@@ -259,15 +257,22 @@ mujoco_simulation/
 
 - `glfw3`
 - `OpenGL`
-- `mujoco_vendor`
+- `mujoco`
 
-核心库当前不再直接依赖 `hardware_interface`、`rclcpp` 或 `sensor_msgs`；这些 ROS 2 相关依赖保留在上层 `mujoco_hardware` 适配层。
+核心库当前不再直接依赖 `hardware_interface`、`rclcpp` 或 `sensor_msgs`；这些 ROS 2 相关依赖保留在上层 `robot_mujoco_ros2` 适配层。
 
-构建时优先使用 `mujoco_vendor`；如果没有找到，则会尝试从以下位置解析本地 MuJoCo：
+构建时直接通过 `find_package(mujoco CONFIG)` 解析 MuJoCo。
+路径解析规则为：
 
-- `../../mujoco`
-- `$HOME/.mujoco/mujoco-*`
-- 系统默认 include / lib 路径
+- 如果设置了环境变量 `MUJOCO_ROOT`，优先使用它
+- 否则默认使用 `/opt/mujoco-3.9.0`
+
+例如：
+
+```bash
+export MUJOCO_ROOT=/opt/mujoco-3.9.0
+colcon build --packages-select mujoco_simulation
+```
 
 在工作区中通常这样构建：
 
@@ -283,19 +288,19 @@ colcon build --packages-select mujoco_simulation
 
 ```text
 ros2_control
-  -> mujoco_hardware::MuJoCoHardwareInterface
+  -> robot_mujoco_ros2::MuJoCoHardwareInterface
     -> mujoco_simulation::Simulation
-    -> mujoco_simulation_ros::SimulationRosBridge
+    -> robot_mujoco_ros2::SimulationRosBridge
 ```
 
 也就是说：
 
-1. `mujoco_hardware` 解析 URDF / `HardwareInfo`
+1. `robot_mujoco_ros2` 解析 URDF / `HardwareInfo`
 2. 它创建 `Simulation`
 3. 它把 joint、imu、camera、lidar、mobile base 一次性写入 `SimulationConfig.components`
 4. 它在 `read()` / `write()` 周期里转发状态和命令
 
-当前 ROS 侧控制服务与传感器发布已经由 `mujoco_simulation_ros::SimulationRosBridge` 提供，`mujoco_hardware` 只负责把 `Status` 风格控制回调接线进去。当前控制服务包括：
+当前 ROS 侧控制服务与传感器发布已经由 `robot_mujoco_ros2::SimulationRosBridge` 提供，统一由 `robot_mujoco_ros2` 包内部接线到 `Status` 风格控制回调。当前控制服务包括：
 
 - `/start`
 - `/stop`
@@ -306,7 +311,7 @@ ros2_control
 - `/load_keyframe`
 - `/reset`
 
-这些服务属于 `mujoco_simulation_ros` bridge 层，不属于 `mujoco_simulation` 本体 API；`mujoco_simulation` 只提供底层运行时控制能力。
+这些服务属于 `robot_mujoco_ros2` adapter 层，不属于 `mujoco_simulation` 本体 API；`mujoco_simulation` 只提供底层运行时控制能力。
 
 其中：
 
@@ -317,7 +322,7 @@ ros2_control
 - `/load_keyframe`
   - 已支持传入 keyframe 名称并触发对应 reset
 
-如果你在做的是 ROS 2 接口对接，优先看 `mujoco_hardware`；如果你在做的是 MuJoCo 运行时能力扩展，优先看这个包。
+如果你在做的是 ROS 2 接口对接，优先看 `robot_mujoco_ros2`；如果你在做的是 MuJoCo 运行时能力扩展，优先看这个包。
 
 ## 适合放在这里的改动
 
@@ -347,4 +352,4 @@ ros2_control
 - mobile base 只覆盖 differential / omnidirectional
 - 这个包本身是底层库，不是开箱即用的完整仿真应用
 
-如果你的目标是“启动一个 ROS 2 机器人仿真”，通常不应直接从这里起步，而应从 `mujoco_hardware` 或 `robot_mujoco/launch` 看整体接入链路。
+如果你的目标是“启动一个 ROS 2 机器人仿真”，通常不应直接从这里起步，而应从 `robot_mujoco_ros2` 或 `robot_mujoco/launch` 看整体接入链路。
