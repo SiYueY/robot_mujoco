@@ -5,7 +5,7 @@
 #include <limits>
 #include <utility>
 
-#include "mujoco_simulation/component/joint/joint_config.hpp"
+#include "mujoco_simulation/component/update_context.hpp"
 
 namespace mujoco_simulation {
 namespace {
@@ -18,56 +18,61 @@ double yaw_from_xmat(const mjtNum* xmat) {
   return std::atan2(static_cast<double>(xmat[3]), static_cast<double>(xmat[0]));
 }
 
-Status validate_wheel_binding(const std::string& mobile_base_name,
-                              const MobileBaseWheelBinding& wheel) {
+ResultCode validate_wheel_binding(const std::string& mobile_base_name,
+                                  const MobileBaseWheelBinding& wheel) {
   if (wheel.joint_name.empty()) {
-    return Status::binding_failed("Mobile base '" + mobile_base_name +
-                                  "' has an empty wheel binding name.");
+    return ResultCode::BindingFailed;
   }
   if (wheel.joint.joint_id < 0 || wheel.joint.dof_address < 0) {
-    return Status::binding_failed("Mobile base '" + mobile_base_name + "' wheel '" +
-                                  wheel.joint_name + "' has invalid MuJoCo joint/dof addresses.");
+    return ResultCode::BindingFailed;
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 }  // namespace
 
 MobileBaseComponent::MobileBaseComponent(MobileBaseConfig config, MobileBaseBinding binding)
-    : binding_(std::move(binding)), config_(std::move(config)) {}
+    : binding_(std::move(binding)), config_(std::move(config)) {
+  set_update_every_step();
+}
 
-std::string_view MobileBaseComponent::name() const noexcept { return config_.name; }
+std::string MobileBaseComponent::name() const noexcept { return config_.name; }
 
-Status MobileBaseComponent::bind(const mjModel& model) {
+ResultCode MobileBaseComponent::bind(const mjModel& model) {
   command_ = {};
   state_ = {};
   state_.base_frame_id = config_.base_frame_id;
   state_.odom_frame_id = config_.odom_frame_id;
   state_.wheel_velocities.assign(wheel_count(), 0.0);
 
-  Status status = validate(model);
-  if (!status.ok()) {
+  ResultCode status = validate(model);
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = initialize_bindings(model);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
 
   clear_odometry();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status MobileBaseComponent::reset(const mjModel& model, mjData& data) {
+ResultCode MobileBaseComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
   (void)data;
   command_ = {};
   clear_odometry();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status MobileBaseComponent::write(const mjModel& model, mjData& data,
-                                  const MobileBaseCommand& command) {
+ResultCode MobileBaseComponent::update(const UpdateContext& context) {
+  MobileBaseState state;
+  return read(context.data, state);
+}
+
+ResultCode MobileBaseComponent::write(const mjModel& model, mjData& data,
+                                      const MobileBaseCommand& command) {
   command_ = command;
   if (config_.type == MobileBaseType::Differential) {
     return write_differential(model, data, command);
@@ -75,103 +80,94 @@ Status MobileBaseComponent::write(const mjModel& model, mjData& data,
   if (config_.type == MobileBaseType::Omnidirectional) {
     return write_omnidirectional(model, data, command);
   }
-  return Status::invalid_argument("Mobile base '" + config_.name + "' has unsupported type.");
+  return ResultCode::InvalidArgument;
 }
 
-Status MobileBaseComponent::read(const mjData& data, MobileBaseState& state) {
+ResultCode MobileBaseComponent::read(const mjData& data, MobileBaseState& state) {
   if (config_.type == MobileBaseType::Differential) {
     return read_differential(data, state);
   }
   if (config_.type == MobileBaseType::Omnidirectional) {
     return read_omnidirectional(data, state);
   }
-  return Status::invalid_argument("Mobile base '" + config_.name + "' has unsupported type.");
+  return ResultCode::InvalidArgument;
 }
 
-Status MobileBaseComponent::validate(const mjModel& model) const {
+ResultCode MobileBaseComponent::validate(const mjModel& model) const {
   if (config_.name.empty()) {
-    return Status::invalid_argument("Mobile base name must not be empty.");
+    return ResultCode::InvalidArgument;
   }
   if (config_.type != MobileBaseType::Differential &&
       config_.type != MobileBaseType::Omnidirectional) {
-    return Status::invalid_argument("Mobile base '" + config_.name +
-                                    "' must use a supported type.");
+    return ResultCode::InvalidArgument;
   }
   if (config_.wheel_radius <= 0.0) {
-    return Status::invalid_argument("Mobile base '" + config_.name +
-                                    "' requires wheel_radius > 0.");
+    return ResultCode::InvalidArgument;
   }
 
   if (config_.type == MobileBaseType::Differential) {
     if (!binding_.differential.has_value()) {
-      return Status::binding_failed("Differential mobile base '" + config_.name +
-                                    "' is missing differential wheel bindings.");
+      return ResultCode::BindingFailed;
     }
-    Status status = validate_wheel_binding(config_.name, binding_.differential->left_wheel);
-    if (!status.ok()) {
+    ResultCode status = validate_wheel_binding(config_.name, binding_.differential->left_wheel);
+    if (status != ResultCode::Ok) {
       return status;
     }
     status = validate_wheel_binding(config_.name, binding_.differential->right_wheel);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
     if (config_.track_width <= 0.0) {
-      return Status::invalid_argument("Differential mobile base '" + config_.name +
-                                      "' requires track_width > 0.");
+      return ResultCode::InvalidArgument;
     }
   }
 
   if (config_.type == MobileBaseType::Omnidirectional) {
     if (!binding_.omnidirectional.has_value()) {
-      return Status::binding_failed("Omnidirectional mobile base '" + config_.name +
-                                    "' is missing wheel bindings.");
+      return ResultCode::BindingFailed;
     }
     const OmnidirectionalBinding& wheels = *binding_.omnidirectional;
-    Status status = validate_wheel_binding(config_.name, wheels.front_left);
-    if (!status.ok()) {
+    ResultCode status = validate_wheel_binding(config_.name, wheels.front_left);
+    if (status != ResultCode::Ok) {
       return status;
     }
     status = validate_wheel_binding(config_.name, wheels.front_right);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
     status = validate_wheel_binding(config_.name, wheels.rear_left);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
     status = validate_wheel_binding(config_.name, wheels.rear_right);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
     if (config_.track_width <= 0.0 || config_.wheel_base <= 0.0) {
-      return Status::invalid_argument("Omnidirectional mobile base '" + config_.name +
-                                      "' requires positive track_width and wheel_base.");
+      return ResultCode::InvalidArgument;
     }
   }
 
   if (config_.odometry_source == OdometrySource::GroundTruthBodyPose &&
       config_.base_body_name.empty()) {
-    return Status::invalid_argument("Mobile base '" + config_.name +
-                                    "' requires base_body_name when using GroundTruthBodyPose.");
+    return ResultCode::InvalidArgument;
   }
 
   (void)model;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status MobileBaseComponent::initialize_bindings(const mjModel& model) {
+ResultCode MobileBaseComponent::initialize_bindings(const mjModel& model) {
   binding_.base_body_id = -1;
 
   if (config_.odometry_source == OdometrySource::GroundTruthBodyPose) {
     binding_.base_body_id = mj_name2id(&model, mjOBJ_BODY, config_.base_body_name.c_str());
     if (binding_.base_body_id < 0) {
-      return Status::binding_failed("Mobile base '" + config_.name +
-                                    "' could not bind ground-truth body '" +
-                                    config_.base_body_name + "'.");
+      return ResultCode::BindingFailed;
     }
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 void MobileBaseComponent::clear_odometry() {
@@ -214,10 +210,9 @@ void MobileBaseComponent::integrate_wheel_odometry(double simulation_time) {
   state_.yaw = normalized_yaw(state_.yaw + state_.angular_z * dt);
 }
 
-Status MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
+ResultCode MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
   if (binding_.base_body_id < 0) {
-    return Status::failed_precondition(
-        "Ground truth pose state is not available for mobile base '" + config_.name + "'.");
+    return ResultCode::FailedPrecondition;
   }
 
   const mjtNum* xpos = data.xpos + 3 * binding_.base_body_id;
@@ -226,7 +221,7 @@ Status MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
   state_.y = static_cast<double>(xpos[1]);
   state_.yaw = normalized_yaw(yaw_from_xmat(xmat));
   last_simulation_time_ = data.time;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 double MobileBaseComponent::normalized_yaw(double yaw) {
@@ -251,18 +246,16 @@ double MobileBaseComponent::command_angular_z(const MobileBaseCommand& command) 
   return command.angular_z != 0.0 ? command.angular_z : command.angular[2];
 }
 
-Status MobileBaseComponent::write_differential(const mjModel& model, mjData& data,
-                                               const MobileBaseCommand& command) {
+ResultCode MobileBaseComponent::write_differential(const mjModel& model, mjData& data,
+                                                   const MobileBaseCommand& command) {
   const double linear_x = command_linear_x(command);
   const double linear_y = command_linear_y(command);
   const double angular_z = command_angular_z(command);
   if (std::abs(linear_y) > 1e-9) {
-    return Status::command_rejected("Differential mobile base '" + config_.name +
-                                    "' does not support lateral velocity.");
+    return ResultCode::CommandRejected;
   }
   if (!binding_.differential.has_value()) {
-    return Status::failed_precondition("Differential mobile base '" + config_.name +
-                                       "' is not bound.");
+    return ResultCode::FailedPrecondition;
   }
 
   const double left_velocity =
@@ -270,20 +263,19 @@ Status MobileBaseComponent::write_differential(const mjModel& model, mjData& dat
   const double right_velocity =
       (linear_x + angular_z * config_.track_width * 0.5) / config_.wheel_radius;
 
-  Status status =
+  ResultCode status =
       write_wheel_velocity_command(model, data, binding_.differential->left_wheel, left_velocity);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   return write_wheel_velocity_command(model, data, binding_.differential->right_wheel,
                                       right_velocity);
 }
 
-Status MobileBaseComponent::write_omnidirectional(const mjModel& model, mjData& data,
-                                                  const MobileBaseCommand& command) {
+ResultCode MobileBaseComponent::write_omnidirectional(const mjModel& model, mjData& data,
+                                                      const MobileBaseCommand& command) {
   if (!binding_.omnidirectional.has_value()) {
-    return Status::failed_precondition("Omnidirectional mobile base '" + config_.name +
-                                       "' is not bound.");
+    return ResultCode::FailedPrecondition;
   }
 
   const double linear_x = command_linear_x(command);
@@ -296,35 +288,34 @@ Status MobileBaseComponent::write_omnidirectional(const mjModel& model, mjData& 
   const double rr = (linear_x - linear_y + base_sum * angular_z) / config_.wheel_radius;
 
   const OmnidirectionalBinding& wheels = *binding_.omnidirectional;
-  Status status = write_wheel_velocity_command(model, data, wheels.front_left, fl);
-  if (!status.ok()) {
+  ResultCode status = write_wheel_velocity_command(model, data, wheels.front_left, fl);
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = write_wheel_velocity_command(model, data, wheels.front_right, fr);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = write_wheel_velocity_command(model, data, wheels.rear_left, rl);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   return write_wheel_velocity_command(model, data, wheels.rear_right, rr);
 }
 
-Status MobileBaseComponent::read_differential(const mjData& data, MobileBaseState& state) {
+ResultCode MobileBaseComponent::read_differential(const mjData& data, MobileBaseState& state) {
   if (!binding_.differential.has_value()) {
-    return Status::failed_precondition("Differential mobile base '" + config_.name +
-                                       "' is not bound.");
+    return ResultCode::FailedPrecondition;
   }
 
   double left_velocity = 0.0;
   double right_velocity = 0.0;
-  Status status = read_wheel_velocity(data, binding_.differential->left_wheel, left_velocity);
-  if (!status.ok()) {
+  ResultCode status = read_wheel_velocity(data, binding_.differential->left_wheel, left_velocity);
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = read_wheel_velocity(data, binding_.differential->right_wheel, right_velocity);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
 
@@ -337,20 +328,19 @@ Status MobileBaseComponent::read_differential(const mjData& data, MobileBaseStat
     integrate_wheel_odometry(data.time);
   } else {
     status = update_ground_truth_pose(data);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
   }
 
   update_state_fields(data);
   state = state_;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status MobileBaseComponent::read_omnidirectional(const mjData& data, MobileBaseState& state) {
+ResultCode MobileBaseComponent::read_omnidirectional(const mjData& data, MobileBaseState& state) {
   if (!binding_.omnidirectional.has_value()) {
-    return Status::failed_precondition("Omnidirectional mobile base '" + config_.name +
-                                       "' is not bound.");
+    return ResultCode::FailedPrecondition;
   }
 
   double fl = 0.0;
@@ -358,20 +348,20 @@ Status MobileBaseComponent::read_omnidirectional(const mjData& data, MobileBaseS
   double rl = 0.0;
   double rr = 0.0;
   const OmnidirectionalBinding& wheels = *binding_.omnidirectional;
-  Status status = read_wheel_velocity(data, wheels.front_left, fl);
-  if (!status.ok()) {
+  ResultCode status = read_wheel_velocity(data, wheels.front_left, fl);
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = read_wheel_velocity(data, wheels.front_right, fr);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = read_wheel_velocity(data, wheels.rear_left, rl);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = read_wheel_velocity(data, wheels.rear_right, rr);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
 
@@ -386,14 +376,14 @@ Status MobileBaseComponent::read_omnidirectional(const mjData& data, MobileBaseS
     integrate_wheel_odometry(data.time);
   } else {
     status = update_ground_truth_pose(data);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
   }
 
   update_state_fields(data);
   state = state_;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 std::size_t MobileBaseComponent::wheel_count() const {
@@ -419,34 +409,31 @@ double MobileBaseComponent::clamp_actuator_control_limits(const mjModel& model,
   return std::clamp(value, static_cast<double>(range[0]), static_cast<double>(range[1]));
 }
 
-Status MobileBaseComponent::write_wheel_velocity_command(const mjModel& model, mjData& data,
-                                                         const MobileBaseWheelBinding& wheel,
-                                                         double velocity) {
+ResultCode MobileBaseComponent::write_wheel_velocity_command(const mjModel& model, mjData& data,
+                                                             const MobileBaseWheelBinding& wheel,
+                                                             double velocity) {
   if (!wheel.joint.has_actuator || wheel.joint.actuator_id < 0) {
-    return Status::failed_precondition("Mobile base wheel '" + wheel.joint_name +
-                                       "' requires a MuJoCo actuator for velocity commands.");
+    return ResultCode::FailedPrecondition;
   }
   if (wheel.joint.actuator_type != static_cast<int>(ActuatorType::Velocity)) {
-    return Status::failed_precondition("Mobile base wheel '" + wheel.joint_name +
-                                       "' requires a MuJoCo velocity actuator.");
+    return ResultCode::FailedPrecondition;
   }
 
   data.ctrl[wheel.joint.actuator_id] = clamp_actuator_control_limits(model, wheel.joint, velocity);
   if (wheel.joint.dof_address >= 0) {
     data.qfrc_applied[wheel.joint.dof_address] = 0.0;
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status MobileBaseComponent::read_wheel_velocity(const mjData& data,
-                                                const MobileBaseWheelBinding& wheel,
-                                                double& velocity) {
+ResultCode MobileBaseComponent::read_wheel_velocity(const mjData& data,
+                                                    const MobileBaseWheelBinding& wheel,
+                                                    double& velocity) {
   if (wheel.joint.dof_address < 0) {
-    return Status::failed_precondition("Mobile base wheel '" + wheel.joint_name +
-                                       "' is missing a valid MuJoCo dof address.");
+    return ResultCode::FailedPrecondition;
   }
   velocity = data.qvel[wheel.joint.dof_address];
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 }  // namespace mujoco_simulation

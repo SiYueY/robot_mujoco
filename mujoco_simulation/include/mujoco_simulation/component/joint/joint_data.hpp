@@ -1,6 +1,6 @@
 #pragma once
 
-#include <optional>
+#include <limits>
 #include <string>
 
 namespace mujoco_simulation {
@@ -41,8 +41,23 @@ struct JointConfig {
   JointControllerType controller_type{JointControllerType::MuJoCoActuator};
   double position_kp{0.0};
   double velocity_kd{0.0};
-  std::optional<double> command_min;
-  std::optional<double> command_max;
+  double command_min{-std::numeric_limits<double>::infinity()};
+  double command_max{std::numeric_limits<double>::infinity()};
+};
+
+struct JointState {
+  std::string name;
+  double position{0.0};
+  double velocity{0.0};
+  double effort{0.0};
+};
+
+struct JointCommand {
+  std::string name;
+  double position{0.0};
+  double velocity{0.0};
+  double acceleration{0.0};
+  double effort{0.0};
 };
 
 }  // namespace mujoco_simulation

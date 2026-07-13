@@ -7,14 +7,44 @@
 #include <string>
 #include <vector>
 
-#include "mujoco_simulation/component/camera/camera_config.hpp"
+#include "mujoco_simulation/component/camera/camera_data.hpp"
 #include "mujoco_simulation/component/camera/camera_renderer_config.hpp"
-#include "mujoco_simulation/component/camera/camera_sample.hpp"
 #include "mujoco_simulation/component/camera/offscreen_gl_context.hpp"
-#include "mujoco_simulation/result.hpp"
-#include "mujoco_simulation/status.hpp"
+#include "mujoco_simulation/result_code.hpp"
 
 namespace mujoco_simulation {
+
+struct CameraRenderImage {
+  std::uint32_t width{0};
+  std::uint32_t height{0};
+  std::uint32_t step{0};
+  std::vector<std::uint8_t> data;
+};
+
+struct CameraRenderDepthImage {
+  std::uint32_t width{0};
+  std::uint32_t height{0};
+  std::vector<float> data;
+};
+
+struct CameraRenderIntrinsics {
+  double fx{0.0};
+  double fy{0.0};
+  double cx{0.0};
+  double cy{0.0};
+  Vector9d k{};
+  Vector12d p{};
+};
+
+struct CameraRenderState {
+  std::uint64_t sequence{0};
+  std::uint64_t timestamp_ns{0};
+  std::string frame_id;
+  std::string optical_frame_id;
+  CameraRenderImage color;
+  CameraRenderDepthImage depth;
+  CameraRenderIntrinsics intrinsics;
+};
 
 class CameraRenderer {
  public:
@@ -25,29 +55,28 @@ class CameraRenderer {
   CameraRenderer(const CameraRenderer&) = delete;
   CameraRenderer& operator=(const CameraRenderer&) = delete;
 
-  Status initialize(const mjModel& model);
-  Status shutdown();
+  ResultCode initialize(const mjModel& model);
+  ResultCode shutdown();
 
-  Status copy_simulation_data(const mjModel& model, const mjData& source);
-  Result<std::shared_ptr<const CameraSample>> render(const mjModel& model, const CameraConfig& spec,
-                                                     std::uint64_t sequence,
-                                                     std::uint64_t timestamp_ns);
+  ResultCode copy_simulation_data(const mjModel& model, const mjData& source);
+  ResultCode render(const mjModel& model, const CameraConfig& spec, std::uint64_t sequence,
+                    std::uint64_t timestamp_ns, std::shared_ptr<const CameraRenderState>* out);
 
   bool is_initialized() const noexcept { return initialized_; }
 
  private:
-  Status ensure_gl_context();
-  Status ensure_offscreen_capacity(int width, int height);
-  Status ensure_camera_binding(const mjModel& model, const CameraConfig& spec, int* camera_id,
-                               double* fovy_degrees);
-  CameraIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t width,
-                                      std::uint32_t height) const;
+  ResultCode ensure_gl_context();
+  ResultCode ensure_offscreen_capacity(int width, int height);
+  ResultCode ensure_camera_binding(const mjModel& model, const CameraConfig& spec, int* camera_id,
+                                   double* fovy_degrees);
+  CameraRenderIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t width,
+                                            std::uint32_t height) const;
   void flip_rgb(const std::vector<std::uint8_t>& source, std::uint32_t width, std::uint32_t height,
                 std::vector<std::uint8_t>* dest) const;
   void convert_and_flip_depth(const mjModel& model, const std::vector<float>& source,
                               std::uint32_t width, std::uint32_t height,
                               std::vector<float>* dest) const;
-  Status initialize_egl_context();
+  ResultCode initialize_egl_context();
   void release_current_context();
 
   CameraRendererConfig config_{};

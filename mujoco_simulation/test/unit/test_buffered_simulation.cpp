@@ -11,10 +11,10 @@
 namespace mujoco_simulation {
 namespace {
 
-#define ASSERT_OK_STATUS(expr)                        \
-  do {                                                \
-    const Status status__ = (expr);                   \
-    ASSERT_TRUE(status__.ok()) << status__.message(); \
+#define ASSERT_OK_STATUS(expr)           \
+  do {                                   \
+    const ResultCode status__ = (expr);  \
+    ASSERT_EQ(status__, ResultCode::Ok); \
   } while (false)
 
 class BufferedSimulationTest : public ::testing::Test {
@@ -63,25 +63,25 @@ TEST_F(BufferedSimulationTest, JointCommandsAreAppliedDuringStepNotAtSubmissionT
                                   .command_mode = CommandInterfaceType::Velocity}}};
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  const auto before_command = simulation.joint_state("hinge");
-  ASSERT_TRUE(before_command.ok()) << before_command.status().message();
-  EXPECT_DOUBLE_EQ(before_command.value().velocity, 0.0);
+  JointState before_command;
+  ASSERT_TRUE(simulation.joint_state("hinge", &before_command));
+  EXPECT_DOUBLE_EQ(before_command.velocity, 0.0);
 
   ASSERT_OK_STATUS(simulation.set_joint_command({"hinge", 0.0, 0.75, 0.0, 0.0}));
 
-  const auto before_step = simulation.joint_state("hinge");
-  ASSERT_TRUE(before_step.ok()) << before_step.status().message();
-  EXPECT_DOUBLE_EQ(before_step.value().velocity, 0.0);
+  JointState before_step;
+  ASSERT_TRUE(simulation.joint_state("hinge", &before_step));
+  EXPECT_DOUBLE_EQ(before_step.velocity, 0.0);
 
   ASSERT_OK_STATUS(simulation.step(1));
 
-  const auto after_step = simulation.joint_state("hinge");
-  ASSERT_TRUE(after_step.ok()) << after_step.status().message();
-  EXPECT_EQ(after_step.value().name, "hinge");
-  EXPECT_GT(after_step.value().velocity, 0.0);
+  JointState after_step;
+  ASSERT_TRUE(simulation.joint_state("hinge", &after_step));
+  EXPECT_EQ(after_step.name, "hinge");
+  EXPECT_GT(after_step.velocity, 0.0);
 }
 
-TEST_F(BufferedSimulationTest, ImuSamplesAreReadFromPublishedSnapshot) {
+TEST_F(BufferedSimulationTest, ImuStatesAreReadFromPublishedSnapshot) {
   Simulation simulation;
   const std::string model_path = write_model(R"(
 <mujoco model="buffered_simulation">
@@ -108,12 +108,12 @@ TEST_F(BufferedSimulationTest, ImuSamplesAreReadFromPublishedSnapshot) {
   ASSERT_OK_STATUS(simulation.initialize(config));
   ASSERT_OK_STATUS(simulation.step(1));
 
-  const auto sample = simulation.imu_sample("imu");
-  ASSERT_TRUE(sample.ok()) << sample.status().message();
-  EXPECT_DOUBLE_EQ(sample.value().orientation[0], 0.0);
-  EXPECT_DOUBLE_EQ(sample.value().orientation[1], 0.0);
-  EXPECT_DOUBLE_EQ(sample.value().orientation[2], 0.0);
-  EXPECT_DOUBLE_EQ(sample.value().orientation[3], 1.0);
+  ImuState state;
+  ASSERT_TRUE(simulation.imu_state("imu", &state));
+  EXPECT_DOUBLE_EQ(state.orientation[0], 0.0);
+  EXPECT_DOUBLE_EQ(state.orientation[1], 0.0);
+  EXPECT_DOUBLE_EQ(state.orientation[2], 0.0);
+  EXPECT_DOUBLE_EQ(state.orientation[3], 1.0);
 }
 
 TEST_F(BufferedSimulationTest, ConfiguredDevicesAppearInSnapshotBeforeStepping) {
@@ -150,7 +150,7 @@ TEST_F(BufferedSimulationTest, ConfiguredDevicesAppearInSnapshotBeforeStepping) 
   };
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  const std::shared_ptr<const SimulationStateSnapshot> snapshot = simulation.state_snapshot();
+  const std::shared_ptr<const StateSnapshot> snapshot = simulation.state_snapshot();
   ASSERT_NE(snapshot, nullptr);
   EXPECT_NE(snapshot->joints.find("hinge"), snapshot->joints.end());
   EXPECT_NE(snapshot->imus.find("imu"), snapshot->imus.end());
@@ -174,7 +174,7 @@ TEST_F(BufferedSimulationTest, SnapshotObserverReceivesInitialAndStepSnapshots) 
   std::uint64_t last_sequence = 0;
   double last_simulation_time = -1.0;
   simulation.set_snapshot_observer([&mutex, &callback_count, &last_sequence, &last_simulation_time](
-                                       std::shared_ptr<const SimulationStateSnapshot> snapshot) {
+                                       std::shared_ptr<const StateSnapshot> snapshot) {
     ASSERT_NE(snapshot, nullptr);
     std::lock_guard<std::mutex> lock(mutex);
     ++callback_count;
@@ -227,9 +227,9 @@ TEST_F(BufferedSimulationTest, InitializeAppliesConfiguredInitialKeyframeThrough
       ComponentConfig{JointConfig{.name = "hinge", .command_mode = CommandInterfaceType::None}}};
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  const auto state = simulation.joint_state("hinge");
-  ASSERT_TRUE(state.ok()) << state.status().message();
-  EXPECT_NEAR(state.value().position, 0.75, 1.0e-9);
+  JointState state;
+  ASSERT_TRUE(simulation.joint_state("hinge", &state));
+  EXPECT_NEAR(state.position, 0.75, 1.0e-9);
 }
 
 TEST_F(BufferedSimulationTest, ResetReturnsRuntimeFailureWhileRunning) {
@@ -250,9 +250,8 @@ TEST_F(BufferedSimulationTest, ResetReturnsRuntimeFailureWhileRunning) {
   ASSERT_OK_STATUS(simulation.initialize({.model = {.model_path = model_path}}));
   ASSERT_OK_STATUS(simulation.start());
 
-  const Status reset_status = simulation.reset({.keyframe_name = "missing_keyframe"});
-  EXPECT_FALSE(reset_status.ok());
-  EXPECT_NE(reset_status.message().find("missing_keyframe"), std::string::npos);
+  const ResultCode reset_status = simulation.reset({.keyframe_name = "missing_keyframe"});
+  EXPECT_EQ(reset_status, ResultCode::NotFound);
 
   ASSERT_OK_STATUS(simulation.stop());
 }
@@ -273,9 +272,8 @@ TEST_F(BufferedSimulationTest, RealtimeFactorCanBeConfiguredThroughSimulationApi
       {.model = {.model_path = model_path}, .scheduler = {.realtime_factor = 1.0}}));
   ASSERT_OK_STATUS(simulation.set_realtime_factor(3.0));
 
-  const Status invalid_status = simulation.set_realtime_factor(0.0);
-  EXPECT_FALSE(invalid_status.ok());
-  EXPECT_NE(invalid_status.message().find("greater than zero"), std::string::npos);
+  const ResultCode invalid_status = simulation.set_realtime_factor(0.0);
+  EXPECT_EQ(invalid_status, ResultCode::InvalidArgument);
 }
 
 TEST_F(BufferedSimulationTest, ResetCanPreserveBufferedCommandsWhenRequested) {
@@ -306,9 +304,9 @@ TEST_F(BufferedSimulationTest, ResetCanPreserveBufferedCommandsWhenRequested) {
   ASSERT_OK_STATUS(simulation.reset({.clear_commands = false}));
   ASSERT_OK_STATUS(simulation.step(1));
 
-  const auto state = simulation.joint_state("hinge");
-  ASSERT_TRUE(state.ok()) << state.status().message();
-  EXPECT_GT(state.value().velocity, 0.0);
+  JointState state;
+  ASSERT_TRUE(simulation.joint_state("hinge", &state));
+  EXPECT_GT(state.velocity, 0.0);
 }
 
 TEST_F(BufferedSimulationTest, JointReconfigureUpdatesComponentManagerState) {
@@ -346,9 +344,9 @@ TEST_F(BufferedSimulationTest, JointReconfigureUpdatesComponentManagerState) {
   ASSERT_OK_STATUS(simulation.set_joint_command({"hinge", 0.0, 0.75, 0.0, 0.0}));
   ASSERT_OK_STATUS(simulation.step(1));
 
-  const auto state = simulation.joint_state("hinge");
-  ASSERT_TRUE(state.ok()) << state.status().message();
-  EXPECT_GT(state.value().velocity, 0.0);
+  JointState state;
+  ASSERT_TRUE(simulation.joint_state("hinge", &state));
+  EXPECT_GT(state.velocity, 0.0);
 }
 
 TEST_F(BufferedSimulationTest, FailedJointReconfigureKeepsExistingJointComponent) {
@@ -374,20 +372,19 @@ TEST_F(BufferedSimulationTest, FailedJointReconfigureKeepsExistingJointComponent
                                   .command_mode = CommandInterfaceType::Velocity}}};
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  const Status switch_status = simulation.reconfigure_component(ComponentConfig{JointConfig{
+  const ResultCode switch_status = simulation.reconfigure_component(ComponentConfig{JointConfig{
       .name = "hinge",
       .actuator_name = "hinge_vel",
       .command_mode = CommandInterfaceType::Position,
   }});
-  EXPECT_FALSE(switch_status.ok());
-  EXPECT_NE(switch_status.message().find("MuJoCo position actuator"), std::string::npos);
+  EXPECT_EQ(switch_status, ResultCode::ModelValidationFailed);
 
   ASSERT_OK_STATUS(simulation.set_joint_command({"hinge", 0.0, 0.75, 0.0, 0.0}));
   ASSERT_OK_STATUS(simulation.step(1));
 
-  const auto state = simulation.joint_state("hinge");
-  ASSERT_TRUE(state.ok()) << state.status().message();
-  EXPECT_GT(state.value().velocity, 0.0);
+  JointState state;
+  ASSERT_TRUE(simulation.joint_state("hinge", &state));
+  EXPECT_GT(state.velocity, 0.0);
 }
 
 TEST_F(BufferedSimulationTest, InitializeBuildsConfiguredComponentsInDependencyOrder) {
@@ -450,17 +447,15 @@ TEST_F(BufferedSimulationTest, InitializeBuildsConfiguredComponentsInDependencyO
 
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  const std::shared_ptr<const SimulationStateSnapshot> snapshot = simulation.state_snapshot();
+  const std::shared_ptr<const StateSnapshot> snapshot = simulation.state_snapshot();
   ASSERT_NE(snapshot, nullptr);
   EXPECT_NE(snapshot->joints.find("left_wheel"), snapshot->joints.end());
   EXPECT_NE(snapshot->joints.find("right_wheel"), snapshot->joints.end());
   EXPECT_NE(snapshot->imus.find("imu"), snapshot->imus.end());
   EXPECT_NE(snapshot->mobile_bases.find("base"), snapshot->mobile_bases.end());
 
-  const auto camera_sample = simulation.camera_sample("front_camera");
-  ASSERT_TRUE(camera_sample.ok()) << camera_sample.status().message();
-  ASSERT_NE(camera_sample.value(), nullptr);
-  const CameraState camera_state = camera_state_from_sample(*camera_sample.value());
+  CameraState camera_state;
+  ASSERT_TRUE(simulation.camera_state("front_camera", &camera_state));
   EXPECT_EQ(camera_state.image.width, 160U);
   EXPECT_EQ(camera_state.image.height, 120U);
   EXPECT_EQ(camera_state.image.frame_id, "camera_optical_frame");

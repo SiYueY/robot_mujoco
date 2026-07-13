@@ -17,10 +17,10 @@ namespace robot_mujoco_ros2::message_mapper {
 rclcpp::Time select_stamp(const rclcpp::Time& fallback, std::uint64_t timestamp_ns);
 rosgraph_msgs::msg::Clock make_clock_message(const rclcpp::Time& sim_time);
 sensor_msgs::msg::Imu make_imu_message(const ImuPublisherConfig& config,
-                                       const mujoco_simulation::ImuSample& sample,
+                                       const mujoco_simulation::ImuState& state,
                                        const rclcpp::Time& fallback_stamp);
 sensor_msgs::msg::LaserScan make_lidar_message(const LidarPublisherConfig& config,
-                                               const mujoco_simulation::LidarSample& sample,
+                                               const mujoco_simulation::LidarState& state,
                                                const rclcpp::Time& fallback_stamp);
 sensor_msgs::msg::CameraInfo make_camera_info_message(const CameraPublisherConfig& config,
                                                       const CameraFrame& frame);

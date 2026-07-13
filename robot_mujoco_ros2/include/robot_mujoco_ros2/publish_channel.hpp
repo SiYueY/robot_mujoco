@@ -4,44 +4,45 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <vector>
 
-#include "mujoco_simulation/component/camera/camera_sample.hpp"
-#include "mujoco_simulation/component/imu/imu_sample.hpp"
-#include "mujoco_simulation/component/lidar/lidar_sample.hpp"
-#include "mujoco_simulation/status.hpp"
+#include "mujoco_simulation/component/camera/camera_data.hpp"
+#include "mujoco_simulation/component/imu/imu_data.hpp"
+#include "mujoco_simulation/component/lidar/lidar_data.hpp"
+#include "mujoco_simulation/result_code.hpp"
+#include "mujoco_simulation/simulation_status.hpp"
 #include "rclcpp/time.hpp"
 #include "realtime_tools/lock_free_queue.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 
 namespace robot_mujoco_ros2 {
 
-struct PublishImuSample {
+struct PublishImuState {
   std::size_t publisher_index{0};
-  mujoco_simulation::ImuSample sample;
+  mujoco_simulation::ImuState state;
 };
 
-struct PublishLidarSample {
+struct PublishLidarState {
   std::size_t publisher_index{0};
-  mujoco_simulation::LidarSample sample;
+  mujoco_simulation::LidarState state;
 };
 
-struct PublishCameraSample {
+struct PublishCameraState {
   std::size_t publisher_index{0};
-  const mujoco_simulation::CameraSample* sample{nullptr};
+  const mujoco_simulation::CameraState* state{nullptr};
 };
 
 struct PublishBundle {
   rclcpp::Time sim_time{0, 0, RCL_ROS_TIME};
-  std::vector<PublishImuSample> imus;
-  std::vector<PublishLidarSample> lidars;
-  std::vector<PublishCameraSample> cameras;
+  std::vector<PublishImuState> imus;
+  std::vector<PublishLidarState> lidars;
+  std::vector<PublishCameraState> cameras;
 };
 
 struct SmallPublishSnapshot {
   rclcpp::Time sim_time{0, 0, RCL_ROS_TIME};
-  std::vector<PublishImuSample> imus;
-  std::vector<PublishLidarSample> lidars;
+  std::vector<PublishImuState> imus;
+  std::vector<PublishLidarState> lidars;
 };
 
 struct CameraFrameConfig {
@@ -61,7 +62,7 @@ struct CameraFrame {
   std::uint32_t depth_step{0};
   bool has_rgb{false};
   bool has_depth{false};
-  mujoco_simulation::CameraIntrinsics intrinsics{};
+  sensor_msgs::msg::CameraInfo camera_info;
   std::vector<std::uint8_t> rgb_data;
   std::vector<std::uint8_t> depth_data;
 };
@@ -80,7 +81,7 @@ class PublishChannel {
   explicit PublishChannel(PublishChannelConfig config);
 
   void reset(PublishChannelConfig config);
-  [[nodiscard]] mujoco_simulation::Status publish_bundle(const PublishBundle& bundle);
+  [[nodiscard]] mujoco_simulation::ResultCode publish_bundle(const PublishBundle& bundle);
   void update_clock(const rclcpp::Time& sim_time);
 
   [[nodiscard]] bool consume_latest_small_snapshot(SmallPublishSnapshot* snapshot);
@@ -97,9 +98,9 @@ class PublishChannel {
   };
 
   bool initialize_small_snapshot_slot(SmallSnapshotSlot* slot);
-  bool copy_lidar_sample(const PublishLidarSample& source, PublishLidarSample* target);
-  bool copy_camera_sample(std::size_t publisher_index,
-                          const mujoco_simulation::CameraSample& sample, CameraFrame* frame);
+  bool copy_lidar_state(const PublishLidarState& source, PublishLidarState* target);
+  bool copy_camera_state(std::size_t publisher_index, const mujoco_simulation::CameraState& state,
+                         CameraFrame* frame);
 
   PublishChannelConfig config_;
   std::vector<SmallSnapshotSlot> small_snapshot_slots_;

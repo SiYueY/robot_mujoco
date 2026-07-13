@@ -4,12 +4,14 @@
 #include <cstring>
 #include <utility>
 
+#include "mujoco_simulation/component/update_context.hpp"
+
 namespace mujoco_simulation {
 namespace {
 
-CameraIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t width,
-                                    std::uint32_t height) {
-  CameraIntrinsics intrinsics;
+CameraRenderIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t width,
+                                          std::uint32_t height) {
+  CameraRenderIntrinsics intrinsics;
   if (width == 0U || height == 0U) {
     return intrinsics;
   }
@@ -30,8 +32,8 @@ CameraIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t width,
 
 }  // namespace
 
-CameraInfo camera_info_from_intrinsics(const CameraIntrinsics& intrinsics, std::uint32_t width,
-                                       std::uint32_t height) {
+CameraInfo camera_info_from_intrinsics(const CameraRenderIntrinsics& intrinsics,
+                                       std::uint32_t width, std::uint32_t height) {
   CameraInfo info;
   info.width = width;
   info.height = height;
@@ -43,110 +45,106 @@ CameraInfo camera_info_from_intrinsics(const CameraIntrinsics& intrinsics, std::
   return info;
 }
 
-CameraState camera_state_from_sample(const CameraSample& sample) {
+CameraState camera_state_from_render_state(const CameraRenderState& render_state) {
   CameraState state;
+  state.sequence = render_state.sequence;
+  state.timestamp_ns = render_state.timestamp_ns;
+  state.frame_id = render_state.frame_id;
+  state.optical_frame_id = render_state.optical_frame_id;
+  state.image.timestamp = render_state.timestamp_ns;
+  state.image.frame_id =
+      render_state.optical_frame_id.empty() ? render_state.frame_id : render_state.optical_frame_id;
+  state.image.width = render_state.color.width;
+  state.image.height = render_state.color.height;
+  state.image.encoding = "rgb8";
+  state.image.step = render_state.color.step;
+  state.image.data = render_state.color.data;
 
-  if (sample.color.has_value()) {
-    const ImageBuffer& color = *sample.color;
-    state.image.timestamp = sample.timestamp_ns;
-    state.image.frame_id =
-        sample.optical_frame_id.empty() ? sample.frame_id : sample.optical_frame_id;
-    state.image.width = color.width;
-    state.image.height = color.height;
-    state.image.encoding = "rgb8";
-    state.image.step = color.step;
-    state.image.data = color.data;
-  }
+  state.depth_image.timestamp = render_state.timestamp_ns;
+  state.depth_image.frame_id =
+      render_state.optical_frame_id.empty() ? render_state.frame_id : render_state.optical_frame_id;
+  state.depth_image.width = render_state.depth.width;
+  state.depth_image.height = render_state.depth.height;
+  state.depth_image.encoding = "32FC1";
+  state.depth_image.step = render_state.depth.width * static_cast<std::uint32_t>(sizeof(float));
+  state.depth_image.data.resize(render_state.depth.data.size() * sizeof(float));
+  std::memcpy(state.depth_image.data.data(), render_state.depth.data.data(),
+              state.depth_image.data.size());
 
-  if (sample.depth.has_value()) {
-    const DepthBuffer& depth = *sample.depth;
-    state.depth_image.timestamp = sample.timestamp_ns;
-    state.depth_image.frame_id =
-        sample.optical_frame_id.empty() ? sample.frame_id : sample.optical_frame_id;
-    state.depth_image.width = depth.width;
-    state.depth_image.height = depth.height;
-    state.depth_image.encoding = "32FC1";
-    state.depth_image.step = depth.width * static_cast<std::uint32_t>(sizeof(float));
-    state.depth_image.data.resize(depth.data.size() * sizeof(float));
-    std::memcpy(state.depth_image.data.data(), depth.data.data(), state.depth_image.data.size());
-  }
-
-  const std::uint32_t info_width = sample.color.has_value()
-                                       ? sample.color->width
-                                       : (sample.depth.has_value() ? sample.depth->width : 0U);
-  const std::uint32_t info_height = sample.color.has_value()
-                                        ? sample.color->height
-                                        : (sample.depth.has_value() ? sample.depth->height : 0U);
-  state.camera_info = camera_info_from_intrinsics(sample.intrinsics, info_width, info_height);
+  const std::uint32_t info_width =
+      render_state.color.width != 0U ? render_state.color.width : render_state.depth.width;
+  const std::uint32_t info_height =
+      render_state.color.height != 0U ? render_state.color.height : render_state.depth.height;
+  state.camera_info = camera_info_from_intrinsics(render_state.intrinsics, info_width, info_height);
   return state;
 }
 
 CameraComponent::CameraComponent(CameraConfig config) : config_(std::move(config)) {}
 
-std::string_view CameraComponent::name() const noexcept { return config_.common.name; }
+std::string CameraComponent::name() const noexcept { return config_.common.name; }
 
-Status CameraComponent::bind(const mjModel& model) {
+ResultCode CameraComponent::bind(const mjModel& model) {
   if (config_.common.name.empty()) {
-    return Status::invalid_argument("Camera name must not be empty.");
+    return ResultCode::InvalidArgument;
+  }
+  if (model.opt.timestep <= 0.0) {
+    return ResultCode::InvalidArgument;
   }
   if (config_.camera_name.empty()) {
-    return Status::invalid_argument("MuJoCo camera name must not be empty for camera '" +
-                                    config_.common.name + "'.");
+    return ResultCode::InvalidArgument;
   }
   if (config_.width <= 0 || config_.height <= 0) {
-    return Status::invalid_argument("Camera '" + config_.common.name +
-                                    "' requires positive width and height.");
+    return ResultCode::InvalidArgument;
   }
   if (config_.common.update_rate <= 0.0) {
-    return Status::invalid_argument("Camera '" + config_.common.name +
-                                    "' requires a positive update_rate.");
+    return ResultCode::InvalidArgument;
   }
   if (!config_.enable_rgb && !config_.enable_depth) {
-    return Status::invalid_argument("Camera '" + config_.common.name +
-                                    "' must enable rgb or depth output.");
+    return ResultCode::InvalidArgument;
   }
 
   binding_.camera_id = mj_name2id(&model, mjOBJ_CAMERA, config_.camera_name.c_str());
   if (binding_.camera_id < 0) {
-    return Status::binding_failed("Camera '" + config_.common.name +
-                                  "' could not bind to MuJoCo camera '" + config_.camera_name +
-                                  "'.");
+    return ResultCode::BindingFailed;
   }
   binding_.fovy_degrees = static_cast<double>(model.cam_fovy[binding_.camera_id]);
+  const ResultCode schedule_status =
+      set_update_rate(config_.common.update_rate, 1.0 / model.opt.timestep);
+  if (schedule_status != ResultCode::Ok) {
+    return schedule_status;
+  }
 
   sample_sequence_ = 0;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status CameraComponent::reset(const mjModel& model, mjData& data) {
+ResultCode CameraComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
   (void)data;
   sample_sequence_ = 0;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-double CameraComponent::update_rate() const noexcept { return config_.common.update_rate; }
-
-Status CameraComponent::sample(const SensorSampleContext& context) {
+ResultCode CameraComponent::update(const UpdateContext& context) {
   (void)context.step_count;
   if (binding_.camera_id < 0) {
-    return Status::failed_precondition("CameraComponent is not bound: " + config_.common.name);
+    return ResultCode::FailedPrecondition;
   }
   if (context.camera_renderer == nullptr || context.camera_buffer == nullptr) {
-    return Status::failed_precondition("Camera runtime resources are not available for '" +
-                                       config_.common.name + "'.");
+    return ResultCode::FailedPrecondition;
   }
 
   const std::uint64_t timestamp_ns =
       context.simulation_time <= 0.0 ? 0
                                      : static_cast<std::uint64_t>(context.simulation_time * 1.0e9);
-  Result<std::shared_ptr<const CameraSample>> rendered =
-      context.camera_renderer->render(context.model, config_, ++sample_sequence_, timestamp_ns);
-  if (!rendered.ok()) {
-    return rendered.status();
+  std::shared_ptr<const CameraRenderState> rendered;
+  const ResultCode render_status = context.camera_renderer->render(
+      context.model, config_, ++sample_sequence_, timestamp_ns, &rendered);
+  if (render_status != ResultCode::Ok) {
+    return render_status;
   }
-  context.camera_buffer->publish(config_.common.name, rendered.value());
-  return Status::Ok();
+  context.camera_buffer->write(config_.common.name, camera_state_from_render_state(*rendered));
+  return ResultCode::Ok;
 }
 
 }  // namespace mujoco_simulation

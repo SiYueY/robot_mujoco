@@ -17,45 +17,45 @@ rosgraph_msgs::msg::Clock make_clock_message(const rclcpp::Time& sim_time) {
 }
 
 sensor_msgs::msg::Imu make_imu_message(const ImuPublisherConfig& config,
-                                       const mujoco_simulation::ImuSample& sample,
+                                       const mujoco_simulation::ImuState& state,
                                        const rclcpp::Time& fallback_stamp) {
   sensor_msgs::msg::Imu message;
-  message.header.stamp = select_stamp(fallback_stamp, sample.timestamp_ns);
+  message.header.stamp = select_stamp(fallback_stamp, state.timestamp_ns);
   message.header.frame_id = config.frame_id;
-  message.orientation.x = sample.orientation[0];
-  message.orientation.y = sample.orientation[1];
-  message.orientation.z = sample.orientation[2];
-  message.orientation.w = sample.orientation[3];
-  message.orientation_covariance = sample.orientation_covariance;
-  message.angular_velocity.x = sample.angular_velocity[0];
-  message.angular_velocity.y = sample.angular_velocity[1];
-  message.angular_velocity.z = sample.angular_velocity[2];
-  message.angular_velocity_covariance = sample.angular_velocity_covariance;
-  message.linear_acceleration.x = sample.linear_acceleration[0];
-  message.linear_acceleration.y = sample.linear_acceleration[1];
-  message.linear_acceleration.z = sample.linear_acceleration[2];
-  message.linear_acceleration_covariance = sample.linear_acceleration_covariance;
+  message.orientation.x = state.orientation[0];
+  message.orientation.y = state.orientation[1];
+  message.orientation.z = state.orientation[2];
+  message.orientation.w = state.orientation[3];
+  message.orientation_covariance = state.orientation_covariance;
+  message.angular_velocity.x = state.angular_velocity[0];
+  message.angular_velocity.y = state.angular_velocity[1];
+  message.angular_velocity.z = state.angular_velocity[2];
+  message.angular_velocity_covariance = state.angular_velocity_covariance;
+  message.linear_acceleration.x = state.linear_acceleration[0];
+  message.linear_acceleration.y = state.linear_acceleration[1];
+  message.linear_acceleration.z = state.linear_acceleration[2];
+  message.linear_acceleration_covariance = state.linear_acceleration_covariance;
   return message;
 }
 
 sensor_msgs::msg::LaserScan make_lidar_message(const LidarPublisherConfig& config,
-                                               const mujoco_simulation::LidarSample& sample,
+                                               const mujoco_simulation::LidarState& state,
                                                const rclcpp::Time& fallback_stamp) {
   sensor_msgs::msg::LaserScan message;
-  message.header.stamp = select_stamp(fallback_stamp, sample.timestamp_ns);
+  message.header.stamp = select_stamp(fallback_stamp, state.timestamp_ns);
   message.header.frame_id = config.frame_id;
-  message.angle_min = static_cast<float>(sample.angle_min);
-  message.angle_max = static_cast<float>(sample.angle_max);
-  message.angle_increment = static_cast<float>(sample.angle_increment);
-  message.scan_time = static_cast<float>(sample.scan_time);
-  message.time_increment = static_cast<float>(sample.time_increment);
-  message.range_min = static_cast<float>(sample.range_min);
-  message.range_max = static_cast<float>(sample.range_max);
-  message.ranges.assign(sample.ranges.begin(), sample.ranges.end());
-  if (sample.intensities.empty()) {
+  message.angle_min = static_cast<float>(state.angle_min);
+  message.angle_max = static_cast<float>(state.angle_max);
+  message.angle_increment = static_cast<float>(state.angle_increment);
+  message.scan_time = static_cast<float>(state.scan_time);
+  message.time_increment = static_cast<float>(state.time_increment);
+  message.range_min = static_cast<float>(state.range_min);
+  message.range_max = static_cast<float>(state.range_max);
+  message.ranges.assign(state.ranges.begin(), state.ranges.end());
+  if (state.intensities.empty()) {
     message.intensities.assign(message.ranges.size(), 0.0F);
   } else {
-    message.intensities.assign(sample.intensities.begin(), sample.intensities.end());
+    message.intensities.assign(state.intensities.begin(), state.intensities.end());
   }
   return message;
 }
@@ -69,9 +69,9 @@ sensor_msgs::msg::CameraInfo make_camera_info_message(const CameraPublisherConfi
   message.height = frame.height == 0 ? config.height : frame.height;
   message.distortion_model = "plumb_bob";
   message.d.assign(5, 0.0);
-  message.k = frame.intrinsics.k;
-  message.r = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
-  message.p = frame.intrinsics.p;
+  message.k = frame.camera_info.k;
+  message.r = frame.camera_info.r;
+  message.p = frame.camera_info.p;
   return message;
 }
 

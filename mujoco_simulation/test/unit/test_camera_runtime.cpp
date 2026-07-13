@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -13,17 +14,17 @@
 
 #include "mujoco_simulation/runtime/model_runtime.hpp"
 #include "mujoco_simulation/simulation.hpp"
-#include "mujoco_simulation/viewer/viewer.hpp"
+#include "mujoco_simulation/viewer/mujoco_viewer.hpp"
 
 namespace mujoco_simulation {
 namespace {
 
 using namespace std::chrono_literals;
 
-#define ASSERT_OK_STATUS(expr)                        \
-  do {                                                \
-    const Status status__ = (expr);                   \
-    ASSERT_TRUE(status__.ok()) << status__.message(); \
+#define ASSERT_OK_STATUS(expr)           \
+  do {                                   \
+    const ResultCode status__ = (expr);  \
+    ASSERT_EQ(status__, ResultCode::Ok); \
   } while (false)
 
 class CameraRuntimeTest : public ::testing::Test {
@@ -93,13 +94,18 @@ class CameraRuntimeTest : public ::testing::Test {
     return config;
   }
 
-  static std::uint8_t rgb_channel(const CameraSample& sample, std::size_t row, std::size_t column,
+  static std::uint8_t rgb_channel(const CameraState& state, std::size_t row, std::size_t column,
                                   std::size_t channel) {
-    return sample.color->data[(row * sample.color->width + column) * 3U + channel];
+    return state.image.data[(row * state.image.width + column) * 3U + channel];
   }
 
-  static float depth_at(const CameraSample& sample, std::size_t row, std::size_t column) {
-    return sample.depth->data[row * sample.depth->width + column];
+  static float depth_at(const CameraState& state, std::size_t row, std::size_t column) {
+    float value = 0.0F;
+    std::memcpy(
+        &value,
+        state.depth_image.data.data() + (row * state.depth_image.width + column) * sizeof(float),
+        sizeof(float));
+    return value;
   }
 
   std::filesystem::path model_path_;
@@ -112,14 +118,14 @@ bool viewer_start_available(const std::string& model_path) {
   }
   if (pid == 0) {
     ModelRuntime runtime;
-    const Status load_status = runtime.load({model_path});
-    if (!load_status.ok()) {
+    const ResultCode load_status = runtime.load({model_path});
+    if (load_status != ResultCode::Ok) {
       _exit(2);
     }
-    Viewer viewer;
-    const Status start_status =
+    MuJoCoViewer viewer;
+    const ResultCode start_status =
         viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path);
-    if (start_status.ok()) {
+    if (start_status == ResultCode::Ok) {
       viewer.stop();
       _exit(0);
     }
@@ -160,28 +166,24 @@ TEST_F(CameraRuntimeTest, CameraRemainsUsableWithViewerAndAfterViewerStops) {
 
   SimulationConfig config;
   config = camera_config(model_path, RenderMode::Viewer, 50.0, false);
-  const Status initialize_status = simulation.initialize(config);
-  if (!initialize_status.ok()) {
-    GTEST_SKIP() << initialize_status.message();
+  const ResultCode initialize_status = simulation.initialize(config);
+  if (initialize_status != ResultCode::Ok) {
+    GTEST_SKIP() << "simulation initialize failed";
   }
 
   ASSERT_OK_STATUS(simulation.start());
   std::this_thread::sleep_for(100ms);
 
-  auto running_sample = simulation.camera_sample("front_camera");
-  ASSERT_TRUE(running_sample.ok()) << running_sample.status().message();
-  ASSERT_NE(running_sample.value(), nullptr);
-  const CameraState running_state = camera_state_from_sample(*running_sample.value());
+  CameraState running_state;
+  ASSERT_TRUE(simulation.camera_state("front_camera", &running_state));
   EXPECT_EQ(running_state.image.width, 160U);
   EXPECT_GT(running_state.image.data.size(), 0U);
 
   ASSERT_OK_STATUS(simulation.stop());
   ASSERT_OK_STATUS(simulation.step(1));
 
-  auto stopped_sample = simulation.camera_sample("front_camera");
-  ASSERT_TRUE(stopped_sample.ok()) << stopped_sample.status().message();
-  ASSERT_NE(stopped_sample.value(), nullptr);
-  const CameraState stopped_state = camera_state_from_sample(*stopped_sample.value());
+  CameraState stopped_state;
+  ASSERT_TRUE(simulation.camera_state("front_camera", &stopped_state));
   EXPECT_EQ(stopped_state.image.width, 160U);
   EXPECT_GE(stopped_state.image.timestamp, running_state.image.timestamp);
 }
@@ -209,16 +211,15 @@ TEST_F(CameraRuntimeTest, StartRecreatesViewerAfterStopOnSameSimulationInstance)
   }
 
   SimulationConfig config = camera_config(model_path, RenderMode::Viewer, 50.0, false);
-  const Status initialize_status = simulation.initialize(config);
-  if (!initialize_status.ok()) {
-    GTEST_SKIP() << initialize_status.message();
+  const ResultCode initialize_status = simulation.initialize(config);
+  if (initialize_status != ResultCode::Ok) {
+    GTEST_SKIP() << "simulation initialize failed";
   }
 
   ASSERT_OK_STATUS(simulation.start());
   std::this_thread::sleep_for(100ms);
 
-  std::shared_ptr<const SimulationStateSnapshot> first_running_snapshot =
-      simulation.state_snapshot();
+  std::shared_ptr<const StateSnapshot> first_running_snapshot = simulation.state_snapshot();
   ASSERT_NE(first_running_snapshot, nullptr);
   ASSERT_GT(first_running_snapshot->step_count, 0U);
 
@@ -229,7 +230,7 @@ TEST_F(CameraRuntimeTest, StartRecreatesViewerAfterStopOnSameSimulationInstance)
   std::this_thread::sleep_for(100ms);
   EXPECT_NE(simulation.status(), SimulationStatus::Error);
 
-  std::shared_ptr<const SimulationStateSnapshot> restarted_snapshot;
+  std::shared_ptr<const StateSnapshot> restarted_snapshot;
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (std::chrono::steady_clock::now() < deadline) {
     restarted_snapshot = simulation.state_snapshot();
@@ -243,10 +244,8 @@ TEST_F(CameraRuntimeTest, StartRecreatesViewerAfterStopOnSameSimulationInstance)
   ASSERT_NE(restarted_snapshot, nullptr);
   EXPECT_GT(restarted_snapshot->step_count, first_running_snapshot->step_count);
 
-  const auto restarted_sample = simulation.camera_sample("front_camera");
-  ASSERT_TRUE(restarted_sample.ok()) << restarted_sample.status().message();
-  ASSERT_NE(restarted_sample.value(), nullptr);
-  const CameraState restarted_state = camera_state_from_sample(*restarted_sample.value());
+  CameraState restarted_state;
+  ASSERT_TRUE(simulation.camera_state("front_camera", &restarted_state));
   EXPECT_EQ(restarted_state.image.width, 160U);
   EXPECT_GT(restarted_state.image.data.size(), 0U);
 
@@ -275,12 +274,12 @@ TEST_F(CameraRuntimeTest, ViewerStartStopCyclesRemainSafe) {
       GTEST_SKIP() << "Viewer runtime probe failed in a subprocess.";
     }
     Simulation simulation;
-    const Status initialize_status =
+    const ResultCode initialize_status =
         simulation.initialize({.model = {.model_path = model_path},
                                .scheduler = {.viewer_update_rate = 30.0},
                                .render_mode = RenderMode::Viewer});
-    if (!initialize_status.ok()) {
-      GTEST_SKIP() << initialize_status.message();
+    if (initialize_status != ResultCode::Ok) {
+      GTEST_SKIP() << "simulation initialize failed";
     }
 
     ASSERT_OK_STATUS(simulation.start());
@@ -293,7 +292,7 @@ TEST_F(CameraRuntimeTest, ViewerStartStopCyclesRemainSafe) {
   }
 }
 
-TEST_F(CameraRuntimeTest, HeadlessAndViewerCameraSamplesRemainSemanticallyConsistent) {
+TEST_F(CameraRuntimeTest, HeadlessAndViewerCameraStatesRemainSemanticallyConsistent) {
   if (!viewer_environment_available()) {
     GTEST_SKIP() << "Viewer environment is not available.";
   }
@@ -321,40 +320,32 @@ TEST_F(CameraRuntimeTest, HeadlessAndViewerCameraSamplesRemainSemanticallyConsis
   ASSERT_OK_STATUS(headless.initialize(camera_config(model_path, RenderMode::Headless)));
 
   Simulation viewer;
-  const Status viewer_status = viewer.initialize(camera_config(model_path, RenderMode::Viewer));
-  if (!viewer_status.ok()) {
-    GTEST_SKIP() << viewer_status.message();
+  const ResultCode viewer_status = viewer.initialize(camera_config(model_path, RenderMode::Viewer));
+  if (viewer_status != ResultCode::Ok) {
+    GTEST_SKIP() << "viewer initialize failed";
   }
 
-  const auto headless_sample = headless.camera_sample("front_camera");
-  ASSERT_TRUE(headless_sample.ok()) << headless_sample.status().message();
-  ASSERT_NE(headless_sample.value(), nullptr);
-  const auto viewer_sample = viewer.camera_sample("front_camera");
-  ASSERT_TRUE(viewer_sample.ok()) << viewer_sample.status().message();
-  ASSERT_NE(viewer_sample.value(), nullptr);
+  CameraState headless_state;
+  ASSERT_TRUE(headless.camera_state("front_camera", &headless_state));
+  CameraState viewer_state;
+  ASSERT_TRUE(viewer.camera_state("front_camera", &viewer_state));
 
-  ASSERT_TRUE(headless_sample.value()->color.has_value());
-  ASSERT_TRUE(viewer_sample.value()->color.has_value());
-  ASSERT_TRUE(headless_sample.value()->depth.has_value());
-  ASSERT_TRUE(viewer_sample.value()->depth.has_value());
-  EXPECT_EQ(headless_sample.value()->color->width, viewer_sample.value()->color->width);
-  EXPECT_EQ(headless_sample.value()->color->height, viewer_sample.value()->color->height);
-  EXPECT_EQ(headless_sample.value()->intrinsics.k, viewer_sample.value()->intrinsics.k);
-  EXPECT_EQ(headless_sample.value()->intrinsics.p, viewer_sample.value()->intrinsics.p);
+  EXPECT_FALSE(headless_state.image.data.empty());
+  EXPECT_FALSE(viewer_state.image.data.empty());
+  EXPECT_FALSE(headless_state.depth_image.data.empty());
+  EXPECT_FALSE(viewer_state.depth_image.data.empty());
+  EXPECT_EQ(headless_state.image.width, viewer_state.image.width);
+  EXPECT_EQ(headless_state.image.height, viewer_state.image.height);
+  EXPECT_EQ(headless_state.camera_info.k, viewer_state.camera_info.k);
+  EXPECT_EQ(headless_state.camera_info.p, viewer_state.camera_info.p);
 
-  EXPECT_GT(rgb_channel(*headless_sample.value(), 10, 80, 0),
-            rgb_channel(*headless_sample.value(), 10, 80, 1));
-  EXPECT_GT(rgb_channel(*viewer_sample.value(), 10, 80, 0),
-            rgb_channel(*viewer_sample.value(), 10, 80, 1));
-  EXPECT_GT(rgb_channel(*headless_sample.value(), 105, 80, 1),
-            rgb_channel(*headless_sample.value(), 105, 80, 0));
-  EXPECT_GT(rgb_channel(*viewer_sample.value(), 105, 80, 1),
-            rgb_channel(*viewer_sample.value(), 105, 80, 0));
+  EXPECT_GT(rgb_channel(headless_state, 10, 80, 0), rgb_channel(headless_state, 10, 80, 1));
+  EXPECT_GT(rgb_channel(viewer_state, 10, 80, 0), rgb_channel(viewer_state, 10, 80, 1));
+  EXPECT_GT(rgb_channel(headless_state, 105, 80, 1), rgb_channel(headless_state, 105, 80, 0));
+  EXPECT_GT(rgb_channel(viewer_state, 105, 80, 1), rgb_channel(viewer_state, 105, 80, 0));
 
-  EXPECT_NEAR(depth_at(*headless_sample.value(), 10, 80), depth_at(*viewer_sample.value(), 10, 80),
-              1.0e-4F);
-  EXPECT_NEAR(depth_at(*headless_sample.value(), 105, 80),
-              depth_at(*viewer_sample.value(), 105, 80), 1.0e-4F);
+  EXPECT_NEAR(depth_at(headless_state, 10, 80), depth_at(viewer_state, 10, 80), 1.0e-4F);
+  EXPECT_NEAR(depth_at(headless_state, 105, 80), depth_at(viewer_state, 105, 80), 1.0e-4F);
 }
 
 TEST_F(CameraRuntimeTest, LowViewerRateDoesNotBlockPhysicsProgress) {
@@ -380,13 +371,13 @@ TEST_F(CameraRuntimeTest, LowViewerRateDoesNotBlockPhysicsProgress) {
   if (!viewer_start_available(model_path)) {
     GTEST_SKIP() << "Viewer runtime probe failed in a subprocess.";
   }
-  const Status initialize_status = simulation.initialize(config);
-  if (!initialize_status.ok()) {
-    GTEST_SKIP() << initialize_status.message();
+  const ResultCode initialize_status = simulation.initialize(config);
+  if (initialize_status != ResultCode::Ok) {
+    GTEST_SKIP() << "simulation initialize failed";
   }
 
   ASSERT_OK_STATUS(simulation.start());
-  std::shared_ptr<const SimulationStateSnapshot> snapshot;
+  std::shared_ptr<const StateSnapshot> snapshot;
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (std::chrono::steady_clock::now() < deadline) {
     snapshot = simulation.state_snapshot();
@@ -435,12 +426,11 @@ TEST_F(CameraRuntimeTest, ConcurrentCameraReadsRemainSafeDuringStepping) {
     }
     std::uint64_t last_timestamp = 0;
     for (int iteration = 0; iteration < 100; ++iteration) {
-      const auto sample = simulation.camera_sample("front_camera");
-      if (!sample.ok() || sample.value() == nullptr) {
+      CameraState state;
+      if (!simulation.camera_state("front_camera", &state)) {
         ++failures;
         continue;
       }
-      const CameraState state = camera_state_from_sample(*sample.value());
       if (state.image.width != 160U || state.image.height != 120U ||
           state.depth_image.width != 160U || state.depth_image.height != 120U ||
           state.image.data.empty() || state.depth_image.data.empty() ||

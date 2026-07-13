@@ -4,14 +4,13 @@
 #include <functional>
 #include <mutex>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
 #include "mujoco_simulation/buffer/command_snapshot.hpp"
-#include "mujoco_simulation/component/joint/joint_command.hpp"
-#include "mujoco_simulation/component/joint/joint_config.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_command.hpp"
-#include "mujoco_simulation/status.hpp"
+#include "mujoco_simulation/component/joint/joint_data.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
+#include "mujoco_simulation/result_code.hpp"
+#include "mujoco_simulation/simulation_status.hpp"
 
 namespace mujoco_simulation {
 
@@ -30,28 +29,27 @@ struct CommandTimeoutConfig {
 class CommandBuffer {
  public:
   using Clock = std::chrono::steady_clock;
-  using JointModeResolver = std::function<CommandInterfaceType(std::string_view)>;
+  using JointModeResolver = std::function<CommandInterfaceType(std::string)>;
 
-  Status set_joint_command(std::string_view component_name, const JointCommand& command) {
+  ResultCode set_joint_command(std::string component_name, const JointCommand& command) {
     if (component_name.empty()) {
-      return Status::invalid_argument("Joint command target name must not be empty.");
+      return ResultCode::InvalidArgument;
     }
     std::lock_guard<std::mutex> lock(mutex_);
     joint_commands_[std::string(component_name)] = TimedJointCommand{command, Clock::now()};
     ++sequence_;
-    return Status::Ok();
+    return ResultCode::Ok;
   }
 
-  Status set_mobile_base_command(std::string_view component_name,
-                                 const MobileBaseCommand& command) {
+  ResultCode set_mobile_base_command(std::string component_name, const MobileBaseCommand& command) {
     if (component_name.empty()) {
-      return Status::invalid_argument("Mobile base command target name must not be empty.");
+      return ResultCode::InvalidArgument;
     }
     std::lock_guard<std::mutex> lock(mutex_);
     mobile_base_commands_[std::string(component_name)] =
         TimedMobileBaseCommand{command, Clock::now()};
     ++sequence_;
-    return Status::Ok();
+    return ResultCode::Ok;
   }
 
   CommandSnapshot snapshot() const { return snapshot(Clock::now(), {}); }
@@ -104,8 +102,7 @@ class CommandBuffer {
     return now - submission_time > std::chrono::duration<double>(timeout_config_.timeout_seconds);
   }
 
-  JointCommand effective_joint_command(std::string_view name,
-                                       const TimedJointCommand& timed_command,
+  JointCommand effective_joint_command(std::string name, const TimedJointCommand& timed_command,
                                        CommandInterfaceType mode,
                                        const Clock::time_point now) const {
     JointCommand command = timed_command.command;

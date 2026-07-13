@@ -24,11 +24,11 @@ TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAddAndRemove) {
       MobileBaseConfig{.name = "base", .type = MobileBaseType::Differential},
       std::move(mobile_base_binding));
 
-  ASSERT_TRUE(registry.add(std::move(joint)).ok());
-  ASSERT_TRUE(registry.add(std::move(imu)).ok());
-  ASSERT_TRUE(registry.add(std::move(camera)).ok());
-  ASSERT_TRUE(registry.add(std::move(lidar)).ok());
-  ASSERT_TRUE(registry.add(std::move(mobile_base)).ok());
+  ASSERT_EQ(registry.add(std::move(joint)), ResultCode::Ok);
+  ASSERT_EQ(registry.add(std::move(imu)), ResultCode::Ok);
+  ASSERT_EQ(registry.add(std::move(camera)), ResultCode::Ok);
+  ASSERT_EQ(registry.add(std::move(lidar)), ResultCode::Ok);
+  ASSERT_EQ(registry.add(std::move(mobile_base)), ResultCode::Ok);
 
   EXPECT_TRUE(registry.has_joint("joint"));
   EXPECT_TRUE(registry.has_imu("imu"));
@@ -46,7 +46,7 @@ TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAddAndRemove) {
   EXPECT_EQ(registry.lidars().size(), 1u);
   EXPECT_EQ(registry.mobile_bases().size(), 1u);
 
-  ASSERT_TRUE(registry.remove("imu").ok());
+  ASSERT_EQ(registry.remove("imu"), ResultCode::Ok);
   EXPECT_FALSE(registry.has_imu("imu"));
   EXPECT_EQ(registry.imu("imu"), nullptr);
   EXPECT_TRUE(registry.has_joint("joint"));

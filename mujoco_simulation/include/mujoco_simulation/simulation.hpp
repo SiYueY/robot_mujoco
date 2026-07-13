@@ -4,44 +4,38 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
 #include "mujoco_simulation/buffer/camera_buffer.hpp"
 #include "mujoco_simulation/buffer/command_buffer.hpp"
 #include "mujoco_simulation/buffer/state_buffer.hpp"
 #include "mujoco_simulation/component/camera/camera_component.hpp"
-#include "mujoco_simulation/component/camera/camera_config.hpp"
+#include "mujoco_simulation/component/camera/camera_data.hpp"
 #include "mujoco_simulation/component/camera/camera_renderer.hpp"
-#include "mujoco_simulation/component/camera/camera_sample.hpp"
 #include "mujoco_simulation/component/component_manager.hpp"
-#include "mujoco_simulation/component/imu/imu_config.hpp"
-#include "mujoco_simulation/component/imu/imu_sample.hpp"
-#include "mujoco_simulation/component/joint/joint_command.hpp"
-#include "mujoco_simulation/component/joint/joint_config.hpp"
-#include "mujoco_simulation/component/joint/joint_state.hpp"
-#include "mujoco_simulation/component/lidar/lidar_config.hpp"
-#include "mujoco_simulation/component/lidar/lidar_sample.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_command.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_config.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_state.hpp"
+#include "mujoco_simulation/component/imu/imu_data.hpp"
+#include "mujoco_simulation/component/joint/joint_data.hpp"
+#include "mujoco_simulation/component/lidar/lidar_data.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 #include "mujoco_simulation/reset_options.hpp"
-#include "mujoco_simulation/runtime/model_runtime.hpp"
-#include "mujoco_simulation/runtime/simulation_scheduler.hpp"
+#include "mujoco_simulation/result_code.hpp"
 #include "mujoco_simulation/simulation_config.hpp"
+#include "mujoco_simulation/simulation_status.hpp"
 
 namespace mujoco_simulation {
 
-class Viewer;
+class MuJoCoViewer;
+class ModelRuntime;
+class SimulationScheduler;
 
 class Simulation {
  public:
-  using SnapshotObserver =
-      std::function<void(std::shared_ptr<const SimulationStateSnapshot> snapshot)>;
+  using SnapshotObserver = std::function<void(std::shared_ptr<const StateSnapshot> snapshot)>;
 
   Simulation();
   ~Simulation();
@@ -49,33 +43,33 @@ class Simulation {
   Simulation(const Simulation &) = delete;
   Simulation &operator=(const Simulation &) = delete;
 
-  Status initialize(const SimulationConfig &config);
-  Status shutdown();
+  ResultCode initialize(const SimulationConfig &config);
+  ResultCode shutdown();
 
-  Status start();
-  Status stop();
-  Status pause();
-  Status resume();
-  Status set_realtime_factor(double realtime_factor);
-  Status request_reset(const ResetOptions &options = {});
-  Status reset(const ResetOptions &options = {});
-  Status step(uint32_t steps);
+  ResultCode start();
+  ResultCode stop();
+  ResultCode pause();
+  ResultCode resume();
+  ResultCode set_realtime_factor(double realtime_factor);
+  ResultCode request_reset(const ResetOptions &options = {});
+  ResultCode reset(const ResetOptions &options = {});
+  ResultCode step(uint32_t steps);
 
-  Status reconfigure_component(const ComponentConfig &updated_component);
-  Status set_joint_command(const JointCommand &command);
-  Result<JointState> joint_state(std::string_view joint_name) const;
+  ResultCode reconfigure_component(const ComponentConfig &updated_component);
+  ResultCode set_joint_command(const JointCommand &command);
+  bool joint_state(std::string joint_name, JointState *out) const;
 
-  Result<ImuSample> imu_sample(std::string_view imu_name) const;
-  Result<std::shared_ptr<const CameraSample>> camera_sample(std::string_view camera_name) const;
-  Result<LidarSample> lidar_sample(std::string_view lidar_name) const;
+  bool imu_state(std::string imu_name, ImuState *out) const;
+  bool camera_state(std::string camera_name, CameraState *out) const;
+  bool lidar_state(std::string lidar_name, LidarState *out) const;
 
-  Status set_mobile_base_command(std::string_view name, const MobileBaseCommand &command);
-  Result<MobileBaseState> mobile_base_state(std::string_view name) const;
+  ResultCode set_mobile_base_command(std::string name, const MobileBaseCommand &command);
+  bool mobile_base_state(std::string name, MobileBaseState *out) const;
 
   uint64_t step_count() const;
   SimulationStatus status() const;
   double simulation_time() const;
-  std::shared_ptr<const SimulationStateSnapshot> state_snapshot() const;
+  std::shared_ptr<const StateSnapshot> state_snapshot() const;
   void set_snapshot_observer(SnapshotObserver observer);
 
  private:
@@ -84,24 +78,23 @@ class Simulation {
     std::unordered_map<std::string, MobileBaseState> mobile_bases;
   };
 
-  Status initialize_scheduler();
-  Status initialize_components();
-  Status load_model(const ModelConfig &model_config);
-  Status apply_component_reconfiguration_locked(
+  ResultCode initialize_scheduler();
+  ResultCode initialize_components();
+  ResultCode load_model(const ModelConfig &model_config);
+  ResultCode apply_component_reconfiguration_locked(
       const ComponentConfig &updated_component,
-      std::shared_ptr<const SimulationStateSnapshot> *published_snapshot);
-  Status publish_state_snapshot(bool increment_step_count);
-  Status read_component_states_locked(bool increment_step_count);
-  Status publish_state_snapshot_locked(
-      bool increment_step_count,
-      std::shared_ptr<const SimulationStateSnapshot> *published_snapshot);
-  Status scheduler_apply_commands_locked();
-  Status scheduler_read_components_locked(bool increment_step_count);
-  Status scheduler_step_physics_locked();
-  Status scheduler_sync_viewer_if_due();
-  Status scheduler_reset_locked(const ResetOptions &options);
+      std::shared_ptr<const StateSnapshot> *published_snapshot);
+  ResultCode publish_state_snapshot(bool increment_step_count);
+  ResultCode read_component_states_locked(bool increment_step_count);
+  ResultCode publish_state_snapshot_locked(
+      bool increment_step_count, std::shared_ptr<const StateSnapshot> *published_snapshot);
+  ResultCode scheduler_apply_commands_locked();
+  ResultCode scheduler_read_components_locked(bool increment_step_count);
+  ResultCode scheduler_step_physics_locked();
+  ResultCode scheduler_sync_viewer_if_due();
+  ResultCode scheduler_reset_locked(const ResetOptions &options);
   double scheduler_timestep_locked() const;
-  Status start_viewer();
+  ResultCode start_viewer();
 
   SimulationConfig config_;
   std::unique_ptr<CameraBuffer> camera_buffer_;
@@ -114,10 +107,10 @@ class Simulation {
   mjData *data_ = nullptr;
 
   ComponentManager component_manager_;
-  std::unique_ptr<Viewer> viewer_;
+  std::unique_ptr<MuJoCoViewer> viewer_;
   std::optional<PendingStateSnapshot> pending_state_snapshot_;
   std::chrono::steady_clock::time_point next_viewer_sync_time_{};
-  std::string runtime_error_;
+  ResultCode runtime_error_{ResultCode::Ok};
   std::uint64_t state_snapshot_sequence_{0};
   std::uint64_t state_snapshot_step_count_{0};
   SnapshotObserver snapshot_observer_;

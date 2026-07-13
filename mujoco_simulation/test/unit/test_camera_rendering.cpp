@@ -12,10 +12,10 @@
 namespace mujoco_simulation {
 namespace {
 
-#define ASSERT_OK_STATUS(expr)                        \
-  do {                                                \
-    const Status status__ = (expr);                   \
-    ASSERT_TRUE(status__.ok()) << status__.message(); \
+#define ASSERT_OK_STATUS(expr)           \
+  do {                                   \
+    const ResultCode status__ = (expr);  \
+    ASSERT_EQ(status__, ResultCode::Ok); \
   } while (false)
 
 class CameraRenderingTest : public ::testing::Test {
@@ -78,10 +78,8 @@ TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
       .enable_depth = true}}};
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  const auto sample = simulation.camera_sample("front_camera");
-  ASSERT_TRUE(sample.ok()) << sample.status().message();
-  ASSERT_NE(sample.value(), nullptr);
-  const CameraState state = camera_state_from_sample(*sample.value());
+  CameraState state;
+  ASSERT_TRUE(simulation.camera_state("front_camera", &state));
   ASSERT_EQ(state.image.width, 160U);
   ASSERT_EQ(state.image.height, 120U);
   ASSERT_EQ(state.image.step, 480U);
@@ -92,12 +90,8 @@ TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
   ASSERT_EQ(state.depth_image.encoding, "32FC1");
   ASSERT_EQ(state.depth_image.frame_id, "camera_optical_frame");
 
-  EXPECT_EQ(sample.value()->frame_id, "camera_link");
-  EXPECT_EQ(sample.value()->optical_frame_id, "camera_optical_frame");
-  ASSERT_TRUE(sample.value()->color.has_value());
-  ASSERT_TRUE(sample.value()->depth.has_value());
-  EXPECT_EQ(sample.value()->color->width, 160U);
-  EXPECT_EQ(sample.value()->depth->height, 120U);
+  EXPECT_EQ(state.frame_id, "camera_link");
+  EXPECT_EQ(state.optical_frame_id, "camera_optical_frame");
 
   const auto pixel = [&](std::size_t row, std::size_t column, std::size_t channel) -> std::uint8_t {
     return state.image.data[(row * state.image.width + column) * 3U + channel];
@@ -159,27 +153,22 @@ TEST_F(CameraRenderingTest, MultipleCamerasUpdateAtIndependentRatesInHeadlessMod
   };
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  auto fast_sample = simulation.camera_sample("fast_camera");
-  ASSERT_TRUE(fast_sample.ok()) << fast_sample.status().message();
-  ASSERT_NE(fast_sample.value(), nullptr);
-  auto slow_sample = simulation.camera_sample("slow_camera");
-  ASSERT_TRUE(slow_sample.ok()) << slow_sample.status().message();
-  ASSERT_NE(slow_sample.value(), nullptr);
-  EXPECT_EQ(fast_sample.value()->timestamp_ns, 0U);
-  EXPECT_EQ(slow_sample.value()->timestamp_ns, 0U);
+  CameraState fast_state;
+  ASSERT_TRUE(simulation.camera_state("fast_camera", &fast_state));
+  CameraState slow_state;
+  ASSERT_TRUE(simulation.camera_state("slow_camera", &slow_state));
+  EXPECT_EQ(fast_state.timestamp_ns, 0U);
+  EXPECT_EQ(slow_state.timestamp_ns, 0U);
 
   ASSERT_OK_STATUS(simulation.step(4));
-  fast_sample = simulation.camera_sample("fast_camera");
-  ASSERT_TRUE(fast_sample.ok()) << fast_sample.status().message();
-  slow_sample = simulation.camera_sample("slow_camera");
-  ASSERT_TRUE(slow_sample.ok()) << slow_sample.status().message();
-  EXPECT_EQ(fast_sample.value()->timestamp_ns, 40000000U);
-  EXPECT_EQ(slow_sample.value()->timestamp_ns, 0U);
+  ASSERT_TRUE(simulation.camera_state("fast_camera", &fast_state));
+  ASSERT_TRUE(simulation.camera_state("slow_camera", &slow_state));
+  EXPECT_EQ(fast_state.timestamp_ns, 40000000U);
+  EXPECT_EQ(slow_state.timestamp_ns, 0U);
 
   ASSERT_OK_STATUS(simulation.step(1));
-  slow_sample = simulation.camera_sample("slow_camera");
-  ASSERT_TRUE(slow_sample.ok()) << slow_sample.status().message();
-  EXPECT_EQ(slow_sample.value()->timestamp_ns, 50000000U);
+  ASSERT_TRUE(simulation.camera_state("slow_camera", &slow_state));
+  EXPECT_EQ(slow_state.timestamp_ns, 50000000U);
 }
 
 TEST_F(CameraRenderingTest, CameraInitializationReportsRenderFailedWhenNoBackendIsAllowed) {
@@ -205,9 +194,8 @@ TEST_F(CameraRenderingTest, CameraInitializationReportsRenderFailedWhenNoBackend
                                    .width = 160,
                                    .enable_rgb = true,
                                    .enable_depth = false}}};
-  const Status status = simulation.initialize(config);
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::RenderFailed);
+  const ResultCode status = simulation.initialize(config);
+  EXPECT_EQ(status, ResultCode::RenderFailed);
 }
 
 #undef ASSERT_OK_STATUS

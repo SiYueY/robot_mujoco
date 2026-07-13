@@ -12,10 +12,10 @@
 namespace mujoco_simulation {
 namespace {
 
-#define ASSERT_OK_STATUS(expr)                        \
-  do {                                                \
-    const Status status__ = (expr);                   \
-    ASSERT_TRUE(status__.ok()) << status__.message(); \
+#define ASSERT_OK_STATUS(expr)           \
+  do {                                   \
+    const ResultCode status__ = (expr);  \
+    ASSERT_EQ(status__, ResultCode::Ok); \
   } while (false)
 
 class SensorSamplingTest : public ::testing::Test {
@@ -88,44 +88,39 @@ TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
   };
   ASSERT_OK_STATUS(simulation.initialize(config));
 
-  auto imu_sample = simulation.imu_sample("imu");
-  ASSERT_TRUE(imu_sample.ok()) << imu_sample.status().message();
-  auto lidar_sample = simulation.lidar_sample("front_lidar");
-  ASSERT_TRUE(lidar_sample.ok()) << lidar_sample.status().message();
-  EXPECT_EQ(imu_sample.value().sequence, 1U);
-  EXPECT_EQ(lidar_sample.value().sequence, 1U);
+  ImuState imu_state;
+  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
+  LidarState lidar_state;
+  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  EXPECT_EQ(imu_state.sequence, 1U);
+  EXPECT_EQ(lidar_state.sequence, 1U);
 
   ASSERT_OK_STATUS(simulation.step(4));
-  imu_sample = simulation.imu_sample("imu");
-  ASSERT_TRUE(imu_sample.ok()) << imu_sample.status().message();
-  lidar_sample = simulation.lidar_sample("front_lidar");
-  ASSERT_TRUE(lidar_sample.ok()) << lidar_sample.status().message();
-  EXPECT_EQ(imu_sample.value().sequence, 1U);
-  EXPECT_EQ(lidar_sample.value().sequence, 1U);
+  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  EXPECT_EQ(imu_state.sequence, 1U);
+  EXPECT_EQ(lidar_state.sequence, 1U);
 
   ASSERT_OK_STATUS(simulation.step(1));
-  imu_sample = simulation.imu_sample("imu");
-  ASSERT_TRUE(imu_sample.ok()) << imu_sample.status().message();
-  EXPECT_EQ(imu_sample.value().sequence, 2U);
-  EXPECT_EQ(imu_sample.value().timestamp_ns, 5000000U);
-  EXPECT_EQ(imu_sample.value().frame_id, "imu_link");
+  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
+  EXPECT_EQ(imu_state.sequence, 2U);
+  EXPECT_EQ(imu_state.timestamp_ns, 5000000U);
+  EXPECT_EQ(imu_state.frame_id, "imu_link");
 
   ASSERT_OK_STATUS(simulation.step(95));
-  imu_sample = simulation.imu_sample("imu");
-  ASSERT_TRUE(imu_sample.ok()) << imu_sample.status().message();
-  lidar_sample = simulation.lidar_sample("front_lidar");
-  ASSERT_TRUE(lidar_sample.ok()) << lidar_sample.status().message();
-  EXPECT_EQ(imu_sample.value().sequence, 21U);
-  EXPECT_EQ(imu_sample.value().timestamp_ns, 100000000U);
-  EXPECT_EQ(lidar_sample.value().sequence, 2U);
-  EXPECT_EQ(lidar_sample.value().timestamp_ns, 100000000U);
-  EXPECT_DOUBLE_EQ(lidar_sample.value().scan_time, 0.1);
-  EXPECT_DOUBLE_EQ(lidar_sample.value().time_increment, 0.0);
-  EXPECT_EQ(lidar_sample.value().frame_id, "front_lidar_link");
-  ASSERT_EQ(lidar_sample.value().ranges.size(), 3U);
-  EXPECT_TRUE(std::isinf(lidar_sample.value().ranges[0]));
-  EXPECT_TRUE(std::isinf(lidar_sample.value().ranges[1]));
-  EXPECT_TRUE(std::isinf(lidar_sample.value().ranges[2]));
+  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  EXPECT_EQ(imu_state.sequence, 21U);
+  EXPECT_EQ(imu_state.timestamp_ns, 100000000U);
+  EXPECT_EQ(lidar_state.sequence, 2U);
+  EXPECT_EQ(lidar_state.timestamp_ns, 100000000U);
+  EXPECT_DOUBLE_EQ(lidar_state.scan_time, 0.1);
+  EXPECT_DOUBLE_EQ(lidar_state.time_increment, 0.0);
+  EXPECT_EQ(lidar_state.frame_id, "front_lidar_link");
+  ASSERT_EQ(lidar_state.ranges.size(), 3U);
+  EXPECT_TRUE(std::isinf(lidar_state.ranges[0]));
+  EXPECT_TRUE(std::isinf(lidar_state.ranges[1]));
+  EXPECT_TRUE(std::isinf(lidar_state.ranges[2]));
 }
 
 TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
@@ -167,11 +162,11 @@ TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
   ASSERT_OK_STATUS(simulation.step(100));
   ASSERT_OK_STATUS(simulation.reset());
 
-  const auto lidar_sample = simulation.lidar_sample("front_lidar");
-  ASSERT_TRUE(lidar_sample.ok()) << lidar_sample.status().message();
-  EXPECT_EQ(lidar_sample.value().sequence, 1U);
-  EXPECT_EQ(lidar_sample.value().timestamp_ns, 0U);
-  EXPECT_GE(lidar_sample.value().scan_time, 0.0);
+  LidarState lidar_state;
+  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  EXPECT_EQ(lidar_state.sequence, 1U);
+  EXPECT_EQ(lidar_state.timestamp_ns, 0U);
+  EXPECT_GE(lidar_state.scan_time, 0.0);
 }
 
 TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
@@ -200,9 +195,8 @@ TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
                                 .framequat_sensor_name = "imu_gyro",
                                 .gyro_sensor_name = "imu_gyro",
                                 .accelerometer_sensor_name = "imu_acc"}}};
-  const Status bad_type_status = bad_type_simulation.initialize(bad_type_config);
-  EXPECT_FALSE(bad_type_status.ok());
-  EXPECT_FALSE(bad_type_status.message().empty());
+  const ResultCode bad_type_status = bad_type_simulation.initialize(bad_type_config);
+  EXPECT_NE(bad_type_status, ResultCode::Ok);
 
   Simulation too_fast_simulation;
   SimulationConfig too_fast_config;
@@ -212,9 +206,8 @@ TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
                                 .framequat_sensor_name = "imu_quat",
                                 .gyro_sensor_name = "imu_gyro",
                                 .accelerometer_sensor_name = "imu_acc"}}};
-  const Status too_fast_status = too_fast_simulation.initialize(too_fast_config);
-  EXPECT_FALSE(too_fast_status.ok());
-  EXPECT_FALSE(too_fast_status.message().empty());
+  const ResultCode too_fast_status = too_fast_simulation.initialize(too_fast_config);
+  EXPECT_NE(too_fast_status, ResultCode::Ok);
 }
 
 #undef ASSERT_OK_STATUS

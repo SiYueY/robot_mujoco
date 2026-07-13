@@ -15,18 +15,17 @@ TEST(CommandBufferTest, VelocityAndMobileBaseCommandsZeroAfterTimeout) {
   buffer.set_timeout_config(
       {.enabled = true, .timeout_seconds = 0.001, .behavior = CommandTimeoutBehavior::ZeroCommand});
 
-  ASSERT_TRUE(buffer.set_joint_command("joint", {"joint", 1.0, 2.0, 0.0, 3.0}).ok());
-  ASSERT_TRUE(buffer
-                  .set_mobile_base_command("base", {.linear = {1.0, 2.0, 0.0},
+  ASSERT_EQ(buffer.set_joint_command("joint", {"joint", 1.0, 2.0, 0.0, 3.0}), ResultCode::Ok);
+  ASSERT_EQ(buffer.set_mobile_base_command("base", {.linear = {1.0, 2.0, 0.0},
                                                     .angular = {0.0, 0.0, 3.0},
                                                     .linear_x = 1.0,
                                                     .linear_y = 2.0,
-                                                    .angular_z = 3.0})
-                  .ok());
+                                                    .angular_z = 3.0}),
+            ResultCode::Ok);
 
   std::this_thread::sleep_for(5ms);
   const CommandSnapshot snapshot = buffer.snapshot(
-      CommandBuffer::Clock::now(), [](std::string_view) { return CommandInterfaceType::Velocity; });
+      CommandBuffer::Clock::now(), [](std::string) { return CommandInterfaceType::Velocity; });
 
   const auto joint_it = snapshot.joint_commands.find("joint");
   ASSERT_NE(joint_it, snapshot.joint_commands.end());
@@ -44,10 +43,10 @@ TEST(CommandBufferTest, PositionCommandsHoldLastTargetOnTimeout) {
                              .timeout_seconds = 0.001,
                              .behavior = CommandTimeoutBehavior::HoldPosition});
 
-  ASSERT_TRUE(buffer.set_joint_command("joint", {"joint", 1.5, 0.0, 0.0, 0.0}).ok());
+  ASSERT_EQ(buffer.set_joint_command("joint", {"joint", 1.5, 0.0, 0.0, 0.0}), ResultCode::Ok);
   std::this_thread::sleep_for(5ms);
   const CommandSnapshot snapshot = buffer.snapshot(
-      CommandBuffer::Clock::now(), [](std::string_view) { return CommandInterfaceType::Position; });
+      CommandBuffer::Clock::now(), [](std::string) { return CommandInterfaceType::Position; });
 
   const auto joint_it = snapshot.joint_commands.find("joint");
   ASSERT_NE(joint_it, snapshot.joint_commands.end());

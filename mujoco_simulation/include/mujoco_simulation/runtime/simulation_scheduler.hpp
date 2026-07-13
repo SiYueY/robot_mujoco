@@ -4,47 +4,73 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
+#include <future>
+#include <memory>
 #include <mutex>
-#include <string>
 #include <thread>
 
-#include "mujoco_simulation/runtime/model_runtime.hpp"
-#include "mujoco_simulation/runtime/scheduler_config.hpp"
-#include "mujoco_simulation/runtime/simulation_clock.hpp"
-#include "mujoco_simulation/runtime/simulation_request.hpp"
+#include "mujoco_simulation/reset_options.hpp"
+#include "mujoco_simulation/result_code.hpp"
+#include "mujoco_simulation/simulation_config.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
-#include "mujoco_simulation/status.hpp"
 
 namespace mujoco_simulation {
 
+struct ResetRequest {
+  ResetOptions options;
+  std::shared_ptr<std::promise<ResultCode>> completion;
+};
+
+struct SchedulerCallbacks {
+  std::function<double()> timestep_provider;
+  std::function<ResultCode()> write_commands;
+  std::function<ResultCode()> step_physics;
+  std::function<ResultCode()> read_components;
+  std::function<ResultCode()> publish_state_snapshot;
+  std::function<ResultCode()> sync_viewer_if_due;
+  std::function<ResultCode(const ResetOptions&)> reset_runtime;
+};
+
+struct SchedulerStatistics {
+  std::uint64_t physics_steps{0};
+  std::uint64_t loop_iterations{0};
+  std::uint64_t manual_step_calls{0};
+  std::uint64_t reset_requests{0};
+  std::uint64_t lag_recoveries{0};
+  double last_loop_duration_sec{0.0};
+  double last_step_duration_sec{0.0};
+  double last_realtime_factor{0.0};
+};
+
 class SimulationScheduler {
  public:
-  Status initialize(const SchedulerConfig& config, SchedulerCallbacks callbacks);
-  Status shutdown();
+  ResultCode initialize(const SchedulerConfig& config, SchedulerCallbacks callbacks);
+  ResultCode shutdown();
 
-  Status start();
-  Status stop();
-  Status pause();
-  Status resume();
-  Status step(std::size_t count = 1);
-  Status request_reset(const ResetRequest& request = {});
-  std::future<Status> request_reset_waitable(ResetRequest request = {});
-  Status set_realtime_factor(double realtime_factor);
+  ResultCode start();
+  ResultCode stop();
+  ResultCode pause();
+  ResultCode resume();
+  ResultCode step(std::size_t count = 1);
+  ResultCode request_reset(const ResetRequest& request = {});
+  std::future<ResultCode> request_reset_waitable(ResetRequest request = {});
+  ResultCode set_realtime_factor(double realtime_factor);
 
   SimulationStatus status() const;
   SchedulerStatistics statistics() const;
   double realtime_factor() const;
 
  private:
-  Status run_step_cycle(bool manual_step);
-  Status process_pending_requests(bool* reset_deadline);
-  Status process_reset_request(const ResetRequest& request, bool* reset_deadline);
-  void resolve_reset_request(const ResetRequest& request, const Status& status);
-  void fail_pending_reset_requests_locked(const Status& status);
+  ResultCode run_step_cycle(bool manual_step);
+  ResultCode process_pending_requests(bool* reset_deadline);
+  ResultCode process_reset_request(const ResetRequest& request, bool* reset_deadline);
+  void resolve_reset_request(const ResetRequest& request, const ResultCode& status);
+  void fail_pending_reset_requests_locked(const ResultCode& status);
   std::chrono::nanoseconds wall_period() const;
   void worker_loop();
   bool worker_should_wake_locked() const;
-  void set_error_locked(const Status& status);
+  void set_error_locked(const ResultCode& status);
 
   SchedulerConfig config_{};
   SchedulerCallbacks callbacks_{};

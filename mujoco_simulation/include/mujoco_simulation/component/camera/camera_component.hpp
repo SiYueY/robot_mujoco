@@ -3,23 +3,25 @@
 #include <mujoco/mujoco.h>
 
 #include "mujoco_simulation/buffer/camera_buffer.hpp"
-#include "mujoco_simulation/component/camera/camera_binding.hpp"
-#include "mujoco_simulation/component/camera/camera_config.hpp"
+#include "mujoco_simulation/component/camera/camera_data.hpp"
 #include "mujoco_simulation/component/camera/camera_renderer.hpp"
-#include "mujoco_simulation/component/camera/camera_sample.hpp"
-#include "mujoco_simulation/component/sensor_component.hpp"
+#include "mujoco_simulation/component/simulation_component.hpp"
 
 namespace mujoco_simulation {
 
-class CameraComponent : public SensorComponent {
+struct CameraBinding {
+  int camera_id{-1};
+  double fovy_degrees{0.0};
+};
+
+class CameraComponent : public SimulationComponent {
  public:
   explicit CameraComponent(CameraConfig config);
 
-  std::string_view name() const noexcept override;
-  Status bind(const mjModel& model) override;
-  Status reset(const mjModel& model, mjData& data) override;
-  double update_rate() const noexcept override;
-  Status sample(const SensorSampleContext& context) override;
+  std::string name() const noexcept override;
+  ResultCode bind(const mjModel& model) override;
+  ResultCode reset(const mjModel& model, mjData& data) override;
+  ResultCode update(const UpdateContext& context) override;
 
   const CameraConfig& config() const noexcept { return config_; }
   const CameraBinding& binding() const noexcept { return binding_; }

@@ -80,6 +80,7 @@ target_include_directories(mujoco_simulation_headers INTERFACE
 )
 
 add_library(mujoco_simulation_components STATIC
+  src/component/simulation_component.cpp
   src/component/component_manager.cpp
   src/component/component_registry.cpp
   src/component/camera/camera_component.cpp
@@ -87,7 +88,6 @@ add_library(mujoco_simulation_components STATIC
   src/component/joint/joint_component.cpp
   src/component/lidar/lidar_component.cpp
   src/component/mobile_base/mobile_base_component.cpp
-  src/scheduler/sensor_scheduler.cpp
 )
 target_link_libraries(mujoco_simulation_components PUBLIC
   mujoco_simulation_headers
@@ -117,7 +117,7 @@ target_link_libraries(mujoco_simulation_camera PRIVATE
 set_target_properties(mujoco_simulation_camera PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(mujoco_simulation_viewer_support STATIC
-  src/viewer/viewer.cpp
+  src/viewer/mujoco_viewer.cpp
 )
 target_link_libraries(mujoco_simulation_viewer_support PUBLIC
   mujoco_simulation_headers
@@ -234,11 +234,11 @@ if(BUILD_TESTING)
     target_link_libraries(test_command_buffer mujoco_simulation_headers)
   endif()
 
-  ament_add_gtest(test_sensor_scheduler
-    test/unit/test_sensor_scheduler.cpp
+  ament_add_gtest(test_simulation_component
+    test/unit/test_simulation_component.cpp
   )
-  if(TARGET test_sensor_scheduler)
-    target_link_libraries(test_sensor_scheduler mujoco_simulation_components)
+  if(TARGET test_simulation_component)
+    target_link_libraries(test_simulation_component mujoco_simulation_components)
   endif()
 
   ament_add_gtest(test_sensor_sampling

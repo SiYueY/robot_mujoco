@@ -78,14 +78,14 @@ int run_scheduler_1khz(std::uint64_t target_steps) {
   SimulationConfig config;
   config.model.model_path = model.path.string();
   config.scheduler.realtime_factor = 1.0;
-  const Status initialize_status = simulation.initialize(config);
-  if (!initialize_status.ok()) {
-    std::cerr << initialize_status.message() << '\n';
+  const ResultCode initialize_status = simulation.initialize(config);
+  if (initialize_status != ResultCode::Ok) {
+    std::cerr << "initialize failed\n";
     return 1;
   }
-  const Status start_status = simulation.start();
-  if (!start_status.ok()) {
-    std::cerr << start_status.message() << '\n';
+  const ResultCode start_status = simulation.start();
+  if (start_status != ResultCode::Ok) {
+    std::cerr << "start failed\n";
     return 1;
   }
 
@@ -117,9 +117,9 @@ int run_scheduler_1khz(std::uint64_t target_steps) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
-  const Status stop_status = simulation.stop();
-  if (!stop_status.ok()) {
-    std::cerr << stop_status.message() << '\n';
+  const ResultCode stop_status = simulation.stop();
+  if (stop_status != ResultCode::Ok) {
+    std::cerr << "stop failed\n";
     return 1;
   }
 
@@ -169,9 +169,9 @@ int run_headless_camera(std::uint64_t total_steps) {
                                    .width = 160,
                                    .enable_rgb = true,
                                    .enable_depth = true}}};
-  const Status initialize_status = simulation.initialize(config);
-  if (!initialize_status.ok()) {
-    std::cerr << initialize_status.message() << '\n';
+  const ResultCode initialize_status = simulation.initialize(config);
+  if (initialize_status != ResultCode::Ok) {
+    std::cerr << "initialize failed\n";
     return 1;
   }
 
@@ -183,22 +183,22 @@ int run_headless_camera(std::uint64_t total_steps) {
 
   for (std::uint64_t step = 0; step < total_steps; ++step) {
     const auto before_step = Clock::now();
-    const Status step_status = simulation.step(1);
-    if (!step_status.ok()) {
-      std::cerr << step_status.message() << '\n';
+    const ResultCode step_status = simulation.step(1);
+    if (step_status != ResultCode::Ok) {
+      std::cerr << "step failed\n";
       return 1;
     }
-    const auto sample = simulation.camera_sample("front_camera");
-    if (!sample.ok() || sample.value() == nullptr) {
-      std::cerr << (sample.ok() ? "camera sample unavailable" : sample.status().message()) << '\n';
+    CameraState state;
+    if (!simulation.camera_state("front_camera", &state)) {
+      std::cerr << "camera_state failed\n";
       return 1;
     }
-    if (sample.value()->sequence > last_sequence) {
+    if (state.sequence > last_sequence) {
       const auto after_read = Clock::now();
       sample_latency_ms.push_back(
           std::chrono::duration<double, std::milli>(after_read - before_step).count());
-      last_sequence = sample.value()->sequence;
-      last_timestamp_ns = sample.value()->timestamp_ns;
+      last_sequence = state.sequence;
+      last_timestamp_ns = state.timestamp_ns;
       ++collected_samples;
     }
   }

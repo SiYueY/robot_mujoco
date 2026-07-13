@@ -1,32 +1,35 @@
 #pragma once
 
+#include <mujoco/mujoco.h>
+
 #include <cstddef>
-#include <string>
+#include <memory>
 
 #include "mujoco_simulation/reset_options.hpp"
-#include "mujoco_simulation/runtime/mujoco_raii.hpp"
-#include "mujoco_simulation/status.hpp"
+#include "mujoco_simulation/result_code.hpp"
+#include "mujoco_simulation/simulation_config.hpp"
 
 namespace mujoco_simulation {
 
-struct ModelConfig {
-  std::string model_path;
-  std::string initial_keyframe;
-};
-
 class ModelRuntime {
  public:
-  ModelRuntime() = default;
+  ModelRuntime();
+  ~ModelRuntime();
 
-  Status load(const ModelConfig& config);
+  ModelRuntime(const ModelRuntime&) = delete;
+  ModelRuntime& operator=(const ModelRuntime&) = delete;
+  ModelRuntime(ModelRuntime&&) noexcept;
+  ModelRuntime& operator=(ModelRuntime&&) noexcept;
+
+  ResultCode load(const ModelConfig& config);
   void unload();
 
   bool is_loaded() const noexcept;
 
-  Status step();
-  Status step(std::size_t count);
-  Status forward();
-  Status reset(const ResetOptions& options = {});
+  ResultCode step();
+  ResultCode step(std::size_t count);
+  ResultCode forward();
+  ResultCode reset(const ResetOptions& options = {});
 
   const mjModel& model() const;
   mjModel& mutable_model();
@@ -36,13 +39,11 @@ class ModelRuntime {
   double simulation_time() const noexcept;
   double timestep() const noexcept;
 
-  Status copy_data_to(mjData& destination) const;
-
  private:
-  Status validate_loaded_model(const ModelConfig& config) const;
+  ResultCode validate_loaded_model(const ModelConfig& config) const;
 
-  MjModelPtr model_;
-  MjDataPtr data_;
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace mujoco_simulation

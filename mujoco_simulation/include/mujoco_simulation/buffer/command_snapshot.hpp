@@ -4,8 +4,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "mujoco_simulation/component/joint/joint_command.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_command.hpp"
+#include "mujoco_simulation/component/joint/joint_data.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 
 namespace mujoco_simulation {
 

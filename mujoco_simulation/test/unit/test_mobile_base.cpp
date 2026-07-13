@@ -3,9 +3,10 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 
-#include "mujoco_simulation/component/component_manager.hpp"
+#include "mujoco_simulation/component/joint/joint_component.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_component.hpp"
 
 namespace mujoco_simulation {
@@ -47,58 +48,37 @@ class MobileBaseTest : public ::testing::Test {
     mj_forward(model_, data_);
   }
 
-  Status register_joint(ComponentManager& manager, const JointConfig& info) {
-    return manager.register_joint(*model_, std::make_unique<JointComponent>(info));
+  std::unique_ptr<JointComponent> bind_joint(const JointConfig& info) {
+    auto joint = std::make_unique<JointComponent>(info);
+    EXPECT_EQ(joint->bind(*model_), ResultCode::Ok);
+    return joint;
   }
 
-  MobileBaseBinding differential_binding(ComponentManager& manager, const std::string& left,
-                                         const std::string& right) {
+  MobileBaseBinding differential_binding(const JointComponent& left_joint,
+                                         const JointComponent& right_joint) {
     MobileBaseBinding binding;
     binding.differential.emplace();
-    const JointComponent* left_joint = manager.joint(left);
-    const JointComponent* right_joint = manager.joint(right);
-    EXPECT_NE(left_joint, nullptr);
-    EXPECT_NE(right_joint, nullptr);
-    if (left_joint != nullptr) {
-      binding.differential->left_wheel.joint_name = left;
-      binding.differential->left_wheel.joint = left_joint->binding();
-    }
-    if (right_joint != nullptr) {
-      binding.differential->right_wheel.joint_name = right;
-      binding.differential->right_wheel.joint = right_joint->binding();
-    }
+    binding.differential->left_wheel.joint_name = std::string(left_joint.name());
+    binding.differential->left_wheel.joint = left_joint.binding();
+    binding.differential->right_wheel.joint_name = std::string(right_joint.name());
+    binding.differential->right_wheel.joint = right_joint.binding();
     return binding;
   }
 
-  MobileBaseBinding omnidirectional_binding(ComponentManager& manager, const std::string& fl,
-                                            const std::string& fr, const std::string& rl,
-                                            const std::string& rr) {
+  MobileBaseBinding omnidirectional_binding(const JointComponent& front_left,
+                                            const JointComponent& front_right,
+                                            const JointComponent& rear_left,
+                                            const JointComponent& rear_right) {
     MobileBaseBinding binding;
     binding.omnidirectional.emplace();
-    const JointComponent* front_left = manager.joint(fl);
-    const JointComponent* front_right = manager.joint(fr);
-    const JointComponent* rear_left = manager.joint(rl);
-    const JointComponent* rear_right = manager.joint(rr);
-    EXPECT_NE(front_left, nullptr);
-    EXPECT_NE(front_right, nullptr);
-    EXPECT_NE(rear_left, nullptr);
-    EXPECT_NE(rear_right, nullptr);
-    if (front_left != nullptr) {
-      binding.omnidirectional->front_left.joint_name = fl;
-      binding.omnidirectional->front_left.joint = front_left->binding();
-    }
-    if (front_right != nullptr) {
-      binding.omnidirectional->front_right.joint_name = fr;
-      binding.omnidirectional->front_right.joint = front_right->binding();
-    }
-    if (rear_left != nullptr) {
-      binding.omnidirectional->rear_left.joint_name = rl;
-      binding.omnidirectional->rear_left.joint = rear_left->binding();
-    }
-    if (rear_right != nullptr) {
-      binding.omnidirectional->rear_right.joint_name = rr;
-      binding.omnidirectional->rear_right.joint = rear_right->binding();
-    }
+    binding.omnidirectional->front_left.joint_name = std::string(front_left.name());
+    binding.omnidirectional->front_left.joint = front_left.binding();
+    binding.omnidirectional->front_right.joint_name = std::string(front_right.name());
+    binding.omnidirectional->front_right.joint = front_right.binding();
+    binding.omnidirectional->rear_left.joint_name = std::string(rear_left.name());
+    binding.omnidirectional->rear_left.joint = rear_left.binding();
+    binding.omnidirectional->rear_right.joint_name = std::string(rear_right.name());
+    binding.omnidirectional->rear_right.joint = rear_right.binding();
     return binding;
   }
 
@@ -126,15 +106,12 @@ TEST_F(MobileBaseTest, DifferentialWriteMapsTwistToWheelVelocityCommands) {
   </actuator>
 </mujoco>)");
 
-  ComponentManager manager;
-  ASSERT_TRUE(register_joint(manager, {.name = "left_wheel",
-                                       .actuator_name = "left_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "right_wheel",
-                                       .actuator_name = "right_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
+  auto left_joint = bind_joint({.name = "left_wheel",
+                                .actuator_name = "left_act",
+                                .command_mode = CommandInterfaceType::Velocity});
+  auto right_joint = bind_joint({.name = "right_wheel",
+                                 .actuator_name = "right_act",
+                                 .command_mode = CommandInterfaceType::Velocity});
 
   MobileBaseComponent base({.name = "base",
                             .type = MobileBaseType::Differential,
@@ -142,11 +119,11 @@ TEST_F(MobileBaseTest, DifferentialWriteMapsTwistToWheelVelocityCommands) {
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.2,
                             .track_width = 0.6},
-                           differential_binding(manager, "left_wheel", "right_wheel"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+                           differential_binding(*left_joint, *right_joint));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
-  ASSERT_TRUE(
-      base.write(*model_, *data_, {.linear = {1.0, 0.0, 0.0}, .angular = {0.0, 0.0, 0.5}}).ok());
+  ASSERT_EQ(base.write(*model_, *data_, {.linear = {1.0, 0.0, 0.0}, .angular = {0.0, 0.0, 0.5}}),
+            ResultCode::Ok);
   const int left_id = mj_name2id(model_, mjOBJ_ACTUATOR, "left_act");
   const int right_id = mj_name2id(model_, mjOBJ_ACTUATOR, "right_act");
   ASSERT_GE(left_id, 0);
@@ -170,9 +147,8 @@ TEST_F(MobileBaseTest, DifferentialReadComputesTwistFromWheelVelocities) {
   </worldbody>
 </mujoco>)");
 
-  ComponentManager manager;
-  ASSERT_TRUE(register_joint(manager, {.name = "left_wheel"}).ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "right_wheel"}).ok());
+  auto left_joint = bind_joint({.name = "left_wheel"});
+  auto right_joint = bind_joint({.name = "right_wheel"});
 
   data_->qvel[model_->jnt_dofadr[mj_name2id(model_, mjOBJ_JOINT, "left_wheel")]] = 2.0;
   data_->qvel[model_->jnt_dofadr[mj_name2id(model_, mjOBJ_JOINT, "right_wheel")]] = 4.0;
@@ -183,11 +159,11 @@ TEST_F(MobileBaseTest, DifferentialReadComputesTwistFromWheelVelocities) {
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.1,
                             .track_width = 0.5},
-                           differential_binding(manager, "left_wheel", "right_wheel"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+                           differential_binding(*left_joint, *right_joint));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   MobileBaseState state;
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(state.linear[0], 0.3);
   EXPECT_DOUBLE_EQ(state.angular[2], 0.4);
   EXPECT_DOUBLE_EQ(state.linear_x, 0.3);
@@ -205,10 +181,10 @@ TEST_F(MobileBaseTest, OmnidirectionalReadComputesTwistFromWheelVelocities) {
   </worldbody>
 </mujoco>)");
 
-  ComponentManager manager;
-  for (const auto& name : {"fl", "fr", "rl", "rr"}) {
-    ASSERT_TRUE(register_joint(manager, {.name = name}).ok());
-  }
+  auto front_left = bind_joint({.name = "fl"});
+  auto front_right = bind_joint({.name = "fr"});
+  auto rear_left = bind_joint({.name = "rl"});
+  auto rear_right = bind_joint({.name = "rr"});
 
   const int fl_id = mj_name2id(model_, mjOBJ_JOINT, "fl");
   const int fr_id = mj_name2id(model_, mjOBJ_JOINT, "fr");
@@ -219,20 +195,21 @@ TEST_F(MobileBaseTest, OmnidirectionalReadComputesTwistFromWheelVelocities) {
   data_->qvel[model_->jnt_dofadr[rl_id]] = 4.0;
   data_->qvel[model_->jnt_dofadr[rr_id]] = 8.0;
 
-  MobileBaseComponent base({.name = "base",
-                            .type = MobileBaseType::Omnidirectional,
-                            .front_left_joint = "fl",
-                            .front_right_joint = "fr",
-                            .rear_left_joint = "rl",
-                            .rear_right_joint = "rr",
-                            .wheel_radius = 0.1,
-                            .track_width = 0.3,
-                            .wheel_base = 0.5},
-                           omnidirectional_binding(manager, "fl", "fr", "rl", "rr"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+  MobileBaseComponent base(
+      {.name = "base",
+       .type = MobileBaseType::Omnidirectional,
+       .front_left_joint = "fl",
+       .front_right_joint = "fr",
+       .rear_left_joint = "rl",
+       .rear_right_joint = "rr",
+       .wheel_radius = 0.1,
+       .track_width = 0.3,
+       .wheel_base = 0.5},
+      omnidirectional_binding(*front_left, *front_right, *rear_left, *rear_right));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   MobileBaseState state;
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(state.linear[0], 0.5);
   EXPECT_DOUBLE_EQ(state.linear[1], 0.0);
   EXPECT_DOUBLE_EQ(state.angular[2], 0.25);
@@ -258,38 +235,30 @@ TEST_F(MobileBaseTest, OmnidirectionalWriteMapsTwistToWheelVelocityCommands) {
   </actuator>
 </mujoco>)");
 
-  ComponentManager manager;
-  ASSERT_TRUE(register_joint(manager, {.name = "fl",
-                                       .actuator_name = "fl_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "fr",
-                                       .actuator_name = "fr_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "rl",
-                                       .actuator_name = "rl_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "rr",
-                                       .actuator_name = "rr_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
+  auto front_left = bind_joint(
+      {.name = "fl", .actuator_name = "fl_act", .command_mode = CommandInterfaceType::Velocity});
+  auto front_right = bind_joint(
+      {.name = "fr", .actuator_name = "fr_act", .command_mode = CommandInterfaceType::Velocity});
+  auto rear_left = bind_joint(
+      {.name = "rl", .actuator_name = "rl_act", .command_mode = CommandInterfaceType::Velocity});
+  auto rear_right = bind_joint(
+      {.name = "rr", .actuator_name = "rr_act", .command_mode = CommandInterfaceType::Velocity});
 
-  MobileBaseComponent base({.name = "base",
-                            .type = MobileBaseType::Omnidirectional,
-                            .front_left_joint = "fl",
-                            .front_right_joint = "fr",
-                            .rear_left_joint = "rl",
-                            .rear_right_joint = "rr",
-                            .wheel_radius = 0.1,
-                            .track_width = 0.3,
-                            .wheel_base = 0.5},
-                           omnidirectional_binding(manager, "fl", "fr", "rl", "rr"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+  MobileBaseComponent base(
+      {.name = "base",
+       .type = MobileBaseType::Omnidirectional,
+       .front_left_joint = "fl",
+       .front_right_joint = "fr",
+       .rear_left_joint = "rl",
+       .rear_right_joint = "rr",
+       .wheel_radius = 0.1,
+       .track_width = 0.3,
+       .wheel_base = 0.5},
+      omnidirectional_binding(*front_left, *front_right, *rear_left, *rear_right));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
-  ASSERT_TRUE(
-      base.write(*model_, *data_, {.linear = {1.0, 0.2, 0.0}, .angular = {0.0, 0.0, 0.5}}).ok());
+  ASSERT_EQ(base.write(*model_, *data_, {.linear = {1.0, 0.2, 0.0}, .angular = {0.0, 0.0, 0.5}}),
+            ResultCode::Ok);
   EXPECT_DOUBLE_EQ(data_->ctrl[mj_name2id(model_, mjOBJ_ACTUATOR, "fl_act")], 4.0);
   EXPECT_DOUBLE_EQ(data_->ctrl[mj_name2id(model_, mjOBJ_ACTUATOR, "fr_act")], 16.0);
   EXPECT_DOUBLE_EQ(data_->ctrl[mj_name2id(model_, mjOBJ_ACTUATOR, "rl_act")], 8.0);
@@ -311,9 +280,8 @@ TEST_F(MobileBaseTest, WheelIntegrationAccumulatesOdometryAndResetClearsIt) {
   </worldbody>
 </mujoco>)");
 
-  ComponentManager manager;
-  ASSERT_TRUE(register_joint(manager, {.name = "left_wheel"}).ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "right_wheel"}).ok());
+  auto left_joint = bind_joint({.name = "left_wheel"});
+  auto right_joint = bind_joint({.name = "right_wheel"});
 
   MobileBaseComponent base({.name = "base",
                             .type = MobileBaseType::Differential,
@@ -322,8 +290,8 @@ TEST_F(MobileBaseTest, WheelIntegrationAccumulatesOdometryAndResetClearsIt) {
                             .wheel_radius = 0.1,
                             .track_width = 0.5,
                             .odometry_source = OdometrySource::WheelIntegration},
-                           differential_binding(manager, "left_wheel", "right_wheel"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+                           differential_binding(*left_joint, *right_joint));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   const int left_id = mj_name2id(model_, mjOBJ_JOINT, "left_wheel");
   const int right_id = mj_name2id(model_, mjOBJ_JOINT, "right_wheel");
@@ -331,18 +299,18 @@ TEST_F(MobileBaseTest, WheelIntegrationAccumulatesOdometryAndResetClearsIt) {
   data_->qvel[model_->jnt_dofadr[right_id]] = 1.0;
   data_->time = 0.0;
   MobileBaseState state;
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(state.x, 0.0);
   EXPECT_DOUBLE_EQ(state.y, 0.0);
 
   data_->time = 1.0;
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_NEAR(state.x, 0.1, 1e-9);
   EXPECT_NEAR(state.y, 0.0, 1e-9);
   EXPECT_NEAR(state.yaw, 0.0, 1e-9);
 
-  ASSERT_TRUE(base.reset(*model_, *data_).ok());
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.reset(*model_, *data_), ResultCode::Ok);
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(state.x, 0.0);
   EXPECT_DOUBLE_EQ(state.y, 0.0);
   EXPECT_DOUBLE_EQ(state.yaw, 0.0);
@@ -359,23 +327,24 @@ TEST_F(MobileBaseTest, OmnidirectionalWheelIntegrationAndResetClearOdometry) {
   </worldbody>
 </mujoco>)");
 
-  ComponentManager manager;
-  for (const auto& name : {"fl", "fr", "rl", "rr"}) {
-    ASSERT_TRUE(register_joint(manager, {.name = name}).ok());
-  }
+  auto front_left = bind_joint({.name = "fl"});
+  auto front_right = bind_joint({.name = "fr"});
+  auto rear_left = bind_joint({.name = "rl"});
+  auto rear_right = bind_joint({.name = "rr"});
 
-  MobileBaseComponent base({.name = "base",
-                            .type = MobileBaseType::Omnidirectional,
-                            .front_left_joint = "fl",
-                            .front_right_joint = "fr",
-                            .rear_left_joint = "rl",
-                            .rear_right_joint = "rr",
-                            .wheel_radius = 0.1,
-                            .track_width = 0.3,
-                            .wheel_base = 0.5,
-                            .odometry_source = OdometrySource::WheelIntegration},
-                           omnidirectional_binding(manager, "fl", "fr", "rl", "rr"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+  MobileBaseComponent base(
+      {.name = "base",
+       .type = MobileBaseType::Omnidirectional,
+       .front_left_joint = "fl",
+       .front_right_joint = "fr",
+       .rear_left_joint = "rl",
+       .rear_right_joint = "rr",
+       .wheel_radius = 0.1,
+       .track_width = 0.3,
+       .wheel_base = 0.5,
+       .odometry_source = OdometrySource::WheelIntegration},
+      omnidirectional_binding(*front_left, *front_right, *rear_left, *rear_right));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   const int fl_id = mj_name2id(model_, mjOBJ_JOINT, "fl");
   const int fr_id = mj_name2id(model_, mjOBJ_JOINT, "fr");
@@ -389,19 +358,19 @@ TEST_F(MobileBaseTest, OmnidirectionalWheelIntegrationAndResetClearOdometry) {
   data_->time = 0.0;
 
   MobileBaseState state;
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(state.x, 0.0);
   EXPECT_DOUBLE_EQ(state.y, 0.0);
   EXPECT_DOUBLE_EQ(state.yaw, 0.0);
 
   data_->time = 1.0;
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_NEAR(state.x, 0.1, 1e-9);
   EXPECT_NEAR(state.y, 0.0, 1e-9);
   EXPECT_NEAR(state.yaw, 0.0, 1e-9);
 
-  ASSERT_TRUE(base.reset(*model_, *data_).ok());
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.reset(*model_, *data_), ResultCode::Ok);
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(state.x, 0.0);
   EXPECT_DOUBLE_EQ(state.y, 0.0);
   EXPECT_DOUBLE_EQ(state.yaw, 0.0);
@@ -423,9 +392,8 @@ TEST_F(MobileBaseTest, GroundTruthPoseOverridesIntegratedOdometry) {
   </worldbody>
 </mujoco>)");
 
-  ComponentManager manager;
-  ASSERT_TRUE(register_joint(manager, {.name = "left_wheel"}).ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "right_wheel"}).ok());
+  auto left_joint = bind_joint({.name = "left_wheel"});
+  auto right_joint = bind_joint({.name = "right_wheel"});
 
   MobileBaseComponent base({.name = "base",
                             .type = MobileBaseType::Differential,
@@ -435,8 +403,8 @@ TEST_F(MobileBaseTest, GroundTruthPoseOverridesIntegratedOdometry) {
                             .track_width = 0.5,
                             .odometry_source = OdometrySource::GroundTruthBodyPose,
                             .base_body_name = "base_link"},
-                           differential_binding(manager, "left_wheel", "right_wheel"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+                           differential_binding(*left_joint, *right_joint));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   const int left_id = mj_name2id(model_, mjOBJ_JOINT, "left_wheel");
   const int right_id = mj_name2id(model_, mjOBJ_JOINT, "right_wheel");
@@ -445,7 +413,7 @@ TEST_F(MobileBaseTest, GroundTruthPoseOverridesIntegratedOdometry) {
   mj_forward(model_, data_);
 
   MobileBaseState state;
-  ASSERT_TRUE(base.read(*data_, state).ok());
+  ASSERT_EQ(base.read(*data_, state), ResultCode::Ok);
   EXPECT_NEAR(state.x, 1.0, 1e-9);
   EXPECT_NEAR(state.y, 2.0, 1e-9);
   EXPECT_NEAR(state.yaw, 0.5, 1e-6);
@@ -471,15 +439,12 @@ TEST_F(MobileBaseTest, DifferentialBaseRejectsLateralVelocityCommand) {
   </actuator>
 </mujoco>)");
 
-  ComponentManager manager;
-  ASSERT_TRUE(register_joint(manager, {.name = "left_wheel",
-                                       .actuator_name = "left_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "right_wheel",
-                                       .actuator_name = "right_act",
-                                       .command_mode = CommandInterfaceType::Velocity})
-                  .ok());
+  auto left_joint = bind_joint({.name = "left_wheel",
+                                .actuator_name = "left_act",
+                                .command_mode = CommandInterfaceType::Velocity});
+  auto right_joint = bind_joint({.name = "right_wheel",
+                                 .actuator_name = "right_act",
+                                 .command_mode = CommandInterfaceType::Velocity});
 
   MobileBaseComponent base({.name = "base",
                             .type = MobileBaseType::Differential,
@@ -487,13 +452,12 @@ TEST_F(MobileBaseTest, DifferentialBaseRejectsLateralVelocityCommand) {
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.2,
                             .track_width = 0.6},
-                           differential_binding(manager, "left_wheel", "right_wheel"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+                           differential_binding(*left_joint, *right_joint));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
-  const Status status =
+  const ResultCode status =
       base.write(*model_, *data_, {.linear = {0.5, 0.1, 0.0}, .angular = {0.0, 0.0, 0.0}});
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::CommandRejected);
+  EXPECT_EQ(status, ResultCode::CommandRejected);
 }
 
 TEST_F(MobileBaseTest, MissingGroundTruthBodyFailsWithBindingError) {
@@ -511,9 +475,8 @@ TEST_F(MobileBaseTest, MissingGroundTruthBodyFailsWithBindingError) {
   </worldbody>
 </mujoco>)");
 
-  ComponentManager manager;
-  ASSERT_TRUE(register_joint(manager, {.name = "left_wheel"}).ok());
-  ASSERT_TRUE(register_joint(manager, {.name = "right_wheel"}).ok());
+  auto left_joint = bind_joint({.name = "left_wheel"});
+  auto right_joint = bind_joint({.name = "right_wheel"});
 
   MobileBaseComponent base({.name = "base",
                             .type = MobileBaseType::Differential,
@@ -523,13 +486,12 @@ TEST_F(MobileBaseTest, MissingGroundTruthBodyFailsWithBindingError) {
                             .track_width = 0.5,
                             .odometry_source = OdometrySource::GroundTruthBodyPose,
                             .base_body_name = "missing_body"},
-                           differential_binding(manager, "left_wheel", "right_wheel"));
-  const Status status = base.bind(*model_);
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::BindingFailed);
+                           differential_binding(*left_joint, *right_joint));
+  const ResultCode status = base.bind(*model_);
+  EXPECT_EQ(status, ResultCode::BindingFailed);
 }
 
-TEST_F(MobileBaseTest, JointReconfigurationDoesNotInvalidateResolvedBindings) {
+TEST_F(MobileBaseTest, RebindingNewJointComponentsDoesNotInvalidateResolvedBindings) {
   load_model(R"(
 <mujoco model="mobile_base">
   <worldbody>
@@ -548,15 +510,14 @@ TEST_F(MobileBaseTest, JointReconfigurationDoesNotInvalidateResolvedBindings) {
   </actuator>
 </mujoco>)");
 
-  ComponentManager manager;
   const JointConfig config_left{.name = "left_wheel",
                                 .actuator_name = "left_act",
                                 .command_mode = CommandInterfaceType::Velocity};
   const JointConfig config_right{.name = "right_wheel",
                                  .actuator_name = "right_act",
                                  .command_mode = CommandInterfaceType::Velocity};
-  ASSERT_TRUE(register_joint(manager, config_left).ok());
-  ASSERT_TRUE(register_joint(manager, config_right).ok());
+  auto left_joint = bind_joint(config_left);
+  auto right_joint = bind_joint(config_right);
 
   MobileBaseComponent base({.name = "base",
                             .type = MobileBaseType::Differential,
@@ -564,21 +525,21 @@ TEST_F(MobileBaseTest, JointReconfigurationDoesNotInvalidateResolvedBindings) {
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.2,
                             .track_width = 0.6},
-                           differential_binding(manager, "left_wheel", "right_wheel"));
-  ASSERT_TRUE(base.bind(*model_).ok());
+                           differential_binding(*left_joint, *right_joint));
+  ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
-  ASSERT_TRUE(
-      base.write(*model_, *data_, {.linear = {0.4, 0.0, 0.0}, .angular = {0.0, 0.0, 0.0}}).ok());
-  ASSERT_TRUE(manager.unregister_joint("left_wheel").ok());
-  ASSERT_TRUE(manager.unregister_joint("right_wheel").ok());
+  ASSERT_EQ(base.write(*model_, *data_, {.linear = {0.4, 0.0, 0.0}, .angular = {0.0, 0.0, 0.0}}),
+            ResultCode::Ok);
 
-  ASSERT_TRUE(
-      base.write(*model_, *data_, {.linear = {0.4, 0.0, 0.0}, .angular = {0.0, 0.0, 0.0}}).ok());
+  ASSERT_EQ(base.write(*model_, *data_, {.linear = {0.4, 0.0, 0.0}, .angular = {0.0, 0.0, 0.0}}),
+            ResultCode::Ok);
 
-  ASSERT_TRUE(register_joint(manager, config_left).ok());
-  ASSERT_TRUE(register_joint(manager, config_right).ok());
-  ASSERT_TRUE(
-      base.write(*model_, *data_, {.linear = {0.4, 0.0, 0.0}, .angular = {0.0, 0.0, 0.0}}).ok());
+  auto rebound_left_joint = bind_joint(config_left);
+  auto rebound_right_joint = bind_joint(config_right);
+  (void)rebound_left_joint;
+  (void)rebound_right_joint;
+  ASSERT_EQ(base.write(*model_, *data_, {.linear = {0.4, 0.0, 0.0}, .angular = {0.0, 0.0, 0.0}}),
+            ResultCode::Ok);
 
   const int left_id = mj_name2id(model_, mjOBJ_ACTUATOR, "left_act");
   const int right_id = mj_name2id(model_, mjOBJ_ACTUATOR, "right_act");

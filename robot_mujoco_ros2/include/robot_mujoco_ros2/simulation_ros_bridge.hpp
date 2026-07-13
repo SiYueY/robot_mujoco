@@ -7,7 +7,8 @@
 #include <thread>
 #include <vector>
 
-#include "mujoco_simulation/status.hpp"
+#include "mujoco_simulation/result_code.hpp"
+#include "mujoco_simulation/simulation_status.hpp"
 #include "rclcpp/callback_group.hpp"
 #include "rclcpp/context.hpp"
 #include "rclcpp/contexts/default_context.hpp"
@@ -33,10 +34,11 @@ class LidarPublisher;
 class SimulationRosBridge {
  public:
   using ServiceGateCallback = std::function<bool()>;
-  using StatusCallback = std::function<mujoco_simulation::Status()>;
-  using StepStatusCallback = std::function<mujoco_simulation::Status(std::uint32_t)>;
-  using RealtimeFactorStatusCallback = std::function<mujoco_simulation::Status(double)>;
-  using KeyframeResetStatusCallback = std::function<mujoco_simulation::Status(const std::string&)>;
+  using StatusCallback = std::function<mujoco_simulation::ResultCode()>;
+  using StepStatusCallback = std::function<mujoco_simulation::ResultCode(std::uint32_t)>;
+  using RealtimeFactorStatusCallback = std::function<mujoco_simulation::ResultCode(double)>;
+  using KeyframeResetStatusCallback =
+      std::function<mujoco_simulation::ResultCode(const std::string&)>;
 
   SimulationRosBridge(
       SimulationRosBridgeConfig config,
@@ -54,17 +56,17 @@ class SimulationRosBridge {
   SimulationRosBridge(SimulationRosBridge&&) = delete;
   SimulationRosBridge& operator=(SimulationRosBridge&&) = delete;
 
-  mujoco_simulation::Status start();
-  mujoco_simulation::Status stop();
+  mujoco_simulation::ResultCode start();
+  mujoco_simulation::ResultCode stop();
   void update_sim_time(const rclcpp::Time& sim_time);
-  mujoco_simulation::Status enqueue_publish_bundle(const PublishBundle& bundle);
+  mujoco_simulation::ResultCode enqueue_publish_bundle(const PublishBundle& bundle);
 
  private:
   void publish_clock(const rclcpp::Time& sim_time);
   void run_publish_worker();
   bool is_service_allowed() const;
   template <typename CallbackT>
-  mujoco_simulation::Status invoke_service_callback(const CallbackT& callback) const;
+  mujoco_simulation::ResultCode invoke_service_callback(const CallbackT& callback) const;
   PublishChannelConfig make_publish_channel_config() const;
 
   SimulationRosBridgeConfig config_;

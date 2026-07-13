@@ -12,6 +12,8 @@
 namespace robot_mujoco_ros2 {
 namespace {
 
+using mujoco_simulation::ResultCode;
+
 using namespace std::chrono_literals;
 
 rclcpp::NodeOptions make_node_options(const rclcpp::Context::SharedPtr& context) {
@@ -26,10 +28,10 @@ rclcpp::NodeOptions make_node_options(const rclcpp::Context::SharedPtr& context)
 }
 
 template <typename ResponseT>
-void fill_status_response(const mujoco_simulation::Status& status,
+void fill_status_response(const mujoco_simulation::ResultCode& status,
                           const std::string& success_message, ResponseT& response) {
-  response.success = status.ok();
-  response.message = status.ok() ? success_message : status.message();
+  response.success = status == ResultCode::Ok;
+  response.message = status == ResultCode::Ok ? success_message : "operation failed";
 }
 
 template <typename ServiceT, typename RequestHandlerT>
@@ -51,8 +53,8 @@ class ImuPublisher {
         publisher_(node.create_publisher<sensor_msgs::msg::Imu>(config_.topic,
                                                                 qos_profiles::sensor_data())) {}
 
-  void publish(const mujoco_simulation::ImuSample& sample, const rclcpp::Time& stamp) {
-    publisher_->publish(message_mapper::make_imu_message(config_, sample, stamp));
+  void publish(const mujoco_simulation::ImuState& state, const rclcpp::Time& stamp) {
+    publisher_->publish(message_mapper::make_imu_message(config_, state, stamp));
   }
 
  private:
@@ -106,8 +108,8 @@ class LidarPublisher {
         publisher_(node.create_publisher<sensor_msgs::msg::LaserScan>(
             config_.topic, qos_profiles::sensor_data())) {}
 
-  void publish(const mujoco_simulation::LidarSample& sample, const rclcpp::Time& stamp) {
-    publisher_->publish(message_mapper::make_lidar_message(config_, sample, stamp));
+  void publish(const mujoco_simulation::LidarState& state, const rclcpp::Time& stamp) {
+    publisher_->publish(message_mapper::make_lidar_message(config_, state, stamp));
   }
 
  private:
@@ -170,15 +172,13 @@ SimulationRosBridge::SimulationRosBridge(
           const std::shared_ptr<robot_mujoco_msgs::srv::StepSimulation::Request> request,
           std::shared_ptr<robot_mujoco_msgs::srv::StepSimulation::Response> response) {
         if (!is_service_allowed()) {
-          fill_status_response(
-              mujoco_simulation::Status::invalid_state("Simulation ROS bridge is not active."),
-              "Simulation stepped.", *response);
+          fill_status_response(mujoco_simulation::ResultCode::InvalidState, "Simulation stepped.",
+                               *response);
           return;
         }
         if (!callback) {
-          fill_status_response(
-              mujoco_simulation::Status::invalid_state("Step callback is not configured."),
-              "Simulation stepped.", *response);
+          fill_status_response(mujoco_simulation::ResultCode::InvalidState, "Simulation stepped.",
+                               *response);
           return;
         }
         fill_status_response(callback(request->steps), "Simulation stepped.", *response);
@@ -189,14 +189,12 @@ SimulationRosBridge::SimulationRosBridge(
           const std::shared_ptr<robot_mujoco_msgs::srv::SetRealtimeFactor::Request> request,
           std::shared_ptr<robot_mujoco_msgs::srv::SetRealtimeFactor::Response> response) {
         if (!is_service_allowed()) {
-          fill_status_response(
-              mujoco_simulation::Status::invalid_state("Simulation ROS bridge is not active."),
-              "Realtime factor updated.", *response);
+          fill_status_response(mujoco_simulation::ResultCode::InvalidState,
+                               "Realtime factor updated.", *response);
           return;
         }
         if (!callback) {
-          fill_status_response(mujoco_simulation::Status::invalid_state(
-                                   "Realtime factor callback is not configured."),
+          fill_status_response(mujoco_simulation::ResultCode::InvalidState,
                                "Realtime factor updated.", *response);
           return;
         }
@@ -209,14 +207,12 @@ SimulationRosBridge::SimulationRosBridge(
           const std::shared_ptr<robot_mujoco_msgs::srv::ResetWorld::Request> request,
           std::shared_ptr<robot_mujoco_msgs::srv::ResetWorld::Response> response) {
         if (!is_service_allowed()) {
-          fill_status_response(
-              mujoco_simulation::Status::invalid_state("Simulation ROS bridge is not active."),
-              "Keyframe reset completed.", *response);
+          fill_status_response(mujoco_simulation::ResultCode::InvalidState,
+                               "Keyframe reset completed.", *response);
           return;
         }
         if (!callback) {
-          fill_status_response(mujoco_simulation::Status::invalid_state(
-                                   "Keyframe reset callback is not configured."),
+          fill_status_response(mujoco_simulation::ResultCode::InvalidState,
                                "Keyframe reset completed.", *response);
           return;
         }
@@ -249,12 +245,12 @@ SimulationRosBridge::~SimulationRosBridge() {
   (void)stop();
 }
 
-mujoco_simulation::Status SimulationRosBridge::start() {
+mujoco_simulation::ResultCode SimulationRosBridge::start() {
   if (shutdown_.load()) {
-    return mujoco_simulation::Status::invalid_state("Simulation ROS bridge is shutdown.");
+    return mujoco_simulation::ResultCode::InvalidState;
   }
   if (worker_running_.exchange(true)) {
-    return mujoco_simulation::Status::Ok();
+    return mujoco_simulation::ResultCode::Ok;
   }
 
   rclcpp::ExecutorOptions executor_options;
@@ -264,16 +260,16 @@ mujoco_simulation::Status SimulationRosBridge::start() {
 
   executor_thread_ = std::thread([this]() { executor_->spin(); });
   publish_thread_ = std::thread([this]() { run_publish_worker(); });
-  return mujoco_simulation::Status::Ok();
+  return mujoco_simulation::ResultCode::Ok;
 }
 
-mujoco_simulation::Status SimulationRosBridge::stop() {
+mujoco_simulation::ResultCode SimulationRosBridge::stop() {
   if (!worker_running_.exchange(false)) {
     if (executor_ != nullptr && node_ != nullptr) {
       executor_->remove_node(node_);
     }
     executor_.reset();
-    return mujoco_simulation::Status::Ok();
+    return mujoco_simulation::ResultCode::Ok;
   }
   if (executor_ != nullptr) {
     executor_->cancel();
@@ -288,7 +284,7 @@ mujoco_simulation::Status SimulationRosBridge::stop() {
     executor_->remove_node(node_);
   }
   executor_.reset();
-  return mujoco_simulation::Status::Ok();
+  return mujoco_simulation::ResultCode::Ok;
 }
 
 void SimulationRosBridge::update_sim_time(const rclcpp::Time& sim_time) {
@@ -296,9 +292,10 @@ void SimulationRosBridge::update_sim_time(const rclcpp::Time& sim_time) {
   publish_channel_.update_clock(sim_time);
 }
 
-mujoco_simulation::Status SimulationRosBridge::enqueue_publish_bundle(const PublishBundle& bundle) {
+mujoco_simulation::ResultCode SimulationRosBridge::enqueue_publish_bundle(
+    const PublishBundle& bundle) {
   if (!worker_running_.load()) {
-    return mujoco_simulation::Status::invalid_state("Simulation ROS bridge is not active.");
+    return mujoco_simulation::ResultCode::InvalidState;
   }
   sim_time_ns_.store(bundle.sim_time.nanoseconds());
   return publish_channel_.publish_bundle(bundle);
@@ -317,12 +314,12 @@ void SimulationRosBridge::run_publish_worker() {
       publish_clock(snapshot.sim_time);
       for (const auto& imu : snapshot.imus) {
         if (imu.publisher_index < imus_.size()) {
-          imus_[imu.publisher_index]->publish(imu.sample, snapshot.sim_time);
+          imus_[imu.publisher_index]->publish(imu.state, snapshot.sim_time);
         }
       }
       for (const auto& lidar : snapshot.lidars) {
         if (lidar.publisher_index < lidars_.size()) {
-          lidars_[lidar.publisher_index]->publish(lidar.sample, snapshot.sim_time);
+          lidars_[lidar.publisher_index]->publish(lidar.state, snapshot.sim_time);
         }
       }
       did_work = true;
@@ -374,14 +371,13 @@ PublishChannelConfig SimulationRosBridge::make_publish_channel_config() const {
 }
 
 template <typename CallbackT>
-mujoco_simulation::Status SimulationRosBridge::invoke_service_callback(
+mujoco_simulation::ResultCode SimulationRosBridge::invoke_service_callback(
     const CallbackT& callback) const {
   if (!is_service_allowed()) {
-    return mujoco_simulation::Status::invalid_state("Simulation ROS bridge is not active.");
+    return mujoco_simulation::ResultCode::InvalidState;
   }
   if (!callback) {
-    return mujoco_simulation::Status::invalid_state(
-        "Requested service callback is not configured.");
+    return mujoco_simulation::ResultCode::InvalidState;
   }
   return callback();
 }

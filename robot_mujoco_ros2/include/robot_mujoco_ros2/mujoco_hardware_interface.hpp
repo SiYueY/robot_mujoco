@@ -8,7 +8,7 @@
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
-#include "mujoco_simulation/component/joint/joint_config.hpp"
+#include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/simulation.hpp"
 #include "robot_mujoco_ros2/config_builder.hpp"
 #include "robot_mujoco_ros2/data.hpp"
@@ -67,19 +67,19 @@ class MuJoCoHardwareInterface : public hardware_interface::SystemInterface {
   JointData* find_joint(const std::string& joint_name);
   const JointData* find_joint(const std::string& joint_name) const;
   void initialize_command_buffers();
-  mujoco_simulation::Status request_start_status();
-  mujoco_simulation::Status request_stop_status();
-  mujoco_simulation::Status request_pause_status();
-  mujoco_simulation::Status request_resume_status();
-  mujoco_simulation::Status request_step_status(uint32_t steps);
-  mujoco_simulation::Status request_set_realtime_factor_status(double realtime_factor);
-  mujoco_simulation::Status request_keyframe_reset_status(const std::string& keyframe);
-  mujoco_simulation::Status request_reset_status();
-  mujoco_simulation::Status update_runtime_state();
-  mujoco_simulation::Status update_runtime_state_from_snapshot(
-      const mujoco_simulation::SimulationStateSnapshot& snapshot);
-  mujoco_simulation::Status publish_snapshot_to_channel(
-      const std::shared_ptr<const mujoco_simulation::SimulationStateSnapshot>& snapshot);
+  mujoco_simulation::ResultCode request_start_status();
+  mujoco_simulation::ResultCode request_stop_status();
+  mujoco_simulation::ResultCode request_pause_status();
+  mujoco_simulation::ResultCode request_resume_status();
+  mujoco_simulation::ResultCode request_step_status(uint32_t steps);
+  mujoco_simulation::ResultCode request_set_realtime_factor_status(double realtime_factor);
+  mujoco_simulation::ResultCode request_keyframe_reset_status(const std::string& keyframe);
+  mujoco_simulation::ResultCode request_reset_status();
+  mujoco_simulation::ResultCode update_runtime_state();
+  mujoco_simulation::ResultCode update_runtime_state_from_snapshot(
+      const mujoco_simulation::StateSnapshot& snapshot);
+  mujoco_simulation::ResultCode publish_snapshot_to_channel(
+      const std::shared_ptr<const mujoco_simulation::StateSnapshot>& snapshot);
 
   HardwareConfig config_;
   HardwareMappingConfig hardware_mapping_config_;
@@ -87,9 +87,9 @@ class MuJoCoHardwareInterface : public hardware_interface::SystemInterface {
   std::unique_ptr<mujoco_simulation::Simulation> simulation_;
   std::unique_ptr<robot_mujoco_ros2::SimulationRosBridge> ros_bridge_;
   SystemState system_state_{SystemState::kUnconfigured};
-  std::vector<mujoco_simulation::ImuSample> publish_imu_samples_;
-  std::vector<mujoco_simulation::LidarSample> publish_lidar_samples_;
-  std::vector<std::shared_ptr<const mujoco_simulation::CameraSample>> publish_camera_samples_;
+  std::vector<mujoco_simulation::ImuState> publish_imu_states_;
+  std::vector<mujoco_simulation::LidarState> publish_lidar_states_;
+  std::vector<mujoco_simulation::CameraState> publish_camera_states_;
   PublishBundle publish_bundle_;
   std::map<std::string, mujoco_simulation::CommandInterfaceType> active_joint_modes_;
   PendingModeSwitch pending_mode_switch_;

@@ -18,11 +18,11 @@ using namespace std::chrono_literals;
 
 SchedulerCallbacks make_callbacks(std::atomic<int>& physics_steps,
                                   std::function<void()> after_step = {},
-                                  std::function<Status(const ResetOptions&)> reset = {},
-                                  std::function<Status()> write = {},
-                                  std::function<Status()> read = {},
-                                  std::function<Status()> publish = {},
-                                  std::function<Status()> sync_viewer = {}) {
+                                  std::function<ResultCode(const ResetOptions&)> reset = {},
+                                  std::function<ResultCode()> write = {},
+                                  std::function<ResultCode()> read = {},
+                                  std::function<ResultCode()> publish = {},
+                                  std::function<ResultCode()> sync_viewer = {}) {
   SchedulerCallbacks callbacks;
   callbacks.timestep_provider = []() { return 0.001; };
   callbacks.write_commands = std::move(write);
@@ -31,13 +31,13 @@ SchedulerCallbacks make_callbacks(std::atomic<int>& physics_steps,
     if (after_step) {
       after_step();
     }
-    return Status::Ok();
+    return ResultCode::Ok;
   };
   callbacks.read_components = std::move(read);
   callbacks.publish_state_snapshot = std::move(publish);
   callbacks.sync_viewer_if_due = std::move(sync_viewer);
   callbacks.reset_runtime =
-      reset ? std::move(reset) : [](const ResetOptions&) { return Status::Ok(); };
+      reset ? std::move(reset) : [](const ResetOptions&) { return ResultCode::Ok; };
   return callbacks;
 }
 
@@ -45,52 +45,50 @@ SchedulerCallbacks make_callbacks(std::atomic<int>& physics_steps,
 
 TEST(SimulationSchedulerTest, RejectsStartBeforeInitialize) {
   SimulationScheduler scheduler;
-  const Status status = scheduler.start();
+  const ResultCode status = scheduler.start();
 
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::FailedPrecondition);
+  EXPECT_EQ(status, ResultCode::FailedPrecondition);
 }
 
 TEST(SimulationSchedulerTest, ManualStepAllowedWhenStoppedAndRejectedWhenRunning) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  ASSERT_TRUE(scheduler.initialize({}, make_callbacks(physics_steps)).ok());
+  ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps)), ResultCode::Ok);
 
-  ASSERT_TRUE(scheduler.step(3).ok());
+  ASSERT_EQ(scheduler.step(3), ResultCode::Ok);
   EXPECT_EQ(physics_steps.load(), 3);
   EXPECT_EQ(scheduler.statistics().manual_step_calls, 3u);
 
-  ASSERT_TRUE(scheduler.start().ok());
+  ASSERT_EQ(scheduler.start(), ResultCode::Ok);
   std::this_thread::sleep_for(10ms);
 
-  const Status step_while_running = scheduler.step();
-  EXPECT_FALSE(step_while_running.ok());
-  EXPECT_EQ(step_while_running.code(), StatusCode::FailedPrecondition);
+  const ResultCode step_while_running = scheduler.step();
+  EXPECT_EQ(step_while_running, ResultCode::FailedPrecondition);
 
-  ASSERT_TRUE(scheduler.stop().ok());
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, PauseStopsPhysicsAndResumeRestartsIt) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  ASSERT_TRUE(scheduler.initialize({}, make_callbacks(physics_steps)).ok());
-  ASSERT_TRUE(scheduler.start().ok());
+  ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps)), ResultCode::Ok);
+  ASSERT_EQ(scheduler.start(), ResultCode::Ok);
 
   std::this_thread::sleep_for(20ms);
-  ASSERT_TRUE(scheduler.pause().ok());
+  ASSERT_EQ(scheduler.pause(), ResultCode::Ok);
 
   const int paused_count = physics_steps.load();
   std::this_thread::sleep_for(20ms);
   EXPECT_EQ(physics_steps.load(), paused_count);
   EXPECT_EQ(scheduler.status(), SimulationStatus::Paused);
 
-  ASSERT_TRUE(scheduler.resume().ok());
+  ASSERT_EQ(scheduler.resume(), ResultCode::Ok);
   std::this_thread::sleep_for(20ms);
   EXPECT_GT(physics_steps.load(), paused_count);
 
-  ASSERT_TRUE(scheduler.stop().ok());
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, ManualStepExecutesCallbacksInDocumentedOrder) {
@@ -102,7 +100,7 @@ TEST(SimulationSchedulerTest, ManualStepExecutesCallbacksInDocumentedOrder) {
   auto record = [&events_mutex, &events](const char* name) {
     std::lock_guard<std::mutex> lock(events_mutex);
     events.emplace_back(name);
-    return Status::Ok();
+    return ResultCode::Ok;
   };
 
   SchedulerCallbacks callbacks = make_callbacks(
@@ -114,8 +112,8 @@ TEST(SimulationSchedulerTest, ManualStepExecutesCallbacksInDocumentedOrder) {
     return record("step");
   };
 
-  ASSERT_TRUE(scheduler.initialize({}, std::move(callbacks)).ok());
-  ASSERT_TRUE(scheduler.step().ok());
+  ASSERT_EQ(scheduler.initialize({}, std::move(callbacks)), ResultCode::Ok);
+  ASSERT_EQ(scheduler.step(), ResultCode::Ok);
 
   EXPECT_EQ(events.size(), 5u);
   ASSERT_EQ(events.size(), 5u);
@@ -130,7 +128,7 @@ TEST(SimulationSchedulerTest, ManualStepExecutesCallbacksInDocumentedOrder) {
   EXPECT_EQ(statistics.loop_iterations, 1u);
   EXPECT_EQ(statistics.manual_step_calls, 1u);
 
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, ResetRequestRunsOnWorkerThread) {
@@ -142,83 +140,79 @@ TEST(SimulationSchedulerTest, ResetRequestRunsOnWorkerThread) {
 
   auto reset_callback = [&reset_thread_promise](const ResetOptions&) {
     reset_thread_promise.set_value(std::this_thread::get_id());
-    return Status::Ok();
+    return ResultCode::Ok;
   };
 
-  ASSERT_TRUE(
-      scheduler.initialize({}, make_callbacks(physics_steps, {}, std::move(reset_callback))).ok());
-  ASSERT_TRUE(scheduler.start().ok());
-  ASSERT_TRUE(scheduler.request_reset({.options = {.reset_statistics = true}}).ok());
+  ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps, {}, std::move(reset_callback))),
+            ResultCode::Ok);
+  ASSERT_EQ(scheduler.start(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.request_reset({.options = {.reset_statistics = true}}), ResultCode::Ok);
 
   ASSERT_EQ(reset_thread_future.wait_for(1s), std::future_status::ready);
   EXPECT_NE(reset_thread_future.get(), caller_thread);
 
-  ASSERT_TRUE(scheduler.stop().ok());
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, WaitableResetReturnsExecutionFailure) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  auto reset_callback = [](const ResetOptions&) { return Status::internal("reset failed"); };
+  auto reset_callback = [](const ResetOptions&) { return ResultCode::Internal; };
 
-  ASSERT_TRUE(
-      scheduler.initialize({}, make_callbacks(physics_steps, {}, std::move(reset_callback))).ok());
-  ASSERT_TRUE(scheduler.start().ok());
+  ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps, {}, std::move(reset_callback))),
+            ResultCode::Ok);
+  ASSERT_EQ(scheduler.start(), ResultCode::Ok);
 
-  std::future<Status> completion =
+  std::future<ResultCode> completion =
       scheduler.request_reset_waitable({.options = {.reset_statistics = true}});
   ASSERT_EQ(completion.wait_for(1s), std::future_status::ready);
 
-  const Status status = completion.get();
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::Internal);
-  EXPECT_EQ(status.message(), "reset failed");
+  const ResultCode status = completion.get();
+  EXPECT_EQ(status, ResultCode::Internal);
 
-  ASSERT_TRUE(scheduler.stop().ok());
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, WaitableResetReturnsThreadFailureWhenCallbackThrows) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  auto reset_callback = [](const ResetOptions&) -> Status {
+  auto reset_callback = [](const ResetOptions&) -> ResultCode {
     throw std::runtime_error("reset callback boom");
   };
 
-  ASSERT_TRUE(
-      scheduler.initialize({}, make_callbacks(physics_steps, {}, std::move(reset_callback))).ok());
-  ASSERT_TRUE(scheduler.start().ok());
+  ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps, {}, std::move(reset_callback))),
+            ResultCode::Ok);
+  ASSERT_EQ(scheduler.start(), ResultCode::Ok);
 
-  std::future<Status> completion =
+  std::future<ResultCode> completion =
       scheduler.request_reset_waitable({.options = {.reset_statistics = true}});
   ASSERT_EQ(completion.wait_for(1s), std::future_status::ready);
 
-  const Status status = completion.get();
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::ThreadFailed);
-  EXPECT_NE(status.message().find("reset callback boom"), std::string::npos);
+  const ResultCode status = completion.get();
+  EXPECT_EQ(status, ResultCode::ThreadFailed);
   EXPECT_EQ(scheduler.status(), SimulationStatus::Error);
 
-  ASSERT_TRUE(scheduler.stop().ok());
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, ResetStatisticsClearsCycleCountersAfterStoppedManualStep) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  ASSERT_TRUE(scheduler.initialize({}, make_callbacks(physics_steps)).ok());
+  ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps)), ResultCode::Ok);
 
-  ASSERT_TRUE(scheduler.step(3).ok());
+  ASSERT_EQ(scheduler.step(3), ResultCode::Ok);
   SchedulerStatistics statistics = scheduler.statistics();
   EXPECT_EQ(statistics.physics_steps, 3u);
   EXPECT_EQ(statistics.loop_iterations, 3u);
   EXPECT_EQ(statistics.manual_step_calls, 3u);
 
-  std::future<Status> completion =
+  std::future<ResultCode> completion =
       scheduler.request_reset_waitable({.options = {.reset_statistics = true}});
   ASSERT_EQ(completion.wait_for(1s), std::future_status::ready);
-  ASSERT_TRUE(completion.get().ok());
+  ASSERT_EQ(completion.get(), ResultCode::Ok);
 
   statistics = scheduler.statistics();
   EXPECT_EQ(statistics.reset_requests, 1u);
@@ -230,7 +224,7 @@ TEST(SimulationSchedulerTest, ResetStatisticsClearsCycleCountersAfterStoppedManu
   EXPECT_DOUBLE_EQ(statistics.last_step_duration_sec, 0.0);
   EXPECT_DOUBLE_EQ(statistics.last_realtime_factor, 0.0);
 
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, TracksLagRecoveryAcrossStartStopCycles) {
@@ -240,12 +234,13 @@ TEST(SimulationSchedulerTest, TracksLagRecoveryAcrossStartStopCycles) {
   config.max_schedule_lag = 1ms;
 
   auto after_step = []() { std::this_thread::sleep_for(4ms); };
-  ASSERT_TRUE(scheduler.initialize(config, make_callbacks(physics_steps, after_step)).ok());
+  ASSERT_EQ(scheduler.initialize(config, make_callbacks(physics_steps, after_step)),
+            ResultCode::Ok);
 
   for (int i = 0; i < 3; ++i) {
-    ASSERT_TRUE(scheduler.start().ok());
+    ASSERT_EQ(scheduler.start(), ResultCode::Ok);
     std::this_thread::sleep_for(25ms);
-    ASSERT_TRUE(scheduler.stop().ok());
+    ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
   }
 
   const SchedulerStatistics statistics = scheduler.statistics();
@@ -254,21 +249,21 @@ TEST(SimulationSchedulerTest, TracksLagRecoveryAcrossStartStopCycles) {
   EXPECT_GT(statistics.last_realtime_factor, 0.0);
   EXPECT_EQ(scheduler.status(), SimulationStatus::Stopped);
 
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, WorkerStepCallbackFailureTransitionsSchedulerToError) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  auto failing_step = [&physics_steps]() -> Status {
+  auto failing_step = [&physics_steps]() -> ResultCode {
     ++physics_steps;
     throw std::runtime_error("physics worker boom");
   };
 
   SchedulerCallbacks callbacks = make_callbacks(physics_steps);
   callbacks.step_physics = std::move(failing_step);
-  ASSERT_TRUE(scheduler.initialize({}, std::move(callbacks)).ok());
-  ASSERT_TRUE(scheduler.start().ok());
+  ASSERT_EQ(scheduler.initialize({}, std::move(callbacks)), ResultCode::Ok);
+  ASSERT_EQ(scheduler.start(), ResultCode::Ok);
 
   for (int attempt = 0; attempt < 100 && scheduler.status() != SimulationStatus::Error; ++attempt) {
     std::this_thread::sleep_for(2ms);
@@ -276,8 +271,8 @@ TEST(SimulationSchedulerTest, WorkerStepCallbackFailureTransitionsSchedulerToErr
 
   EXPECT_EQ(scheduler.status(), SimulationStatus::Error);
   EXPECT_GT(physics_steps.load(), 0);
-  ASSERT_TRUE(scheduler.stop().ok());
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, RealtimeFactorCanBeUpdatedAfterInitialize) {
@@ -286,40 +281,37 @@ TEST(SimulationSchedulerTest, RealtimeFactorCanBeUpdatedAfterInitialize) {
   SchedulerConfig config;
   config.realtime_factor = 1.0;
 
-  ASSERT_TRUE(scheduler.initialize(config, make_callbacks(physics_steps)).ok());
+  ASSERT_EQ(scheduler.initialize(config, make_callbacks(physics_steps)), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(scheduler.realtime_factor(), 1.0);
 
-  ASSERT_TRUE(scheduler.set_realtime_factor(2.5).ok());
+  ASSERT_EQ(scheduler.set_realtime_factor(2.5), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(scheduler.realtime_factor(), 2.5);
 
-  ASSERT_TRUE(scheduler.start().ok());
+  ASSERT_EQ(scheduler.start(), ResultCode::Ok);
   std::this_thread::sleep_for(10ms);
-  ASSERT_TRUE(scheduler.set_realtime_factor(0.5).ok());
+  ASSERT_EQ(scheduler.set_realtime_factor(0.5), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(scheduler.realtime_factor(), 0.5);
 
-  ASSERT_TRUE(scheduler.stop().ok());
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.stop(), ResultCode::Ok);
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 TEST(SimulationSchedulerTest, RejectsInvalidRealtimeFactorUpdates) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
 
-  const Status before_initialize = scheduler.set_realtime_factor(0.0);
-  EXPECT_FALSE(before_initialize.ok());
-  EXPECT_EQ(before_initialize.code(), StatusCode::InvalidArgument);
+  const ResultCode before_initialize = scheduler.set_realtime_factor(0.0);
+  EXPECT_EQ(before_initialize, ResultCode::InvalidArgument);
 
-  ASSERT_TRUE(scheduler.initialize({}, make_callbacks(physics_steps)).ok());
+  ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps)), ResultCode::Ok);
 
-  const Status zero = scheduler.set_realtime_factor(0.0);
-  EXPECT_FALSE(zero.ok());
-  EXPECT_EQ(zero.code(), StatusCode::InvalidArgument);
+  const ResultCode zero = scheduler.set_realtime_factor(0.0);
+  EXPECT_EQ(zero, ResultCode::InvalidArgument);
 
-  const Status negative = scheduler.set_realtime_factor(-1.0);
-  EXPECT_FALSE(negative.ok());
-  EXPECT_EQ(negative.code(), StatusCode::InvalidArgument);
+  const ResultCode negative = scheduler.set_realtime_factor(-1.0);
+  EXPECT_EQ(negative, ResultCode::InvalidArgument);
 
-  ASSERT_TRUE(scheduler.shutdown().ok());
+  ASSERT_EQ(scheduler.shutdown(), ResultCode::Ok);
 }
 
 }  // namespace mujoco_simulation

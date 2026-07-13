@@ -1,101 +1,99 @@
 #include "mujoco_simulation/runtime/simulation_scheduler.hpp"
 
 #include <exception>
-#include <string_view>
+#include <string>
 #include <utility>
 
-#include "mujoco_simulation/result.hpp"
+#include "mujoco_simulation/result_code.hpp"
 
 namespace mujoco_simulation {
 namespace {
 
-Status invoke_optional(const std::function<Status()>& callback) {
+ResultCode invoke_optional(const std::function<ResultCode()>& callback) {
   if (!callback) {
-    return Status::Ok();
+    return ResultCode::Ok;
   }
   try {
     return callback();
-  } catch (const std::exception& error) {
-    return Status::thread_failed(std::string("SimulationScheduler callback threw: ") +
-                                 error.what());
+  } catch (const std::exception&) {
+    return ResultCode::ThreadFailed;
   } catch (...) {
-    return Status::thread_failed("SimulationScheduler callback threw an unknown exception.");
+    return ResultCode::ThreadFailed;
   }
 }
 
 template <typename Callback>
-Status invoke_status_callback(Callback&& callback, std::string_view operation_name) {
+ResultCode invoke_status_callback(Callback&& callback, std::string operation_name) {
+  (void)operation_name;
   try {
     return callback();
-  } catch (const std::exception& error) {
-    return Status::thread_failed("SimulationScheduler " + std::string(operation_name) +
-                                 " callback threw: " + error.what());
+  } catch (const std::exception&) {
+    return ResultCode::ThreadFailed;
   } catch (...) {
-    return Status::thread_failed("SimulationScheduler " + std::string(operation_name) +
-                                 " callback threw an unknown exception.");
+    return ResultCode::ThreadFailed;
   }
 }
 
-Status invoke_required_status_callback(const std::function<Status()>& callback,
-                                       std::string_view operation_name) {
+ResultCode invoke_required_status_callback(const std::function<ResultCode()>& callback,
+                                           std::string operation_name) {
   if (!callback) {
-    return Status::internal("SimulationScheduler missing required callback for " +
-                            std::string(operation_name) + ".");
+    return ResultCode::Internal;
   }
   return invoke_status_callback(callback, operation_name);
 }
 
-Status invoke_reset_callback(const std::function<Status(const ResetOptions&)>& callback,
-                             const ResetOptions& options) {
+ResultCode invoke_reset_callback(const std::function<ResultCode(const ResetOptions&)>& callback,
+                                 const ResetOptions& options) {
   if (!callback) {
-    return Status::internal("SimulationScheduler missing required reset callback.");
+    return ResultCode::Internal;
   }
   try {
     return callback(options);
-  } catch (const std::exception& error) {
-    return Status::thread_failed(std::string("SimulationScheduler reset callback threw: ") +
-                                 error.what());
+  } catch (const std::exception&) {
+    return ResultCode::ThreadFailed;
   } catch (...) {
-    return Status::thread_failed("SimulationScheduler reset callback threw an unknown exception.");
+    return ResultCode::ThreadFailed;
   }
 }
 
-Result<double> invoke_timestep_provider(const std::function<double()>& callback) {
+ResultCode invoke_timestep_provider(const std::function<double()>& callback, double* out) {
+  if (out == nullptr) {
+    return ResultCode::InvalidArgument;
+  }
   if (!callback) {
-    return Status::internal("SimulationScheduler missing required timestep provider callback.");
+    return ResultCode::Internal;
   }
   try {
-    return callback();
-  } catch (const std::exception& error) {
-    return Status::thread_failed(std::string("SimulationScheduler timestep provider threw: ") +
-                                 error.what());
+    *out = callback();
+    return ResultCode::Ok;
+  } catch (const std::exception&) {
+    return ResultCode::ThreadFailed;
   } catch (...) {
-    return Status::thread_failed(
-        "SimulationScheduler timestep provider threw an unknown exception.");
+    return ResultCode::ThreadFailed;
   }
 }
 
-double seconds_from_duration(const SimulationDuration duration) {
+double seconds_from_duration(const std::chrono::steady_clock::duration duration) {
   return std::chrono::duration<double>(duration).count();
 }
 
 }  // namespace
 
-Status SimulationScheduler::initialize(const SchedulerConfig& config,
-                                       SchedulerCallbacks callbacks) {
+ResultCode SimulationScheduler::initialize(const SchedulerConfig& config,
+                                           SchedulerCallbacks callbacks) {
   if (!callbacks.timestep_provider) {
-    return Status::invalid_argument("Scheduler timestep_provider callback is required.");
+    return ResultCode::InvalidArgument;
   }
   if (!callbacks.step_physics) {
-    return Status::invalid_argument("Scheduler step_physics callback is required.");
+    return ResultCode::InvalidArgument;
   }
   if (!callbacks.reset_runtime) {
-    return Status::invalid_argument("Scheduler reset_runtime callback is required.");
+    return ResultCode::InvalidArgument;
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (status_ != SimulationStatus::Uninitialized) {
-    return Status::failed_precondition("SimulationScheduler is already initialized.");
+    return ResultCode::FailedPrecondition;
   }
 
   config_ = config;
@@ -105,42 +103,41 @@ Status SimulationScheduler::initialize(const SchedulerConfig& config,
   stop_requested_ = false;
   deadline_reset_requested_ = false;
   status_ = SimulationStatus::Stopped;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::shutdown() {
-  Status stop_status = Status::Ok();
+ResultCode SimulationScheduler::shutdown() {
+  ResultCode stop_status = ResultCode::Ok;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-      return Status::Ok();
+      return ResultCode::Ok;
     }
   }
 
   stop_status = stop();
-  if (!stop_status.ok()) {
+  if (stop_status != ResultCode::Ok) {
     return stop_status;
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
-  fail_pending_reset_requests_locked(
-      Status::failed_precondition("SimulationScheduler is shutting down."));
+  fail_pending_reset_requests_locked(ResultCode::FailedPrecondition);
   callbacks_ = {};
   reset_requests_.clear();
   statistics_ = {};
   stop_requested_ = false;
   deadline_reset_requested_ = false;
   status_ = SimulationStatus::Uninitialized;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::start() {
+ResultCode SimulationScheduler::start() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (status_ == SimulationStatus::Uninitialized) {
-    return Status::failed_precondition("SimulationScheduler is not initialized.");
+    return ResultCode::FailedPrecondition;
   }
   if (status_ != SimulationStatus::Stopped) {
-    return Status::failed_precondition("SimulationScheduler can only start from Stopped.");
+    return ResultCode::FailedPrecondition;
   }
 
   stop_requested_ = false;
@@ -149,22 +146,22 @@ Status SimulationScheduler::start() {
 
   try {
     worker_thread_ = std::thread([this]() { worker_loop(); });
-  } catch (const std::exception& error) {
+  } catch (const std::exception&) {
     status_ = SimulationStatus::Stopped;
-    return Status::thread_failed(std::string("Failed to start scheduler thread: ") + error.what());
+    return ResultCode::ThreadFailed;
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::stop() {
+ResultCode SimulationScheduler::stop() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-      return Status::failed_precondition("SimulationScheduler is not initialized.");
+      return ResultCode::FailedPrecondition;
     }
     if (status_ == SimulationStatus::Stopped) {
-      return Status::Ok();
+      return ResultCode::Ok;
     }
     stop_requested_ = true;
     if (status_ != SimulationStatus::Error) {
@@ -178,89 +175,86 @@ Status SimulationScheduler::stop() {
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
-  fail_pending_reset_requests_locked(
-      Status::failed_precondition("SimulationScheduler stopped before reset request completed."));
+  fail_pending_reset_requests_locked(ResultCode::FailedPrecondition);
   reset_requests_.clear();
   stop_requested_ = false;
   deadline_reset_requested_ = false;
   if (status_ != SimulationStatus::Uninitialized) {
     status_ = SimulationStatus::Stopped;
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::pause() {
+ResultCode SimulationScheduler::pause() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (status_ == SimulationStatus::Uninitialized) {
-    return Status::failed_precondition("SimulationScheduler is not initialized.");
+    return ResultCode::FailedPrecondition;
   }
   if (status_ != SimulationStatus::Running) {
-    return Status::failed_precondition("SimulationScheduler can only pause from Running.");
+    return ResultCode::FailedPrecondition;
   }
   status_ = SimulationStatus::Paused;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::resume() {
+ResultCode SimulationScheduler::resume() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-      return Status::failed_precondition("SimulationScheduler is not initialized.");
+      return ResultCode::FailedPrecondition;
     }
     if (status_ != SimulationStatus::Paused) {
-      return Status::failed_precondition("SimulationScheduler can only resume from Paused.");
+      return ResultCode::FailedPrecondition;
     }
     status_ = SimulationStatus::Running;
     deadline_reset_requested_ = true;
   }
   cv_.notify_all();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::step(std::size_t count) {
+ResultCode SimulationScheduler::step(std::size_t count) {
   if (count == 0) {
-    return Status::invalid_argument("Scheduler step count must be greater than zero.");
+    return ResultCode::InvalidArgument;
   }
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-      return Status::failed_precondition("SimulationScheduler is not initialized.");
+      return ResultCode::FailedPrecondition;
     }
     if (status_ == SimulationStatus::Running || status_ == SimulationStatus::Stopping) {
-      return Status::failed_precondition(
-          "SimulationScheduler manual step is only allowed in Stopped or Paused.");
+      return ResultCode::FailedPrecondition;
     }
     if (status_ == SimulationStatus::Error) {
-      return Status::failed_precondition(
-          "SimulationScheduler manual step is not allowed in Error.");
+      return ResultCode::FailedPrecondition;
     }
   }
 
   for (std::size_t i = 0; i < count; ++i) {
     bool ignored_reset_deadline = false;
-    Status request_status = process_pending_requests(&ignored_reset_deadline);
-    if (!request_status.ok()) {
+    ResultCode request_status = process_pending_requests(&ignored_reset_deadline);
+    if (request_status != ResultCode::Ok) {
       return request_status;
     }
 
-    Status cycle_status = run_step_cycle(true);
-    if (!cycle_status.ok()) {
+    ResultCode cycle_status = run_step_cycle(true);
+    if (cycle_status != ResultCode::Ok) {
       std::lock_guard<std::mutex> lock(mutex_);
       set_error_locked(cycle_status);
       return cycle_status;
     }
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::request_reset(const ResetRequest& request) {
+ResultCode SimulationScheduler::request_reset(const ResetRequest& request) {
   bool process_immediately = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-      return Status::failed_precondition("SimulationScheduler is not initialized.");
+      return ResultCode::FailedPrecondition;
     }
 
     reset_requests_.push_back(request);
@@ -274,33 +268,32 @@ Status SimulationScheduler::request_reset(const ResetRequest& request) {
   }
 
   cv_.notify_all();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-std::future<Status> SimulationScheduler::request_reset_waitable(ResetRequest request) {
-  auto completion = std::make_shared<std::promise<Status>>();
-  std::future<Status> future = completion->get_future();
+std::future<ResultCode> SimulationScheduler::request_reset_waitable(ResetRequest request) {
+  auto completion = std::make_shared<std::promise<ResultCode>>();
+  std::future<ResultCode> future = completion->get_future();
   request.completion = completion;
 
-  const Status status = request_reset(request);
-  if (!status.ok()) {
+  const ResultCode status = request_reset(request);
+  if (status != ResultCode::Ok) {
     resolve_reset_request(request, status);
   }
   return future;
 }
 
-Status SimulationScheduler::set_realtime_factor(double realtime_factor) {
+ResultCode SimulationScheduler::set_realtime_factor(double realtime_factor) {
   if (realtime_factor <= 0.0) {
-    return Status::invalid_argument(
-        "SimulationScheduler realtime factor must be greater than zero.");
+    return ResultCode::InvalidArgument;
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
   if (status_ == SimulationStatus::Uninitialized) {
-    return Status::failed_precondition("SimulationScheduler is not initialized.");
+    return ResultCode::FailedPrecondition;
   }
   config_.realtime_factor = realtime_factor;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 SimulationStatus SimulationScheduler::status() const {
@@ -318,42 +311,43 @@ double SimulationScheduler::realtime_factor() const {
   return config_.realtime_factor;
 }
 
-Status SimulationScheduler::run_step_cycle(bool manual_step) {
-  const auto loop_start = SimulationClock::now();
-  const Result<double> timestep_result = invoke_timestep_provider(callbacks_.timestep_provider);
-  if (!timestep_result.ok()) {
-    return timestep_result.status();
+ResultCode SimulationScheduler::run_step_cycle(bool manual_step) {
+  const auto loop_start = std::chrono::steady_clock::now();
+  double sim_timestep = 0.0;
+  const ResultCode timestep_status =
+      invoke_timestep_provider(callbacks_.timestep_provider, &sim_timestep);
+  if (timestep_status != ResultCode::Ok) {
+    return timestep_status;
   }
-  const double sim_timestep = timestep_result.value();
 
   std::lock_guard<std::mutex> execution_lock(execution_mutex_);
 
-  Status status = invoke_optional(callbacks_.write_commands);
-  if (!status.ok()) {
+  ResultCode status = invoke_optional(callbacks_.write_commands);
+  if (status != ResultCode::Ok) {
     return status;
   }
 
-  const auto step_start = SimulationClock::now();
+  const auto step_start = std::chrono::steady_clock::now();
   status = invoke_required_status_callback(callbacks_.step_physics, "step_physics");
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
-  const auto step_end = SimulationClock::now();
+  const auto step_end = std::chrono::steady_clock::now();
 
   status = invoke_optional(callbacks_.read_components);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = invoke_optional(callbacks_.publish_state_snapshot);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = invoke_optional(callbacks_.sync_viewer_if_due);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
 
-  const auto loop_end = SimulationClock::now();
+  const auto loop_end = std::chrono::steady_clock::now();
   const double loop_duration_sec = seconds_from_duration(loop_end - loop_start);
   const double step_duration_sec = seconds_from_duration(step_end - step_start);
 
@@ -367,10 +361,10 @@ Status SimulationScheduler::run_step_cycle(bool manual_step) {
   statistics_.last_step_duration_sec = step_duration_sec;
   statistics_.last_realtime_factor =
       loop_duration_sec > 0.0 ? sim_timestep / loop_duration_sec : 0.0;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::process_pending_requests(bool* reset_deadline) {
+ResultCode SimulationScheduler::process_pending_requests(bool* reset_deadline) {
   while (true) {
     ResetRequest request;
     {
@@ -382,23 +376,23 @@ Status SimulationScheduler::process_pending_requests(bool* reset_deadline) {
       reset_requests_.pop_front();
     }
 
-    Status status = process_reset_request(request, reset_deadline);
+    ResultCode status = process_reset_request(request, reset_deadline);
     resolve_reset_request(request, status);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       std::lock_guard<std::mutex> lock(mutex_);
       set_error_locked(status);
       return status;
     }
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status SimulationScheduler::process_reset_request(const ResetRequest& request,
-                                                  bool* reset_deadline) {
+ResultCode SimulationScheduler::process_reset_request(const ResetRequest& request,
+                                                      bool* reset_deadline) {
   std::lock_guard<std::mutex> execution_lock(execution_mutex_);
-  Status status = invoke_reset_callback(callbacks_.reset_runtime, request.options);
-  if (!status.ok()) {
+  ResultCode status = invoke_reset_callback(callbacks_.reset_runtime, request.options);
+  if (status != ResultCode::Ok) {
     return status;
   }
 
@@ -416,25 +410,26 @@ Status SimulationScheduler::process_reset_request(const ResetRequest& request,
   if (reset_deadline != nullptr) {
     *reset_deadline = true;
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-void SimulationScheduler::resolve_reset_request(const ResetRequest& request, const Status& status) {
+void SimulationScheduler::resolve_reset_request(const ResetRequest& request,
+                                                const ResultCode& status) {
   if (request.completion == nullptr) {
     return;
   }
   request.completion->set_value(status);
 }
 
-void SimulationScheduler::fail_pending_reset_requests_locked(const Status& status) {
+void SimulationScheduler::fail_pending_reset_requests_locked(const ResultCode& status) {
   for (const ResetRequest& request : reset_requests_) {
     resolve_reset_request(request, status);
   }
 }
 
 std::chrono::nanoseconds SimulationScheduler::wall_period() const {
-  const Result<double> timestep_result = invoke_timestep_provider(callbacks_.timestep_provider);
-  const double timestep = timestep_result.ok() ? timestep_result.value() : 0.0;
+  double timestep = 0.0;
+  (void)invoke_timestep_provider(callbacks_.timestep_provider, &timestep);
   const double realtime_factor = config_.realtime_factor > 0.0 ? config_.realtime_factor : 1.0;
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::duration<double>(timestep / realtime_factor));
@@ -442,7 +437,7 @@ std::chrono::nanoseconds SimulationScheduler::wall_period() const {
 
 void SimulationScheduler::worker_loop() {
   try {
-    auto next_tick = SimulationClock::now();
+    auto next_tick = std::chrono::steady_clock::now();
 
     while (true) {
       {
@@ -454,8 +449,8 @@ void SimulationScheduler::worker_loop() {
       }
 
       bool reset_deadline = false;
-      Status request_status = process_pending_requests(&reset_deadline);
-      if (!request_status.ok()) {
+      ResultCode request_status = process_pending_requests(&reset_deadline);
+      if (request_status != ResultCode::Ok) {
         break;
       }
 
@@ -470,14 +465,14 @@ void SimulationScheduler::worker_loop() {
       }
 
       if (reset_deadline) {
-        next_tick = SimulationClock::now();
+        next_tick = std::chrono::steady_clock::now();
       }
       if (current_status != SimulationStatus::Running) {
         continue;
       }
 
-      Status cycle_status = run_step_cycle(false);
-      if (!cycle_status.ok()) {
+      ResultCode cycle_status = run_step_cycle(false);
+      if (cycle_status != ResultCode::Ok) {
         std::lock_guard<std::mutex> lock(mutex_);
         set_error_locked(cycle_status);
         break;
@@ -490,21 +485,19 @@ void SimulationScheduler::worker_loop() {
         std::this_thread::sleep_until(next_tick);
       }
 
-      const auto now = SimulationClock::now();
+      const auto now = std::chrono::steady_clock::now();
       if (now > next_tick + config_.max_schedule_lag) {
         std::lock_guard<std::mutex> lock(mutex_);
         next_tick = now;
         ++statistics_.lag_recoveries;
       }
     }
-  } catch (const std::exception& error) {
+  } catch (const std::exception&) {
     std::lock_guard<std::mutex> lock(mutex_);
-    set_error_locked(Status::thread_failed(
-        std::string("SimulationScheduler worker thread failed: ") + error.what()));
+    set_error_locked(ResultCode::ThreadFailed);
   } catch (...) {
     std::lock_guard<std::mutex> lock(mutex_);
-    set_error_locked(Status::thread_failed(
-        "SimulationScheduler worker thread failed with an unknown exception."));
+    set_error_locked(ResultCode::ThreadFailed);
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -519,7 +512,7 @@ bool SimulationScheduler::worker_should_wake_locked() const {
   return stop_requested_ || status_ == SimulationStatus::Running || !reset_requests_.empty();
 }
 
-void SimulationScheduler::set_error_locked(const Status& status) {
+void SimulationScheduler::set_error_locked(const ResultCode& status) {
   status_ = SimulationStatus::Error;
 }
 

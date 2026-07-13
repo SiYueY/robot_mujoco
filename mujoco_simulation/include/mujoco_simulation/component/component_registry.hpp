@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
 #include "mujoco_simulation/component/camera/camera_component.hpp"
@@ -16,26 +15,26 @@ namespace mujoco_simulation {
 
 class ComponentRegistry {
  public:
-  Status add(std::unique_ptr<SimulationComponent> component);
-  Status remove(std::string_view name);
+  ResultCode add(std::unique_ptr<SimulationComponent> component);
+  ResultCode remove(std::string name);
   void clear();
 
-  bool has_joint(std::string_view name) const;
-  bool has_camera(std::string_view name) const;
-  bool has_imu(std::string_view name) const;
-  bool has_lidar(std::string_view name) const;
-  bool has_mobile_base(std::string_view name) const;
+  bool has_joint(std::string name) const;
+  bool has_camera(std::string name) const;
+  bool has_imu(std::string name) const;
+  bool has_lidar(std::string name) const;
+  bool has_mobile_base(std::string name) const;
 
-  JointComponent* joint(std::string_view name);
-  const JointComponent* joint(std::string_view name) const;
-  CameraComponent* camera(std::string_view name);
-  const CameraComponent* camera(std::string_view name) const;
-  ImuComponent* imu(std::string_view name);
-  const ImuComponent* imu(std::string_view name) const;
-  LidarComponent* lidar(std::string_view name);
-  const LidarComponent* lidar(std::string_view name) const;
-  MobileBaseComponent* mobile_base(std::string_view name);
-  const MobileBaseComponent* mobile_base(std::string_view name) const;
+  JointComponent* joint(std::string name);
+  const JointComponent* joint(std::string name) const;
+  CameraComponent* camera(std::string name);
+  const CameraComponent* camera(std::string name) const;
+  ImuComponent* imu(std::string name);
+  const ImuComponent* imu(std::string name) const;
+  LidarComponent* lidar(std::string name);
+  const LidarComponent* lidar(std::string name) const;
+  MobileBaseComponent* mobile_base(std::string name);
+  const MobileBaseComponent* mobile_base(std::string name) const;
 
   const std::unordered_map<std::string, JointComponent*>& joints() const noexcept;
   const std::unordered_map<std::string, CameraComponent*>& cameras() const noexcept;
@@ -43,12 +42,12 @@ class ComponentRegistry {
   const std::unordered_map<std::string, LidarComponent*>& lidars() const noexcept;
   const std::unordered_map<std::string, MobileBaseComponent*>& mobile_bases() const noexcept;
 
-  SimulationComponent* find(std::string_view name);
-  const SimulationComponent* find(std::string_view name) const;
+  SimulationComponent* find(std::string name);
+  const SimulationComponent* find(std::string name) const;
 
  private:
   void index_component(SimulationComponent& component, const std::string& component_name);
-  void unindex_component(const SimulationComponent& component, std::string_view component_name);
+  void unindex_component(const SimulationComponent& component, std::string component_name);
 
  private:
   std::unordered_map<std::string, std::unique_ptr<SimulationComponent>> components_;

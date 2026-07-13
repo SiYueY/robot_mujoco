@@ -5,7 +5,9 @@
 #include <memory>
 #include <stdexcept>
 
-#include "mujoco_simulation/viewer/viewer.hpp"
+#include "mujoco_simulation/runtime/model_runtime.hpp"
+#include "mujoco_simulation/runtime/simulation_scheduler.hpp"
+#include "mujoco_simulation/viewer/mujoco_viewer.hpp"
 
 namespace mujoco_simulation {
 namespace {
@@ -16,49 +18,49 @@ Simulation::Simulation() = default;
 
 Simulation::~Simulation() { (void)shutdown(); }
 
-Status Simulation::initialize(const SimulationConfig& config) {
+ResultCode Simulation::initialize(const SimulationConfig& config) {
   if (model_runtime_ != nullptr && model_runtime_->is_loaded()) {
-    return Status::already_exists("Simulation is already initialized.");
+    return ResultCode::AlreadyExists;
   }
   if (config.scheduler.viewer_update_rate <= 0.0) {
-    return Status::invalid_argument("Viewer update rate must be greater than zero.");
+    return ResultCode::InvalidArgument;
   }
 
   config_ = config;
 
-  Status status = load_model(config.model);
-  if (!status.ok()) {
+  ResultCode status = load_model(config.model);
+  if (status != ResultCode::Ok) {
     (void)shutdown();
     return status;
   }
 
   if (config.render_mode == RenderMode::Viewer) {
     status = start_viewer();
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       (void)shutdown();
       return status;
     }
   }
 
   status = initialize_scheduler();
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     (void)shutdown();
     return status;
   }
 
   status = initialize_components();
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     (void)shutdown();
     return status;
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::shutdown() {
+ResultCode Simulation::shutdown() {
   (void)stop();
 
-  std::unique_ptr<Viewer> viewer_to_stop;
+  std::unique_ptr<MuJoCoViewer> viewer_to_stop;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     viewer_to_stop = std::move(viewer_);
@@ -75,19 +77,19 @@ Status Simulation::shutdown() {
     data_ = nullptr;
     model_ = nullptr;
     pending_state_snapshot_.reset();
-    runtime_error_.clear();
+    runtime_error_ = ResultCode::Ok;
   }
 
   if (viewer_to_stop != nullptr) {
     viewer_to_stop->stop();
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::start() {
+ResultCode Simulation::start() {
   if (scheduler_ == nullptr) {
-    return Status::invalid_state("Simulation scheduler is not initialized.");
+    return ResultCode::InvalidState;
   }
 
   bool should_start_viewer = false;
@@ -96,15 +98,15 @@ Status Simulation::start() {
     if (viewer_ == nullptr) {
       if (model_runtime_ == nullptr || !model_runtime_->is_loaded() || model_ == nullptr ||
           data_ == nullptr) {
-        return Status::failed_precondition("MuJoCo model is not loaded.");
+        return ResultCode::FailedPrecondition;
       }
       should_start_viewer = true;
     }
   }
 
   if (should_start_viewer) {
-    const Status viewer_status = start_viewer();
-    if (!viewer_status.ok()) {
+    const ResultCode viewer_status = start_viewer();
+    if (viewer_status != ResultCode::Ok) {
       return viewer_status;
     }
   }
@@ -112,97 +114,97 @@ Status Simulation::start() {
   return scheduler_->start();
 }
 
-Status Simulation::stop() {
+ResultCode Simulation::stop() {
   if (scheduler_ != nullptr) {
-    const Status status = scheduler_->stop();
-    if (!status.ok()) {
+    const ResultCode status = scheduler_->stop();
+    if (status != ResultCode::Ok) {
       return status;
     }
   }
-  std::unique_ptr<Viewer> viewer_to_stop;
+  std::unique_ptr<MuJoCoViewer> viewer_to_stop;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     viewer_to_stop = std::move(viewer_);
-    runtime_error_.clear();
+    runtime_error_ = ResultCode::Ok;
   }
   if (viewer_to_stop != nullptr) {
     viewer_to_stop->stop();
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::pause() {
+ResultCode Simulation::pause() {
   if (scheduler_ == nullptr) {
-    return Status::invalid_state("Simulation scheduler is not initialized.");
+    return ResultCode::InvalidState;
   }
   return scheduler_->pause();
 }
 
-Status Simulation::resume() {
+ResultCode Simulation::resume() {
   if (scheduler_ == nullptr) {
-    return Status::invalid_state("Simulation scheduler is not initialized.");
+    return ResultCode::InvalidState;
   }
   return scheduler_->resume();
 }
 
-Status Simulation::set_realtime_factor(double realtime_factor) {
+ResultCode Simulation::set_realtime_factor(double realtime_factor) {
   if (scheduler_ == nullptr) {
-    return Status::invalid_state("Simulation scheduler is not initialized.");
+    return ResultCode::InvalidState;
   }
 
-  const Status status = scheduler_->set_realtime_factor(realtime_factor);
-  if (!status.ok()) {
+  const ResultCode status = scheduler_->set_realtime_factor(realtime_factor);
+  if (status != ResultCode::Ok) {
     return status;
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
   config_.scheduler.realtime_factor = realtime_factor;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::request_reset(const ResetOptions& options) {
+ResultCode Simulation::request_reset(const ResetOptions& options) {
   if (scheduler_ == nullptr) {
-    return Status::invalid_state("Simulation scheduler is not initialized.");
+    return ResultCode::InvalidState;
   }
   return scheduler_->request_reset({.options = options});
 }
 
-Status Simulation::reset(const ResetOptions& options) {
+ResultCode Simulation::reset(const ResetOptions& options) {
   if (scheduler_ == nullptr) {
-    return Status::invalid_state("Simulation scheduler is not initialized.");
+    return ResultCode::InvalidState;
   }
 
-  std::future<Status> completion = scheduler_->request_reset_waitable({.options = options});
+  std::future<ResultCode> completion = scheduler_->request_reset_waitable({.options = options});
   return completion.get();
 }
 
-Status Simulation::step(uint32_t steps) {
+ResultCode Simulation::step(uint32_t steps) {
   if (steps == 0) {
-    return Status::invalid_argument("Step count must be greater than zero.");
+    return ResultCode::InvalidArgument;
   }
 
   if (scheduler_ == nullptr) {
-    return Status::invalid_state("Simulation scheduler is not initialized.");
+    return ResultCode::InvalidState;
   }
 
   return scheduler_->step(steps);
 }
 
-Status Simulation::reconfigure_component(const ComponentConfig& updated_component) {
-  std::shared_ptr<const SimulationStateSnapshot> published_snapshot;
+ResultCode Simulation::reconfigure_component(const ComponentConfig& updated_component) {
+  std::shared_ptr<const StateSnapshot> published_snapshot;
   SnapshotObserver snapshot_observer;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (model_ == nullptr) {
-      return Status::invalid_state("MuJoCo model is not loaded.");
+      return ResultCode::InvalidState;
     }
-    const Status status = component_manager_.reconfigure_component(*model_, updated_component);
-    if (!status.ok()) {
+    const ResultCode status = component_manager_.reconfigure_component(*model_, updated_component);
+    if (status != ResultCode::Ok) {
       return status;
     }
-    const Status apply_status =
+    const ResultCode apply_status =
         apply_component_reconfiguration_locked(updated_component, &published_snapshot);
-    if (!apply_status.ok()) {
+    if (apply_status != ResultCode::Ok) {
       return apply_status;
     }
     snapshot_observer = snapshot_observer_;
@@ -210,65 +212,78 @@ Status Simulation::reconfigure_component(const ComponentConfig& updated_componen
   if (snapshot_observer != nullptr && published_snapshot != nullptr) {
     snapshot_observer(std::move(published_snapshot));
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::set_joint_command(const JointCommand& command) {
+ResultCode Simulation::set_joint_command(const JointCommand& command) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (command_buffer_ == nullptr) {
-    return Status::invalid_state("MuJoCo command buffer is not initialized.");
+    return ResultCode::InvalidState;
   }
   return command_buffer_->set_joint_command(command.name, command);
 }
 
-Result<JointState> Simulation::joint_state(std::string_view joint_name) const {
+bool Simulation::joint_state(std::string joint_name, JointState* out) const {
+  if (out == nullptr) {
+    return false;
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   if (state_buffer_ == nullptr) {
-    return Status::invalid_state("MuJoCo state buffer is not initialized.");
+    return false;
   }
-  return state_buffer_->joint_state(joint_name);
+  return state_buffer_->joint_state(joint_name, out);
 }
 
-Result<ImuSample> Simulation::imu_sample(std::string_view imu_name) const {
+bool Simulation::imu_state(std::string imu_name, ImuState* out) const {
+  if (out == nullptr) {
+    return false;
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   if (state_buffer_ == nullptr) {
-    return Status::invalid_state("MuJoCo state buffer is not initialized.");
+    return false;
   }
-  return state_buffer_->imu_sample(imu_name);
+  return state_buffer_->imu_state(imu_name, out);
 }
 
-Result<std::shared_ptr<const CameraSample>> Simulation::camera_sample(
-    std::string_view camera_name) const {
+bool Simulation::camera_state(std::string camera_name, CameraState* out) const {
+  if (out == nullptr) {
+    return false;
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   if (camera_buffer_ == nullptr) {
-    return Status::invalid_state("MuJoCo camera buffer is not initialized.");
+    return false;
   }
-  return camera_buffer_->read(camera_name);
+  return camera_buffer_->read(camera_name, out);
 }
 
-Result<LidarSample> Simulation::lidar_sample(std::string_view lidar_name) const {
+bool Simulation::lidar_state(std::string lidar_name, LidarState* out) const {
+  if (out == nullptr) {
+    return false;
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   if (state_buffer_ == nullptr) {
-    return Status::invalid_state("MuJoCo state buffer is not initialized.");
+    return false;
   }
-  return state_buffer_->lidar_sample(lidar_name);
+  return state_buffer_->lidar_state(lidar_name, out);
 }
 
-Status Simulation::set_mobile_base_command(std::string_view name,
-                                           const MobileBaseCommand& command) {
+ResultCode Simulation::set_mobile_base_command(std::string name, const MobileBaseCommand& command) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (command_buffer_ == nullptr) {
-    return Status::invalid_state("MuJoCo command buffer is not initialized.");
+    return ResultCode::InvalidState;
   }
   return command_buffer_->set_mobile_base_command(name, command);
 }
 
-Result<MobileBaseState> Simulation::mobile_base_state(std::string_view name) const {
+bool Simulation::mobile_base_state(std::string name, MobileBaseState* out) const {
+  if (out == nullptr) {
+    return false;
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   if (state_buffer_ == nullptr) {
-    return Status::invalid_state("MuJoCo state buffer is not initialized.");
+    return false;
   }
-  return state_buffer_->mobile_base_state(name);
+  return state_buffer_->mobile_base_state(name, out);
 }
 
 uint64_t Simulation::step_count() const {
@@ -280,7 +295,7 @@ uint64_t Simulation::step_count() const {
 
 SimulationStatus Simulation::status() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!runtime_error_.empty()) {
+  if (runtime_error_ != ResultCode::Ok) {
     return SimulationStatus::Error;
   }
   if (scheduler_ != nullptr) {
@@ -298,7 +313,7 @@ double Simulation::simulation_time() const {
   return model_runtime_->simulation_time();
 }
 
-std::shared_ptr<const SimulationStateSnapshot> Simulation::state_snapshot() const {
+std::shared_ptr<const StateSnapshot> Simulation::state_snapshot() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return state_buffer_ == nullptr ? nullptr : state_buffer_->read();
 }
@@ -308,7 +323,7 @@ void Simulation::set_snapshot_observer(SnapshotObserver observer) {
   snapshot_observer_ = std::move(observer);
 }
 
-Status Simulation::initialize_scheduler() {
+ResultCode Simulation::initialize_scheduler() {
   camera_buffer_ = std::make_unique<CameraBuffer>();
   camera_renderer_ = std::make_unique<CameraRenderer>(config_.camera_renderer);
   command_buffer_ = std::make_unique<CommandBuffer>();
@@ -333,37 +348,37 @@ Status Simulation::initialize_scheduler() {
   scheduler_config.realtime_factor =
       config_.scheduler.realtime_factor > 0.0 ? config_.scheduler.realtime_factor : 1.0;
 
-  const Status status = scheduler->initialize(scheduler_config, std::move(callbacks));
-  if (!status.ok()) {
+  const ResultCode status = scheduler->initialize(scheduler_config, std::move(callbacks));
+  if (status != ResultCode::Ok) {
     return status;
   }
 
   scheduler_ = std::move(scheduler);
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::initialize_components() {
+ResultCode Simulation::initialize_components() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (model_ == nullptr) {
-      return Status::invalid_state("MuJoCo model is not loaded.");
+      return ResultCode::InvalidState;
     }
-    Status status = component_manager_.build(*model_, config_.components);
-    if (!status.ok()) {
+    ResultCode status = component_manager_.build(*model_, config_.components);
+    if (status != ResultCode::Ok) {
       return status;
     }
     status = read_component_states_locked(false);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
   }
   return publish_state_snapshot(false);
 }
 
-Status Simulation::load_model(const ModelConfig& model_config) {
+ResultCode Simulation::load_model(const ModelConfig& model_config) {
   auto runtime = std::make_unique<ModelRuntime>();
-  const Status status = runtime->load(model_config);
-  if (!status.ok()) {
+  const ResultCode status = runtime->load(model_config);
+  if (status != ResultCode::Ok) {
     return status;
   }
 
@@ -375,77 +390,76 @@ Status Simulation::load_model(const ModelConfig& model_config) {
   viewer_.reset();
   pending_state_snapshot_.reset();
   next_viewer_sync_time_ = std::chrono::steady_clock::now();
-  runtime_error_.clear();
-  return Status::Ok();
+  runtime_error_ = ResultCode::Ok;
+  return ResultCode::Ok;
 }
 
-Status Simulation::apply_component_reconfiguration_locked(
+ResultCode Simulation::apply_component_reconfiguration_locked(
     const ComponentConfig& updated_component,
-    std::shared_ptr<const SimulationStateSnapshot>* published_snapshot) {
+    std::shared_ptr<const StateSnapshot>* published_snapshot) {
   if (!replace_component_config(config_.components, updated_component)) {
-    return Status::internal(
-        "Component '" + std::string(component_config_name(updated_component)) +
-        "' was reconfigured but its SimulationConfig entry could not be updated.");
+    return ResultCode::Internal;
   }
   pending_state_snapshot_.reset();
-  const Status read_status = read_component_states_locked(false);
-  if (!read_status.ok()) {
+  const ResultCode read_status = read_component_states_locked(false);
+  if (read_status != ResultCode::Ok) {
     return read_status;
   }
   return publish_state_snapshot_locked(false, published_snapshot);
 }
 
-Status Simulation::scheduler_step_physics_locked() {
+ResultCode Simulation::scheduler_step_physics_locked() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (model_runtime_ == nullptr || !model_runtime_->is_loaded()) {
-    return Status::failed_precondition("MuJoCo model is not loaded.");
+    return ResultCode::FailedPrecondition;
   }
   return model_runtime_->step();
 }
 
-Status Simulation::scheduler_apply_commands_locked() {
+ResultCode Simulation::scheduler_apply_commands_locked() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (command_buffer_ == nullptr || model_ == nullptr || data_ == nullptr) {
-    return Status::failed_precondition("MuJoCo command application is not initialized.");
+    return ResultCode::FailedPrecondition;
   }
 
   const CommandSnapshot snapshot = command_buffer_->snapshot(
       CommandBuffer::Clock::now(),
-      [this](std::string_view name) { return component_manager_.joint_command_mode(name); });
+      [this](std::string name) { return component_manager_.joint_command_mode(name); });
   return component_manager_.write_commands(*model_, *data_, snapshot);
 }
 
-Status Simulation::scheduler_read_components_locked(bool increment_step_count) {
+ResultCode Simulation::scheduler_read_components_locked(bool increment_step_count) {
   std::lock_guard<std::mutex> lock(mutex_);
   return read_component_states_locked(increment_step_count);
 }
 
-Status Simulation::read_component_states_locked(bool increment_step_count) {
+ResultCode Simulation::read_component_states_locked(bool increment_step_count) {
   if (model_runtime_ == nullptr || !model_runtime_->is_loaded() || model_ == nullptr ||
       data_ == nullptr) {
-    return Status::failed_precondition("MuJoCo state reads are not initialized.");
+    return ResultCode::FailedPrecondition;
   }
 
   PendingStateSnapshot snapshot;
-  Status status = component_manager_.read_joint_states(*data_, snapshot.joints);
-  if (!status.ok()) {
+  ResultCode status = component_manager_.read_joint_states(*data_, snapshot.joints);
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = component_manager_.read_mobile_base_states(*data_, snapshot.mobile_bases);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   pending_state_snapshot_ = std::move(snapshot);
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::publish_state_snapshot(bool increment_step_count) {
-  std::shared_ptr<const SimulationStateSnapshot> published_snapshot;
+ResultCode Simulation::publish_state_snapshot(bool increment_step_count) {
+  std::shared_ptr<const StateSnapshot> published_snapshot;
   SnapshotObserver snapshot_observer;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    const Status status = publish_state_snapshot_locked(increment_step_count, &published_snapshot);
-    if (!status.ok()) {
+    const ResultCode status =
+        publish_state_snapshot_locked(increment_step_count, &published_snapshot);
+    if (status != ResultCode::Ok) {
       return status;
     }
     snapshot_observer = snapshot_observer_;
@@ -453,42 +467,42 @@ Status Simulation::publish_state_snapshot(bool increment_step_count) {
   if (snapshot_observer != nullptr && published_snapshot != nullptr) {
     snapshot_observer(std::move(published_snapshot));
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::publish_state_snapshot_locked(
-    bool increment_step_count, std::shared_ptr<const SimulationStateSnapshot>* published_snapshot) {
+ResultCode Simulation::publish_state_snapshot_locked(
+    bool increment_step_count, std::shared_ptr<const StateSnapshot>* published_snapshot) {
   if (state_buffer_ == nullptr || model_runtime_ == nullptr || !model_runtime_->is_loaded() ||
       model_ == nullptr || data_ == nullptr) {
-    return Status::failed_precondition("MuJoCo state snapshotting is not initialized.");
+    return ResultCode::FailedPrecondition;
   }
 
   const std::uint64_t snapshot_step_count =
       increment_step_count ? state_snapshot_step_count_ + 1 : state_snapshot_step_count_;
   const double simulation_time = model_runtime_->simulation_time();
-  Status status =
-      component_manager_.sample_due_sensors(*model_, *data_, simulation_time, snapshot_step_count,
-                                            camera_renderer_.get(), camera_buffer_.get());
-  if (!status.ok()) {
+  ResultCode status =
+      component_manager_.update_components(*model_, *data_, simulation_time, snapshot_step_count,
+                                           camera_renderer_.get(), camera_buffer_.get());
+  if (status != ResultCode::Ok) {
     return status;
   }
 
-  auto snapshot = std::make_shared<SimulationStateSnapshot>();
+  auto snapshot = std::make_shared<StateSnapshot>();
   if (pending_state_snapshot_.has_value()) {
     snapshot->joints = std::move(pending_state_snapshot_->joints);
     snapshot->mobile_bases = std::move(pending_state_snapshot_->mobile_bases);
     pending_state_snapshot_.reset();
     status = component_manager_.read_imu_states(snapshot->imus);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
     status = component_manager_.read_lidar_states(snapshot->lidars);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
   } else {
     status = component_manager_.read_states(*data_, *snapshot);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
   }
@@ -498,32 +512,32 @@ Status Simulation::publish_state_snapshot_locked(
                                ? 0
                                : static_cast<std::uint64_t>(snapshot->simulation_time * 1.0e9);
   snapshot->step_count = snapshot_step_count;
-  std::shared_ptr<const SimulationStateSnapshot> published = snapshot;
-  state_buffer_->publish(published);
+  std::shared_ptr<const StateSnapshot> published = snapshot;
+  state_buffer_->write(published);
   state_snapshot_step_count_ = snapshot_step_count;
   if (published_snapshot != nullptr) {
     *published_snapshot = std::move(published);
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::scheduler_reset_locked(const ResetOptions& options) {
-  std::shared_ptr<const SimulationStateSnapshot> published_snapshot;
+ResultCode Simulation::scheduler_reset_locked(const ResetOptions& options) {
+  std::shared_ptr<const StateSnapshot> published_snapshot;
   SnapshotObserver snapshot_observer;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (model_runtime_ == nullptr || !model_runtime_->is_loaded()) {
-      return Status::failed_precondition("MuJoCo model is not loaded.");
+      return ResultCode::FailedPrecondition;
     }
 
-    Status status = model_runtime_->reset(options);
-    if (!status.ok()) {
+    ResultCode status = model_runtime_->reset(options);
+    if (status != ResultCode::Ok) {
       return status;
     }
 
     if (options.reset_components && model_ != nullptr && data_ != nullptr) {
       status = component_manager_.reset_all(*model_, *data_);
-      if (!status.ok()) {
+      if (status != ResultCode::Ok) {
         return status;
       }
     }
@@ -544,12 +558,12 @@ Status Simulation::scheduler_reset_locked(const ResetOptions& options) {
     }
 
     status = read_component_states_locked(false);
-    if (!status.ok()) {
+    if (status != ResultCode::Ok) {
       return status;
     }
     if (state_buffer_ != nullptr) {
       status = publish_state_snapshot_locked(false, &published_snapshot);
-      if (!status.ok()) {
+      if (status != ResultCode::Ok) {
         return status;
       }
     }
@@ -560,7 +574,7 @@ Status Simulation::scheduler_reset_locked(const ResetOptions& options) {
     snapshot_observer(std::move(published_snapshot));
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 double Simulation::scheduler_timestep_locked() const {
@@ -571,10 +585,10 @@ double Simulation::scheduler_timestep_locked() const {
   return model_runtime_->timestep();
 }
 
-Status Simulation::start_viewer() {
-  auto viewer = std::make_unique<Viewer>();
-  const Status status = viewer->start(model_, data_, config_.model.model_path);
-  if (!status.ok()) {
+ResultCode Simulation::start_viewer() {
+  auto viewer = std::make_unique<MuJoCoViewer>(config_.viewer_startup_timeout);
+  const ResultCode status = viewer->start(model_, data_, config_.model.model_path);
+  if (status != ResultCode::Ok) {
     return status;
   }
 
@@ -582,19 +596,19 @@ Status Simulation::start_viewer() {
     std::lock_guard<std::mutex> lock(mutex_);
     viewer_ = std::move(viewer);
     next_viewer_sync_time_ = std::chrono::steady_clock::now();
-    runtime_error_.clear();
+    runtime_error_ = ResultCode::Ok;
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status Simulation::scheduler_sync_viewer_if_due() {
-  std::unique_ptr<Viewer> viewer_to_stop;
-  Status failure_status = Status::Ok();
+ResultCode Simulation::scheduler_sync_viewer_if_due() {
+  std::unique_ptr<MuJoCoViewer> viewer_to_stop;
+  ResultCode failure_status = ResultCode::Ok;
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (viewer_ == nullptr) {
-      return Status::Ok();
+      return ResultCode::Ok;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -604,33 +618,27 @@ Status Simulation::scheduler_sync_viewer_if_due() {
           std::chrono::duration<double>(1.0 / config_.scheduler.viewer_update_rate));
     }
     if (now < next_viewer_sync_time_) {
-      return Status::Ok();
+      return ResultCode::Ok;
     }
 
     if (!viewer_->is_running()) {
-      failure_status =
-          Status::invalid_state("MuJoCo viewer stopped before the next synchronization cycle.");
+      failure_status = ResultCode::InvalidState;
       viewer_to_stop = std::move(viewer_);
     } else if (!viewer_->is_ready()) {
-      failure_status =
-          Status::invalid_state("MuJoCo viewer became unavailable before synchronization.");
+      failure_status = ResultCode::InvalidState;
       viewer_to_stop = std::move(viewer_);
     } else {
-      const Status sync_status = viewer_->sync(false);
-      if (!sync_status.ok()) {
-        failure_status =
-            sync_status.message().empty()
-                ? Status::internal(
-                      "MuJoCo viewer synchronization failed with an empty error message.")
-                : sync_status;
+      const ResultCode sync_status = viewer_->sync(false);
+      if (sync_status != ResultCode::Ok) {
+        failure_status = sync_status;
         viewer_to_stop = std::move(viewer_);
       } else {
         next_viewer_sync_time_ = now + period;
-        return Status::Ok();
+        return ResultCode::Ok;
       }
     }
 
-    runtime_error_ = failure_status.message();
+    runtime_error_ = failure_status;
   }
 
   if (viewer_to_stop != nullptr) {

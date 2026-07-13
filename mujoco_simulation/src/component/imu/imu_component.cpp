@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "mujoco_simulation/component/update_context.hpp"
+
 namespace mujoco_simulation {
 namespace {
 
@@ -19,69 +21,68 @@ bool copy_sensor_vector(const mjData& data, int address, double* dest, int count
 
 ImuComponent::ImuComponent(ImuConfig info) : info_(std::move(info)) {}
 
-std::string_view ImuComponent::name() const noexcept { return info_.common.name; }
+std::string ImuComponent::name() const noexcept { return info_.common.name; }
 
-Status ImuComponent::validate_sensor_binding(const mjModel& model, std::string_view component_name,
-                                             std::string_view sensor_name, int expected_type,
-                                             int expected_dim, int* sensor_id,
-                                             int* sensor_address) {
+ResultCode ImuComponent::validate_sensor_binding(const mjModel& model, std::string component_name,
+                                                 std::string sensor_name, int expected_type,
+                                                 int expected_dim, int* sensor_id,
+                                                 int* sensor_address) {
+  (void)component_name;
   if (sensor_id == nullptr || sensor_address == nullptr) {
-    return Status::invalid_argument("IMU binding output pointers must not be null.");
+    return ResultCode::InvalidArgument;
   }
   if (sensor_name.empty()) {
-    return Status::invalid_argument("IMU sensor name must not be empty for '" +
-                                    std::string(component_name) + "'.");
+    return ResultCode::InvalidArgument;
   }
 
   const int id = mj_name2id(&model, mjOBJ_SENSOR, std::string(sensor_name).c_str());
   if (id < 0) {
-    return Status::binding_failed("IMU '" + std::string(component_name) +
-                                  "' could not bind to MuJoCo sensor '" + std::string(sensor_name) +
-                                  "'.");
+    return ResultCode::BindingFailed;
   }
   if (model.sensor_type[id] != expected_type) {
-    return Status::model_validation_failed("IMU '" + std::string(component_name) +
-                                           "' expected MuJoCo sensor '" + std::string(sensor_name) +
-                                           "' to have a different sensor type.");
+    return ResultCode::ModelValidationFailed;
   }
   if (model.sensor_dim[id] != expected_dim) {
-    return Status::model_validation_failed("IMU '" + std::string(component_name) +
-                                           "' expected MuJoCo sensor '" + std::string(sensor_name) +
-                                           "' to expose a different sensor dimension.");
+    return ResultCode::ModelValidationFailed;
   }
 
   const int address = model.sensor_adr[id];
   if (address < 0 || address + expected_dim > model.nsensordata) {
-    return Status::model_validation_failed(
-        "IMU '" + std::string(component_name) + "' is bound to MuJoCo sensor '" +
-        std::string(sensor_name) + "' with an invalid sensordata address.");
+    return ResultCode::ModelValidationFailed;
   }
 
   *sensor_id = id;
   *sensor_address = address;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status ImuComponent::bind(const mjModel& model) {
+ResultCode ImuComponent::bind(const mjModel& model) {
   if (info_.common.name.empty()) {
-    return Status::invalid_argument("IMU name must not be empty.");
+    return ResultCode::InvalidArgument;
+  }
+  if (model.opt.timestep <= 0.0) {
+    return ResultCode::InvalidArgument;
   }
 
-  Status status = validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
-                                          mjSENS_FRAMEQUAT, 4, &binding_.framequat_sensor_id,
-                                          &binding_.framequat_address);
-  if (!status.ok()) {
+  ResultCode status = validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
+                                              mjSENS_FRAMEQUAT, 4, &binding_.framequat_sensor_id,
+                                              &binding_.framequat_address);
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = validate_sensor_binding(model, info_.common.name, info_.gyro_sensor_name, mjSENS_GYRO, 3,
                                    &binding_.gyro_sensor_id, &binding_.gyro_address);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = validate_sensor_binding(model, info_.common.name, info_.accelerometer_sensor_name,
                                    mjSENS_ACCELEROMETER, 3, &binding_.accelerometer_sensor_id,
                                    &binding_.accelerometer_address);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
+    return status;
+  }
+  status = set_update_rate(info_.common.update_rate, 1.0 / model.opt.timestep);
+  if (status != ResultCode::Ok) {
     return status;
   }
 
@@ -92,10 +93,10 @@ Status ImuComponent::bind(const mjModel& model) {
   state_.orientation_covariance = info_.orientation_covariance;
   state_.angular_velocity_covariance = info_.angular_velocity_covariance;
   state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status ImuComponent::reset(const mjModel& model, mjData& data) {
+ResultCode ImuComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
   (void)data;
   sample_sequence_ = 0;
@@ -105,17 +106,15 @@ Status ImuComponent::reset(const mjModel& model, mjData& data) {
   state_.orientation_covariance = info_.orientation_covariance;
   state_.angular_velocity_covariance = info_.angular_velocity_covariance;
   state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-double ImuComponent::update_rate() const noexcept { return info_.common.update_rate; }
-
-Status ImuComponent::sample(const SensorSampleContext& context) {
+ResultCode ImuComponent::update(const UpdateContext& context) {
   (void)context.model;
   (void)context.step_count;
   if (binding_.framequat_address < 0 || binding_.gyro_address < 0 ||
       binding_.accelerometer_address < 0) {
-    return Status::failed_precondition("IMU component is not bound: " + info_.common.name);
+    return ResultCode::FailedPrecondition;
   }
 
   state_.sequence = ++sample_sequence_;
@@ -134,14 +133,14 @@ Status ImuComponent::sample(const SensorSampleContext& context) {
   if (!copy_sensor_vector(context.data, binding_.gyro_address, state_.angular_velocity.data(), 3) ||
       !copy_sensor_vector(context.data, binding_.accelerometer_address,
                           state_.linear_acceleration.data(), 3)) {
-    return Status::internal("Failed to sample IMU sensor data: " + info_.common.name);
+    return ResultCode::Internal;
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status ImuComponent::read(ImuSample& state) const {
+ResultCode ImuComponent::read(ImuState& state) const {
   state = state_;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 }  // namespace mujoco_simulation

@@ -310,7 +310,7 @@ RoboCasa YAML config
 ### 7.1 当前仓库现状
 
 - `docs/` 目录包含本文件、`current_architecture.md`、`migration_guide.md`、`performance_baseline.md`、`robocase.md` 等参考文档。
-- 仓库已有一份设备层设计文档：[mujoco_simulation/docs/hardware_devices_principles.md](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/mujoco_simulation/docs/hardware_devices_principles.md)。
+- 仓库中的 package-local 现行实现文档见 [`mujoco_simulation/docs/architecture.md`](../mujoco_simulation/docs/architecture.md)。
 - 根目录 [README.md](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/README.md) 覆盖环境初始化、RoboCasa 依赖安装和基础验证。
 - 测试基础设施已恢复：`mujoco_simulation/test/`（unit/integration/concurrency/performance）、`mujoco_hardware/tests/`、`mujoco_simulation_ros/tests/`。
 - 已完成的架构重构包括：`Simulation*` 中间类型消除、`CommandInterfaceType` 统一为唯一关节控制模式枚举、`robocasa` 提取到顶层 `robot_mujoco` Python 包、`SensorBridge` 迁移为 `mujoco_simulation_ros::SimulationRosBridge`、`MuJoCoSimulation` 重构为 `Simulation`、`HardwareManager` 演进为 `ComponentManager` + buffer 架构、错误处理统一为 `Status`/`Result<T>`、`Impl`/Pimpl 消除、`render_hardware_manager` 消除、`MjContext` 统一注入、`Robot` 类移除、`CameraRenderer` 独立渲染上下文（解耦 camera 与 viewer）。
@@ -331,7 +331,7 @@ RoboCasa YAML config
 2. 再看本文第 1–7 节，建立项目级与模块级心智模型。
 3. 再看本文第 8 节（架构深入与改进方向），理解当前设计中的权衡、已知局限和改进路线图。
 4. 如需了解最新包边界快照与迁移说明，看 [`current_architecture.md`](./current_architecture.md) 和 [`migration_guide.md`](./migration_guide.md)。
-5. 如需深入设备层实现，看 [mujoco_simulation/docs/hardware_devices_principles.md](/home/siyuey/workspace/franka/franka_mujoco/robot_mujoco/mujoco_simulation/docs/hardware_devices_principles.md)。
+5. 如需深入 `mujoco_simulation` 当前实现，看 [`mujoco_simulation/docs/architecture.md`](../mujoco_simulation/docs/architecture.md)。
 
 ---
 

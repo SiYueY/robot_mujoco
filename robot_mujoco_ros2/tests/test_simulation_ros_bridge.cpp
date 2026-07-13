@@ -50,28 +50,32 @@ hardware_interface::HardwareInfo parse_hardware_info(const std::string& urdf) {
   return infos.front();
 }
 
-mujoco_simulation::CameraSample make_camera_sample(std::uint64_t timestamp_ns,
-                                                   std::uint64_t sequence) {
-  mujoco_simulation::CameraSample sample;
-  sample.sequence = sequence;
-  sample.timestamp_ns = timestamp_ns;
-  sample.color = mujoco_simulation::ImageBuffer{.width = 2,
-                                                .height = 1,
-                                                .step = 6,
-                                                .format = mujoco_simulation::PixelFormat::Rgb8,
-                                                .data = {1, 2, 3, 4, 5, 6}};
-  sample.depth =
-      mujoco_simulation::DepthBuffer{.width = 2,
-                                     .height = 1,
-                                     .format = mujoco_simulation::DepthFormat::Float32Meters,
-                                     .data = {0.5F, 1.5F}};
-  sample.intrinsics.fx = 100.0;
-  sample.intrinsics.fy = 110.0;
-  sample.intrinsics.cx = 10.0;
-  sample.intrinsics.cy = 11.0;
-  sample.intrinsics.k = {100.0, 0.0, 10.0, 0.0, 110.0, 11.0, 0.0, 0.0, 1.0};
-  sample.intrinsics.p = {100.0, 0.0, 10.0, 0.0, 0.0, 110.0, 11.0, 0.0, 0.0, 0.0, 1.0, 0.0};
-  return sample;
+mujoco_simulation::CameraState make_camera_state(std::uint64_t timestamp_ns,
+                                                 std::uint64_t sequence) {
+  mujoco_simulation::CameraState state;
+  state.sequence = sequence;
+  state.timestamp_ns = timestamp_ns;
+  state.image.timestamp = timestamp_ns;
+  state.image.frame_id = "camera_optical_frame";
+  state.image.width = 2;
+  state.image.height = 1;
+  state.image.step = 6;
+  state.image.encoding = "rgb8";
+  state.image.data = {1, 2, 3, 4, 5, 6};
+  state.depth_image.timestamp = timestamp_ns;
+  state.depth_image.frame_id = "camera_optical_frame";
+  state.depth_image.width = 2;
+  state.depth_image.height = 1;
+  state.depth_image.step = static_cast<std::uint32_t>(sizeof(float) * 2U);
+  state.depth_image.encoding = "32FC1";
+  state.depth_image.data.resize(sizeof(float) * 2U);
+  const float depth_values[2] = {0.5F, 1.5F};
+  std::memcpy(state.depth_image.data.data(), depth_values, sizeof(depth_values));
+  state.camera_info.height = 1;
+  state.camera_info.width = 2;
+  state.camera_info.k = {100.0, 0.0, 10.0, 0.0, 110.0, 11.0, 0.0, 0.0, 1.0};
+  state.camera_info.p = {100.0, 0.0, 10.0, 0.0, 0.0, 110.0, 11.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+  return state;
 }
 
 class SimulationRosBridgeTest : public ::testing::Test {
@@ -135,7 +139,7 @@ TEST_F(SimulationRosBridgeTest, PublishesClockFromSimulationTime) {
   bridge_ = std::make_unique<SimulationRosBridge>(
       SimulationRosBridgeConfig{.node_name = "simulation_ros_bridge_clock_test"},
       rclcpp::contexts::get_global_default_context(), []() { return true; });
-  ASSERT_TRUE(bridge_->start().ok());
+  ASSERT_EQ(bridge_->start(), mujoco_simulation::ResultCode::Ok);
   create_subscriber_node("simulation_ros_bridge_clock_listener");
 
   std::mutex mutex;
@@ -172,33 +176,33 @@ TEST_F(SimulationRosBridgeTest, ControlServicesInvokeCallbacksAndReturnSuccess) 
       SimulationRosBridge::StatusCallback{},
       [&start_calls]() {
         ++start_calls;
-        return mujoco_simulation::Status::Ok();
+        return mujoco_simulation::ResultCode::Ok;
       },
       [&stop_calls]() {
         ++stop_calls;
-        return mujoco_simulation::Status::Ok();
+        return mujoco_simulation::ResultCode::Ok;
       },
       [&pause_calls]() {
         ++pause_calls;
-        return mujoco_simulation::Status::Ok();
+        return mujoco_simulation::ResultCode::Ok;
       },
       [&resume_calls]() {
         ++resume_calls;
-        return mujoco_simulation::Status::Ok();
+        return mujoco_simulation::ResultCode::Ok;
       },
       [&step_calls](uint32_t) {
         ++step_calls;
-        return mujoco_simulation::Status::Ok();
+        return mujoco_simulation::ResultCode::Ok;
       },
       [&last_realtime_factor](double realtime_factor) {
         last_realtime_factor.store(realtime_factor);
-        return mujoco_simulation::Status::Ok();
+        return mujoco_simulation::ResultCode::Ok;
       },
       [&last_keyframe](const std::string& keyframe) {
         last_keyframe = keyframe;
-        return mujoco_simulation::Status::Ok();
+        return mujoco_simulation::ResultCode::Ok;
       });
-  ASSERT_TRUE(bridge_->start().ok());
+  ASSERT_EQ(bridge_->start(), mujoco_simulation::ResultCode::Ok);
   create_subscriber_node("simulation_ros_bridge_control_service_client");
 
   auto start_client = subscriber_node_->create_client<std_srvs::srv::Trigger>("/start");
@@ -266,8 +270,8 @@ TEST_F(SimulationRosBridgeTest, ServiceGateRejectsRequestsWhenInactive) {
   bridge_ = std::make_unique<SimulationRosBridge>(
       SimulationRosBridgeConfig{.node_name = "simulation_ros_bridge_gate_test"},
       rclcpp::contexts::get_global_default_context(), []() { return false; },
-      []() { return mujoco_simulation::Status::Ok(); });
-  ASSERT_TRUE(bridge_->start().ok());
+      []() { return mujoco_simulation::ResultCode::Ok; });
+  ASSERT_EQ(bridge_->start(), mujoco_simulation::ResultCode::Ok);
   create_subscriber_node("simulation_ros_bridge_gate_client");
 
   auto client = subscriber_node_->create_client<std_srvs::srv::Trigger>("/reset");
@@ -278,7 +282,7 @@ TEST_F(SimulationRosBridgeTest, ServiceGateRejectsRequestsWhenInactive) {
   const auto response = future.get();
   ASSERT_NE(response, nullptr);
   EXPECT_FALSE(response->success);
-  EXPECT_EQ(response->message, "Simulation ROS bridge is not active.");
+  EXPECT_EQ(response->message, "operation failed");
 }
 
 TEST_F(SimulationRosBridgeTest, PublishesBundleWithExpectedTimestamps) {
@@ -298,7 +302,7 @@ TEST_F(SimulationRosBridgeTest, PublishesBundleWithExpectedTimestamps) {
       {.name = "lidar", .frame_id = "lidar_link", .topic = "/test/lidar", .sample_count = 2});
   bridge_ = std::make_unique<SimulationRosBridge>(
       std::move(config), rclcpp::contexts::get_global_default_context(), []() { return true; });
-  ASSERT_TRUE(bridge_->start().ok());
+  ASSERT_EQ(bridge_->start(), mujoco_simulation::ResultCode::Ok);
   create_subscriber_node("simulation_ros_bridge_publish_listener");
 
   std::mutex mutex;
@@ -365,28 +369,28 @@ TEST_F(SimulationRosBridgeTest, PublishesBundleWithExpectedTimestamps) {
   (void)lidar_sub;
 
   const rclcpp::Time sim_time(2'000'000'000LL, RCL_ROS_TIME);
-  auto camera_sample = make_camera_sample(1'500'000'000ULL, 7U);
+  auto camera_state = make_camera_state(1'500'000'000ULL, 7U);
   PublishBundle bundle;
   bundle.sim_time = sim_time;
   bundle.imus.push_back({.publisher_index = 0,
-                         .sample = {.sequence = 1,
-                                    .timestamp_ns = 0,
-                                    .orientation = {0.0, 0.0, 0.0, 1.0},
-                                    .angular_velocity = {1.0, 2.0, 3.0},
-                                    .linear_acceleration = {4.0, 5.0, 6.0}}});
+                         .state = {.sequence = 1,
+                                   .timestamp_ns = 0,
+                                   .orientation = {0.0, 0.0, 0.0, 1.0},
+                                   .angular_velocity = {1.0, 2.0, 3.0},
+                                   .linear_acceleration = {4.0, 5.0, 6.0}}});
   bundle.lidars.push_back({.publisher_index = 0,
-                           .sample = {.sequence = 2,
-                                      .timestamp_ns = 0,
-                                      .angle_min = -0.1,
-                                      .angle_max = 0.1,
-                                      .angle_increment = 0.2,
-                                      .range_min = 0.2,
-                                      .range_max = 5.0,
-                                      .ranges = {1.0, 2.0},
-                                      .intensities = {3.0, 4.0}}});
-  bundle.cameras.push_back({.publisher_index = 0, .sample = &camera_sample});
+                           .state = {.sequence = 2,
+                                     .timestamp_ns = 0,
+                                     .angle_min = -0.1,
+                                     .angle_max = 0.1,
+                                     .angle_increment = 0.2,
+                                     .range_min = 0.2,
+                                     .range_max = 5.0,
+                                     .ranges = {1.0, 2.0},
+                                     .intensities = {3.0, 4.0}}});
+  bundle.cameras.push_back({.publisher_index = 0, .state = &camera_state});
 
-  ASSERT_TRUE(bridge_->enqueue_publish_bundle(bundle).ok());
+  ASSERT_EQ(bridge_->enqueue_publish_bundle(bundle), mujoco_simulation::ResultCode::Ok);
   ASSERT_TRUE(spin_until([&]() {
     std::lock_guard<std::mutex> lock(mutex);
     return clock_received && imu_received && rgb_received && depth_received && info_received &&
@@ -409,18 +413,18 @@ TEST(PublishChannelTest, SmallSnapshotLatestWins) {
 
   PublishBundle first;
   first.sim_time = rclcpp::Time(1'000'000'000LL, RCL_ROS_TIME);
-  first.imus.push_back({.publisher_index = 0, .sample = {.sequence = 1, .timestamp_ns = 0}});
+  first.imus.push_back({.publisher_index = 0, .state = {.sequence = 1, .timestamp_ns = 0}});
   PublishBundle second = first;
   second.sim_time = rclcpp::Time(2'000'000'000LL, RCL_ROS_TIME);
-  second.imus[0].sample.sequence = 2;
+  second.imus[0].state.sequence = 2;
 
-  ASSERT_TRUE(channel.publish_bundle(first).ok());
-  ASSERT_TRUE(channel.publish_bundle(second).ok());
+  ASSERT_EQ(channel.publish_bundle(first), mujoco_simulation::ResultCode::Ok);
+  ASSERT_EQ(channel.publish_bundle(second), mujoco_simulation::ResultCode::Ok);
 
   SmallPublishSnapshot snapshot;
   ASSERT_TRUE(channel.consume_latest_small_snapshot(&snapshot));
   EXPECT_EQ(snapshot.sim_time.nanoseconds(), second.sim_time.nanoseconds());
-  EXPECT_EQ(snapshot.imus[0].sample.sequence, 2u);
+  EXPECT_EQ(snapshot.imus[0].state.sequence, 2u);
   EXPECT_FALSE(channel.consume_latest_small_snapshot(&snapshot));
 }
 
@@ -432,15 +436,15 @@ TEST(PublishChannelTest, CameraQueueDropsOldFramesWithoutGrowing) {
        .camera_queue_capacity = 1});
   EXPECT_EQ(channel.camera_slot_count(), 1u);
 
-  auto first_frame = make_camera_sample(1'000'000'000ULL, 1U);
-  auto second_frame = make_camera_sample(2'000'000'000ULL, 2U);
+  auto first_frame = make_camera_state(1'000'000'000ULL, 1U);
+  auto second_frame = make_camera_state(2'000'000'000ULL, 2U);
   PublishBundle first;
-  first.cameras.push_back({.publisher_index = 0, .sample = &first_frame});
+  first.cameras.push_back({.publisher_index = 0, .state = &first_frame});
   PublishBundle second;
-  second.cameras.push_back({.publisher_index = 0, .sample = &second_frame});
+  second.cameras.push_back({.publisher_index = 0, .state = &second_frame});
 
-  ASSERT_TRUE(channel.publish_bundle(first).ok());
-  ASSERT_TRUE(channel.publish_bundle(second).ok());
+  ASSERT_EQ(channel.publish_bundle(first), mujoco_simulation::ResultCode::Ok);
+  ASSERT_EQ(channel.publish_bundle(second), mujoco_simulation::ResultCode::Ok);
 
   CameraFrame frame;
   ASSERT_TRUE(channel.pop_camera_frame(&frame));
@@ -505,13 +509,13 @@ TEST(ConfigBuilderTest, BuildsRuntimeRosAndMappingOutputs) {
 
 TEST(MessageMapperTest, MapsImuAndCameraMessages) {
   const ImuPublisherConfig imu_config{.name = "imu", .frame_id = "imu_link", .topic = "/imu"};
-  mujoco_simulation::ImuSample imu_sample;
-  imu_sample.timestamp_ns = 0;
-  imu_sample.orientation = {0.0, 0.0, 0.0, 1.0};
-  imu_sample.angular_velocity = {1.0, 2.0, 3.0};
-  imu_sample.linear_acceleration = {4.0, 5.0, 6.0};
+  mujoco_simulation::ImuState imu_state;
+  imu_state.timestamp_ns = 0;
+  imu_state.orientation = {0.0, 0.0, 0.0, 1.0};
+  imu_state.angular_velocity = {1.0, 2.0, 3.0};
+  imu_state.linear_acceleration = {4.0, 5.0, 6.0};
   const auto imu_message = message_mapper::make_imu_message(
-      imu_config, imu_sample, rclcpp::Time(10'000'000'000LL, RCL_ROS_TIME));
+      imu_config, imu_state, rclcpp::Time(10'000'000'000LL, RCL_ROS_TIME));
   EXPECT_EQ(imu_message.header.frame_id, "imu_link");
   EXPECT_EQ(imu_message.header.stamp.sec, 10);
 

@@ -5,26 +5,24 @@
 namespace mujoco_simulation {
 namespace {
 
-TEST(CameraBufferTest, PublishReadAndClearSamples) {
+TEST(CameraBufferTest, PublishReadAndClearStates) {
   CameraBuffer buffer;
 
-  auto sample = std::make_shared<CameraSample>();
-  sample->sequence = 7;
-  sample->timestamp_ns = 1234;
-  sample->frame_id = "camera_link";
+  CameraState state;
+  state.sequence = 7;
+  state.timestamp_ns = 1234;
+  state.frame_id = "camera_link";
 
-  buffer.publish("camera", sample);
+  buffer.write("camera", state);
 
-  Result<std::shared_ptr<const CameraSample>> read = buffer.read("camera");
-  ASSERT_TRUE(read.ok());
-  ASSERT_NE(read.value(), nullptr);
-  EXPECT_EQ(read.value()->sequence, 7U);
-  EXPECT_EQ(read.value()->timestamp_ns, 1234U);
-  EXPECT_EQ(read.value()->frame_id, "camera_link");
+  CameraState read;
+  ASSERT_TRUE(buffer.read("camera", &read));
+  EXPECT_EQ(read.sequence, 7U);
+  EXPECT_EQ(read.timestamp_ns, 1234U);
+  EXPECT_EQ(read.frame_id, "camera_link");
 
   buffer.clear();
-  read = buffer.read("camera");
-  EXPECT_FALSE(read.ok());
+  EXPECT_FALSE(buffer.read("camera", &read));
 }
 
 }  // namespace

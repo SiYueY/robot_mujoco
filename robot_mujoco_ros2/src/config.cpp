@@ -236,19 +236,18 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
       }
 
       if (!parse_covariance_parameter(sensor.parameters, "orientation_covariance",
-                                      &imu_data.sample.orientation_covariance, error_message) ||
+                                      &imu_data.state.orientation_covariance, error_message) ||
           !parse_covariance_parameter(sensor.parameters, "angular_velocity_covariance",
-                                      &imu_data.sample.angular_velocity_covariance,
-                                      error_message) ||
+                                      &imu_data.state.angular_velocity_covariance, error_message) ||
           !parse_covariance_parameter(sensor.parameters, "linear_acceleration_covariance",
-                                      &imu_data.sample.linear_acceleration_covariance,
+                                      &imu_data.state.linear_acceleration_covariance,
                                       error_message)) {
         return false;
       }
-      imu_data.config.orientation_covariance = imu_data.sample.orientation_covariance;
-      imu_data.config.angular_velocity_covariance = imu_data.sample.angular_velocity_covariance;
+      imu_data.config.orientation_covariance = imu_data.state.orientation_covariance;
+      imu_data.config.angular_velocity_covariance = imu_data.state.angular_velocity_covariance;
       imu_data.config.linear_acceleration_covariance =
-          imu_data.sample.linear_acceleration_covariance;
+          imu_data.state.linear_acceleration_covariance;
 
       for (const auto& state_interface : sensor.state_interfaces) {
         if (!is_imu_state_interface(state_interface.name)) {

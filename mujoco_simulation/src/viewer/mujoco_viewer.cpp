@@ -1,4 +1,4 @@
-#include "mujoco_simulation/viewer/viewer.hpp"
+#include "mujoco_simulation/viewer/mujoco_viewer.hpp"
 
 #include <chrono>
 #include <cstring>
@@ -14,13 +14,14 @@ void delete_simulate(mujoco::Simulate* simulate) { delete simulate; }
 
 }  // namespace
 
-Viewer::Viewer() : Viewer(ViewerConfig{}) {}
+MuJoCoViewer::MuJoCoViewer() : MuJoCoViewer(std::chrono::milliseconds{5000}) {}
 
-Viewer::Viewer(ViewerConfig config) : config_(config), simulate_(nullptr, delete_simulate) {}
+MuJoCoViewer::MuJoCoViewer(std::chrono::milliseconds startup_timeout)
+    : startup_timeout_(startup_timeout), simulate_(nullptr, delete_simulate) {}
 
-Viewer::~Viewer() { stop(); }
+MuJoCoViewer::~MuJoCoViewer() { stop(); }
 
-void Viewer::mark_ready() {
+void MuJoCoViewer::mark_ready() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     ready_ = true;
@@ -28,7 +29,7 @@ void Viewer::mark_ready() {
   cv_.notify_all();
 }
 
-void Viewer::record_async_failure(Status status) {
+void MuJoCoViewer::record_async_failure(ResultCode status) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     ready_ = false;
@@ -40,12 +41,13 @@ void Viewer::record_async_failure(Status status) {
   cv_.notify_all();
 }
 
-Status Viewer::start(mjModel* model, mjData* data, const std::string& displayed_filename) {
+ResultCode MuJoCoViewer::start(mjModel* model, mjData* data,
+                               const std::string& displayed_filename) {
   if (model == nullptr || data == nullptr) {
-    return Status::invalid_argument("Viewer requires non-null MuJoCo model and data.");
+    return ResultCode::InvalidArgument;
   }
   if (render_thread_.joinable()) {
-    return Status::Ok();
+    return ResultCode::Ok;
   }
 
   try {
@@ -89,13 +91,11 @@ Status Viewer::start(mjModel* model, mjData* data, const std::string& displayed_
         mark_ready();
 
         simulate_->RenderLoop();
-      } catch (const std::exception& exc) {
-        record_async_failure(
-            Status::thread_failed(std::string("MuJoCo viewer thread failed: ") + exc.what()));
+      } catch (const std::exception&) {
+        record_async_failure(ResultCode::ThreadFailed);
         return;
       } catch (...) {
-        record_async_failure(
-            Status::thread_failed("MuJoCo viewer thread failed with an unknown exception."));
+        record_async_failure(ResultCode::ThreadFailed);
         return;
       }
 
@@ -105,19 +105,19 @@ Status Viewer::start(mjModel* model, mjData* data, const std::string& displayed_
       }
       cv_.notify_all();
     });
-  } catch (const std::exception& exc) {
+  } catch (const std::exception&) {
     if (render_thread_.joinable()) {
       render_thread_.join();
     }
-    return Status::thread_failed(std::string("Failed to start MuJoCo viewer: ") + exc.what());
+    return ResultCode::ThreadFailed;
   }
 
-  const auto ready_deadline = std::chrono::steady_clock::now() + config_.startup_timeout;
+  const auto ready_deadline = std::chrono::steady_clock::now() + startup_timeout_;
   std::unique_lock<std::mutex> lock(mutex_);
   const bool ready = cv_.wait_until(lock, ready_deadline,
                                     [this]() { return ready_ || async_failure_.has_value(); });
   if (async_failure_.has_value()) {
-    const Status failure = *async_failure_;
+    const ResultCode failure = *async_failure_;
     lock.unlock();
     stop();
     return failure;
@@ -125,13 +125,12 @@ Status Viewer::start(mjModel* model, mjData* data, const std::string& displayed_
   if (!ready) {
     lock.unlock();
     stop();
-    return Status::timeout(
-        "MuJoCo viewer failed to become ready before the startup timeout expired.");
+    return ResultCode::Timeout;
   }
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-void Viewer::stop() {
+void MuJoCoViewer::stop() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     stop_requested_ = true;
@@ -148,31 +147,31 @@ void Viewer::stop() {
   simulate_.reset();
 }
 
-Status Viewer::sync(bool state_only) {
+ResultCode MuJoCoViewer::sync(bool state_only) {
   std::lock_guard<std::mutex> state_lock(mutex_);
   if (async_failure_.has_value()) {
     return *async_failure_;
   }
   if (simulate_ == nullptr || !ready_) {
-    return Status::invalid_state(stop_requested_ ? "Viewer is stopping." : "Viewer is not ready.");
+    return ResultCode::InvalidState;
   }
 
   try {
     std::unique_lock<std::recursive_mutex> simulate_lock(simulate_->mtx);
     if (simulate_->exitrequest.load()) {
-      return Status::invalid_state("Viewer is stopping.");
+      return ResultCode::InvalidState;
     }
     simulate_->Sync(state_only);
-  } catch (const std::exception& exc) {
-    return Status::render_failed(std::string("Failed to sync MuJoCo viewer: ") + exc.what());
+  } catch (const std::exception&) {
+    return ResultCode::RenderFailed;
   }
 
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-bool Viewer::is_running() const { return render_thread_.joinable(); }
+bool MuJoCoViewer::is_running() const { return render_thread_.joinable(); }
 
-bool Viewer::is_ready() const {
+bool MuJoCoViewer::is_ready() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return ready_;
 }

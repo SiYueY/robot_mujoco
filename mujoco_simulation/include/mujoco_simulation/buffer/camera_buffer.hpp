@@ -1,40 +1,41 @@
 #pragma once
 
-#include <memory>
 #include <mutex>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
-#include "mujoco_simulation/component/camera/camera_sample.hpp"
-#include "mujoco_simulation/result.hpp"
+#include "mujoco_simulation/component/camera/camera_data.hpp"
 
 namespace mujoco_simulation {
 
 class CameraBuffer {
  public:
-  void publish(std::string_view camera_name, std::shared_ptr<const CameraSample> sample) {
+  void write(std::string camera_name, CameraState state) {
     std::lock_guard<std::mutex> lock(mutex_);
-    samples_[std::string(camera_name)] = std::move(sample);
+    states_[std::string(camera_name)] = std::move(state);
   }
 
-  Result<std::shared_ptr<const CameraSample>> read(std::string_view camera_name) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    const auto it = samples_.find(std::string(camera_name));
-    if (it == samples_.end() || it->second == nullptr) {
-      return Status::not_found("Camera sample not found: " + std::string(camera_name));
+  bool read(std::string camera_name, CameraState* out) const {
+    if (out == nullptr) {
+      return false;
     }
-    return it->second;
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = states_.find(std::string(camera_name));
+    if (it == states_.end()) {
+      return false;
+    }
+    *out = it->second;
+    return true;
   }
 
   void clear() {
     std::lock_guard<std::mutex> lock(mutex_);
-    samples_.clear();
+    states_.clear();
   }
 
  private:
   mutable std::mutex mutex_;
-  std::unordered_map<std::string, std::shared_ptr<const CameraSample>> samples_;
+  std::unordered_map<std::string, CameraState> states_;
 };
 
 }  // namespace mujoco_simulation

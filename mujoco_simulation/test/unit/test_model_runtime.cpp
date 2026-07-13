@@ -46,18 +46,18 @@ TEST_F(ModelRuntimeTest, LoadsStepsAndResetsMinimalMjcf) {
   const auto model_path = write_model_file("model_runtime_test.xml", kFallingBodyXml);
 
   const auto load_status = runtime.load({model_path.string()});
-  ASSERT_TRUE(load_status.ok()) << load_status.message();
+  ASSERT_EQ(load_status, mujoco_simulation::ResultCode::Ok);
   ASSERT_TRUE(runtime.is_loaded());
   EXPECT_GT(runtime.timestep(), 0.0);
 
   const double initial_z = runtime.data().qpos[2];
   const auto step_status = runtime.step(10);
-  ASSERT_TRUE(step_status.ok()) << step_status.message();
+  ASSERT_EQ(step_status, mujoco_simulation::ResultCode::Ok);
   EXPECT_GT(runtime.simulation_time(), 0.0);
   EXPECT_LT(runtime.data().qpos[2], initial_z);
 
   const auto reset_status = runtime.reset();
-  ASSERT_TRUE(reset_status.ok()) << reset_status.message();
+  ASSERT_EQ(reset_status, mujoco_simulation::ResultCode::Ok);
   EXPECT_NEAR(runtime.data().qpos[2], initial_z, 1e-9);
 }
 
@@ -65,8 +65,8 @@ TEST_F(ModelRuntimeTest, ResetToNamedKeyframe) {
   mujoco_simulation::ModelRuntime runtime;
   const auto model_path = write_model_file("model_runtime_keyframe.xml", kFallingBodyXml);
 
-  ASSERT_TRUE(runtime.load({model_path.string()}).ok());
-  ASSERT_TRUE(runtime.reset({.keyframe_name = "raised"}).ok());
+  ASSERT_EQ(runtime.load({model_path.string()}), mujoco_simulation::ResultCode::Ok);
+  ASSERT_EQ(runtime.reset({.keyframe_name = "raised"}), mujoco_simulation::ResultCode::Ok);
   EXPECT_NEAR(runtime.data().qpos[2], 1.0, 1e-9);
 }
 
@@ -74,9 +74,9 @@ TEST_F(ModelRuntimeTest, LoadAppliesConfiguredInitialKeyframe) {
   mujoco_simulation::ModelRuntime runtime;
   const auto model_path = write_model_file("model_runtime_initial_keyframe.xml", kFallingBodyXml);
 
-  const mujoco_simulation::Status load_status =
+  const mujoco_simulation::ResultCode load_status =
       runtime.load({.model_path = model_path.string(), .initial_keyframe = "raised"});
-  ASSERT_TRUE(load_status.ok()) << load_status.message();
+  ASSERT_EQ(load_status, mujoco_simulation::ResultCode::Ok);
   EXPECT_NEAR(runtime.data().qpos[2], 1.0, 1e-9);
 }
 
@@ -84,11 +84,9 @@ TEST_F(ModelRuntimeTest, RejectsMissingConfiguredInitialKeyframeAsModelValidatio
   mujoco_simulation::ModelRuntime runtime;
   const auto model_path = write_model_file("model_runtime_missing_keyframe.xml", kFallingBodyXml);
 
-  const mujoco_simulation::Status load_status =
+  const mujoco_simulation::ResultCode load_status =
       runtime.load({.model_path = model_path.string(), .initial_keyframe = "missing"});
-  EXPECT_FALSE(load_status.ok());
-  EXPECT_EQ(load_status.code(), mujoco_simulation::StatusCode::ModelValidationFailed);
-  EXPECT_NE(load_status.message().find("missing"), std::string::npos);
+  EXPECT_EQ(load_status, mujoco_simulation::ResultCode::ModelValidationFailed);
   EXPECT_FALSE(runtime.is_loaded());
 }
 
@@ -96,9 +94,8 @@ TEST_F(ModelRuntimeTest, RejectsMalformedXmlAsModelLoadFailure) {
   mujoco_simulation::ModelRuntime runtime;
   const auto model_path = write_model_file("model_runtime_bad_xml.xml", "<mujoco><worldbody>");
 
-  const mujoco_simulation::Status load_status = runtime.load({model_path.string()});
-  EXPECT_FALSE(load_status.ok());
-  EXPECT_EQ(load_status.code(), mujoco_simulation::StatusCode::ModelLoadFailed);
+  const mujoco_simulation::ResultCode load_status = runtime.load({model_path.string()});
+  EXPECT_EQ(load_status, mujoco_simulation::ResultCode::ModelLoadFailed);
   EXPECT_FALSE(runtime.is_loaded());
 }
 
@@ -117,9 +114,8 @@ TEST_F(ModelRuntimeTest, RejectsNonPositiveTimestepAsModelValidationFailure) {
 </mujoco>
 )");
 
-  const mujoco_simulation::Status load_status = runtime.load({model_path.string()});
-  EXPECT_FALSE(load_status.ok());
-  EXPECT_EQ(load_status.code(), mujoco_simulation::StatusCode::ModelValidationFailed);
+  const mujoco_simulation::ResultCode load_status = runtime.load({model_path.string()});
+  EXPECT_EQ(load_status, mujoco_simulation::ResultCode::ModelValidationFailed);
   EXPECT_FALSE(runtime.is_loaded());
 }
 
@@ -127,7 +123,7 @@ TEST_F(ModelRuntimeTest, ForwardRefreshesDerivedBodyState) {
   mujoco_simulation::ModelRuntime runtime;
   const auto model_path = write_model_file("model_runtime_forward.xml", kFallingBodyXml);
 
-  ASSERT_TRUE(runtime.load({model_path.string()}).ok());
+  ASSERT_EQ(runtime.load({model_path.string()}), mujoco_simulation::ResultCode::Ok);
 
   mjData& data = runtime.mutable_data();
   data.qpos[2] = 1.25;
@@ -135,37 +131,20 @@ TEST_F(ModelRuntimeTest, ForwardRefreshesDerivedBodyState) {
   ASSERT_GE(body_id, 0);
 
   const double stale_z = data.xpos[3 * body_id + 2];
-  ASSERT_TRUE(runtime.forward().ok());
+  ASSERT_EQ(runtime.forward(), mujoco_simulation::ResultCode::Ok);
   const double fresh_z = data.xpos[3 * body_id + 2];
 
   EXPECT_NE(stale_z, fresh_z);
   EXPECT_NEAR(fresh_z, 1.25, 1e-6);
 }
 
-TEST_F(ModelRuntimeTest, CopyDataToDestination) {
-  mujoco_simulation::ModelRuntime runtime;
-  const auto model_path = write_model_file("model_runtime_copy.xml", kFallingBodyXml);
-
-  ASSERT_TRUE(runtime.load({model_path.string()}).ok());
-  ASSERT_TRUE(runtime.step(3).ok());
-
-  std::unique_ptr<mjData, void (*)(mjData*)> copy(mj_makeData(&runtime.model()), mj_deleteData);
-  ASSERT_NE(copy, nullptr);
-
-  const auto copy_status = runtime.copy_data_to(*copy);
-  ASSERT_TRUE(copy_status.ok()) << copy_status.message();
-  EXPECT_NEAR(copy->time, runtime.data().time, 1e-12);
-  EXPECT_NEAR(copy->qpos[2], runtime.data().qpos[2], 1e-12);
-}
-
 TEST_F(ModelRuntimeTest, ResetRejectsMissingRuntimeKeyframeWithoutUnloadingModel) {
   mujoco_simulation::ModelRuntime runtime;
   const auto model_path = write_model_file("model_runtime_runtime_keyframe.xml", kFallingBodyXml);
 
-  ASSERT_TRUE(runtime.load({model_path.string()}).ok());
-  const mujoco_simulation::Status reset_status = runtime.reset({.keyframe_name = "missing"});
-  EXPECT_FALSE(reset_status.ok());
-  EXPECT_EQ(reset_status.code(), mujoco_simulation::StatusCode::NotFound);
+  ASSERT_EQ(runtime.load({model_path.string()}), mujoco_simulation::ResultCode::Ok);
+  const mujoco_simulation::ResultCode reset_status = runtime.reset({.keyframe_name = "missing"});
+  EXPECT_EQ(reset_status, mujoco_simulation::ResultCode::NotFound);
   EXPECT_TRUE(runtime.is_loaded());
 }
 
@@ -174,12 +153,12 @@ TEST_F(ModelRuntimeTest, UnloadAndReloadRemainStableAcrossRepeatedCycles) {
   const auto model_path = write_model_file("model_runtime_reload.xml", kFallingBodyXml);
 
   for (int cycle = 0; cycle < 3; ++cycle) {
-    const mujoco_simulation::Status load_status = runtime.load({model_path.string()});
-    ASSERT_TRUE(load_status.ok()) << load_status.message();
+    const mujoco_simulation::ResultCode load_status = runtime.load({model_path.string()});
+    ASSERT_EQ(load_status, mujoco_simulation::ResultCode::Ok);
     EXPECT_TRUE(runtime.is_loaded());
 
-    const mujoco_simulation::Status step_status = runtime.step(2);
-    ASSERT_TRUE(step_status.ok()) << step_status.message();
+    const mujoco_simulation::ResultCode step_status = runtime.step(2);
+    ASSERT_EQ(step_status, mujoco_simulation::ResultCode::Ok);
     EXPECT_GT(runtime.simulation_time(), 0.0);
 
     runtime.unload();
@@ -193,14 +172,11 @@ TEST_F(ModelRuntimeTest, RejectsInvalidInput) {
   mujoco_simulation::ModelRuntime runtime;
 
   const auto load_status = runtime.load({"/tmp/does_not_exist.xml"});
-  EXPECT_FALSE(load_status.ok());
-  EXPECT_EQ(load_status.code(), mujoco_simulation::StatusCode::ModelLoadFailed);
+  EXPECT_EQ(load_status, mujoco_simulation::ResultCode::ModelLoadFailed);
 
   const auto step_status = runtime.step();
-  EXPECT_FALSE(step_status.ok());
-  EXPECT_EQ(step_status.code(), mujoco_simulation::StatusCode::FailedPrecondition);
+  EXPECT_EQ(step_status, mujoco_simulation::ResultCode::FailedPrecondition);
 
   const auto reset_status = runtime.reset();
-  EXPECT_FALSE(reset_status.ok());
-  EXPECT_EQ(reset_status.code(), mujoco_simulation::StatusCode::FailedPrecondition);
+  EXPECT_EQ(reset_status, mujoco_simulation::ResultCode::FailedPrecondition);
 }

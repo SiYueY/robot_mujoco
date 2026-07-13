@@ -4,18 +4,11 @@
 #include <vector>
 
 #include "hardware_interface/hardware_info.hpp"
-#include "mujoco_simulation/component/camera/camera_config.hpp"
-#include "mujoco_simulation/component/camera/camera_sample.hpp"
-#include "mujoco_simulation/component/imu/imu_config.hpp"
-#include "mujoco_simulation/component/imu/imu_sample.hpp"
-#include "mujoco_simulation/component/joint/joint_command.hpp"
-#include "mujoco_simulation/component/joint/joint_config.hpp"
-#include "mujoco_simulation/component/joint/joint_state.hpp"
-#include "mujoco_simulation/component/lidar/lidar_config.hpp"
-#include "mujoco_simulation/component/lidar/lidar_sample.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_command.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_config.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_state.hpp"
+#include "mujoco_simulation/component/camera/camera_data.hpp"
+#include "mujoco_simulation/component/imu/imu_data.hpp"
+#include "mujoco_simulation/component/joint/joint_data.hpp"
+#include "mujoco_simulation/component/lidar/lidar_data.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 #include "mujoco_simulation/simulation.hpp"
 
 namespace robot_mujoco_ros2 {
@@ -35,7 +28,7 @@ struct ImuData {
   std::string frame_id;
   std::string topic;
   mujoco_simulation::ImuConfig config;
-  mujoco_simulation::ImuSample sample;
+  mujoco_simulation::ImuState state;
 };
 
 struct CameraData {
@@ -50,7 +43,7 @@ struct CameraData {
   std::string camera_info_topic;
 
   mujoco_simulation::CameraConfig config;
-  mujoco_simulation::CameraSample sample;
+  mujoco_simulation::CameraState state;
 };
 
 struct LidarData {
@@ -58,7 +51,7 @@ struct LidarData {
   std::string frame_id;
   std::string topic;
   mujoco_simulation::LidarConfig config;
-  mujoco_simulation::LidarSample sample;
+  mujoco_simulation::LidarState state;
 };
 
 struct MobileBaseData {

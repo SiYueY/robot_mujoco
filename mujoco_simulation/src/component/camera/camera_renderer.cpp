@@ -36,21 +36,20 @@ CameraRenderer::CameraRenderer(CameraRendererConfig config) : config_(config) {}
 
 CameraRenderer::~CameraRenderer() { (void)shutdown(); }
 
-Status CameraRenderer::initialize(const mjModel& model) {
+ResultCode CameraRenderer::initialize(const mjModel& model) {
   if (initialized_) {
-    return Status::Ok();
+    return ResultCode::Ok;
   }
 
-  Status status = ensure_gl_context();
-  if (!status.ok()) {
+  ResultCode status = ensure_gl_context();
+  if (status != ResultCode::Ok) {
     return status;
   }
 
   render_data_ = mj_makeData(&model);
   if (render_data_ == nullptr) {
     release_current_context();
-    return Status::render_failed(
-        "CameraRenderer failed to allocate MuJoCo render mjData for offscreen rendering.");
+    return ResultCode::RenderFailed;
   }
 
   mjv_defaultScene(&scene_);
@@ -66,10 +65,10 @@ Status CameraRenderer::initialize(const mjModel& model) {
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
   initialized_ = true;
   release_current_context();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status CameraRenderer::shutdown() {
+ResultCode CameraRenderer::shutdown() {
   if (gl_context_.backend == OffscreenGlBackend::Glfw && gl_context_.window != nullptr) {
     glfwMakeContextCurrent(gl_context_.window);
   } else if (gl_context_.backend == OffscreenGlBackend::Egl &&
@@ -114,12 +113,12 @@ Status CameraRenderer::shutdown() {
   offscreen_height_ = 0;
   gl_context_.backend = OffscreenGlBackend::None;
   release_current_context();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status CameraRenderer::copy_simulation_data(const mjModel& model, const mjData& source) {
-  Status status = initialize(model);
-  if (!status.ok()) {
+ResultCode CameraRenderer::copy_simulation_data(const mjModel& model, const mjData& source) {
+  ResultCode status = initialize(model);
+  if (status != ResultCode::Ok) {
     return status;
   }
   if (gl_context_.backend == OffscreenGlBackend::Glfw && gl_context_.window != nullptr) {
@@ -129,36 +128,36 @@ Status CameraRenderer::copy_simulation_data(const mjModel& model, const mjData& 
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return Status::render_failed(
-          "CameraRenderer failed to activate the EGL context before copying simulation data.");
+      return ResultCode::RenderFailed;
     }
   }
   if (mj_copyData(render_data_, &model, &source) == nullptr) {
     release_current_context();
-    return Status::render_failed(
-        "CameraRenderer failed to copy MuJoCo simulation data into the render context.");
+    return ResultCode::RenderFailed;
   }
   release_current_context();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Result<std::shared_ptr<const CameraSample>> CameraRenderer::render(const mjModel& model,
-                                                                   const CameraConfig& spec,
-                                                                   std::uint64_t sequence,
-                                                                   std::uint64_t timestamp_ns) {
-  Status status = initialize(model);
-  if (!status.ok()) {
+ResultCode CameraRenderer::render(const mjModel& model, const CameraConfig& spec,
+                                  std::uint64_t sequence, std::uint64_t timestamp_ns,
+                                  std::shared_ptr<const CameraRenderState>* out) {
+  if (out == nullptr) {
+    return ResultCode::InvalidArgument;
+  }
+  ResultCode status = initialize(model);
+  if (status != ResultCode::Ok) {
     return status;
   }
 
   int camera_id = -1;
   double fovy_degrees = 0.0;
   status = ensure_camera_binding(model, spec, &camera_id, &fovy_degrees);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
   status = ensure_offscreen_capacity(spec.width, spec.height);
-  if (!status.ok()) {
+  if (status != ResultCode::Ok) {
     return status;
   }
 
@@ -169,9 +168,7 @@ Result<std::shared_ptr<const CameraSample>> CameraRenderer::render(const mjModel
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return Status::render_failed(
-          "CameraRenderer failed to activate the EGL context before rendering camera '" +
-          spec.common.name + "'.");
+      return ResultCode::RenderFailed;
     }
   }
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
@@ -185,14 +182,13 @@ Result<std::shared_ptr<const CameraSample>> CameraRenderer::render(const mjModel
   mjv_updateScene(&model, render_data_, &option_, nullptr, &camera, mjCAT_ALL, &scene_);
   mjr_render(viewport, &scene_, &render_context_);
 
-  auto sample = std::make_shared<CameraSample>();
-  sample->sequence = sequence;
-  sample->timestamp_ns = timestamp_ns;
-  sample->frame_id = spec.common.frame_id.empty() ? spec.common.name : spec.common.frame_id;
-  sample->optical_frame_id =
-      spec.optical_frame_id.empty() ? sample->frame_id : spec.optical_frame_id;
-  sample->intrinsics = compute_intrinsics(fovy_degrees, static_cast<std::uint32_t>(spec.width),
-                                          static_cast<std::uint32_t>(spec.height));
+  auto state = std::make_shared<CameraRenderState>();
+  state->sequence = sequence;
+  state->timestamp_ns = timestamp_ns;
+  state->frame_id = spec.common.frame_id.empty() ? spec.common.name : spec.common.frame_id;
+  state->optical_frame_id = spec.optical_frame_id.empty() ? state->frame_id : spec.optical_frame_id;
+  state->intrinsics = compute_intrinsics(fovy_degrees, static_cast<std::uint32_t>(spec.width),
+                                         static_cast<std::uint32_t>(spec.height));
 
   std::vector<std::uint8_t> rgb_buffer;
   std::vector<float> depth_buffer;
@@ -213,32 +209,29 @@ Result<std::shared_ptr<const CameraSample>> CameraRenderer::render(const mjModel
   release_current_context();
 
   if (spec.enable_rgb) {
-    sample->color = ImageBuffer{};
-    sample->color->width = static_cast<std::uint32_t>(spec.width);
-    sample->color->height = static_cast<std::uint32_t>(spec.height);
-    sample->color->step = static_cast<std::uint32_t>(spec.width * 3);
-    sample->color->format = PixelFormat::Rgb8;
-    sample->color->data.resize(rgb_buffer.size());
-    flip_rgb(rgb_buffer, sample->color->width, sample->color->height, &sample->color->data);
+    state->color.width = static_cast<std::uint32_t>(spec.width);
+    state->color.height = static_cast<std::uint32_t>(spec.height);
+    state->color.step = static_cast<std::uint32_t>(spec.width * 3);
+    state->color.data.resize(rgb_buffer.size());
+    flip_rgb(rgb_buffer, state->color.width, state->color.height, &state->color.data);
   }
 
   if (spec.enable_depth) {
-    sample->depth = DepthBuffer{};
-    sample->depth->width = static_cast<std::uint32_t>(spec.width);
-    sample->depth->height = static_cast<std::uint32_t>(spec.height);
-    sample->depth->format = DepthFormat::Float32Meters;
-    sample->depth->data.resize(depth_buffer.size());
-    convert_and_flip_depth(model, depth_buffer, sample->depth->width, sample->depth->height,
-                           &sample->depth->data);
+    state->depth.width = static_cast<std::uint32_t>(spec.width);
+    state->depth.height = static_cast<std::uint32_t>(spec.height);
+    state->depth.data.resize(depth_buffer.size());
+    convert_and_flip_depth(model, depth_buffer, state->depth.width, state->depth.height,
+                           &state->depth.data);
   }
 
-  return std::static_pointer_cast<const CameraSample>(sample);
+  *out = std::static_pointer_cast<const CameraRenderState>(state);
+  return ResultCode::Ok;
 }
 
-Status CameraRenderer::ensure_gl_context() {
+ResultCode CameraRenderer::ensure_gl_context() {
   if (gl_context_.backend == OffscreenGlBackend::Glfw && gl_context_.window != nullptr) {
     glfwMakeContextCurrent(gl_context_.window);
-    return Status::Ok();
+    return ResultCode::Ok;
   }
   if (gl_context_.backend == OffscreenGlBackend::Egl && gl_context_.egl_display != EGL_NO_DISPLAY &&
       gl_context_.egl_context != EGL_NO_CONTEXT && gl_context_.egl_surface != EGL_NO_SURFACE) {
@@ -246,9 +239,9 @@ Status CameraRenderer::ensure_gl_context() {
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return Status::render_failed("CameraRenderer failed to reactivate the existing EGL context.");
+      return ResultCode::RenderFailed;
     }
-    return Status::Ok();
+    return ResultCode::Ok;
   }
 
   if (config_.allow_glfw_backend && ensure_glfw_initialized()) {
@@ -258,23 +251,22 @@ Status CameraRenderer::ensure_gl_context() {
     if (gl_context_.window != nullptr) {
       gl_context_.backend = OffscreenGlBackend::Glfw;
       glfwMakeContextCurrent(gl_context_.window);
-      return Status::Ok();
+      return ResultCode::Ok;
     }
   }
 
   if (!config_.allow_egl_backend) {
-    return Status::render_failed(
-        "CameraRenderer could not create a hidden GLFW context and EGL fallback is disabled.");
+    return ResultCode::RenderFailed;
   }
   return initialize_egl_context();
 }
 
-Status CameraRenderer::ensure_offscreen_capacity(int width, int height) {
+ResultCode CameraRenderer::ensure_offscreen_capacity(int width, int height) {
   if (width <= 0 || height <= 0) {
-    return Status::invalid_argument("Camera offscreen viewport must be positive.");
+    return ResultCode::InvalidArgument;
   }
   if (width <= offscreen_width_ && height <= offscreen_height_) {
-    return Status::Ok();
+    return ResultCode::Ok;
   }
 
   if (gl_context_.backend == OffscreenGlBackend::Glfw && gl_context_.window != nullptr) {
@@ -284,9 +276,7 @@ Status CameraRenderer::ensure_offscreen_capacity(int width, int height) {
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return Status::render_failed(
-          "CameraRenderer failed to activate the EGL context before resizing the offscreen "
-          "buffer.");
+      return ResultCode::RenderFailed;
     }
   }
   offscreen_width_ = std::max(offscreen_width_, width);
@@ -294,44 +284,40 @@ Status CameraRenderer::ensure_offscreen_capacity(int width, int height) {
   mjr_resizeOffscreen(offscreen_width_, offscreen_height_, &render_context_);
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
   release_current_context();
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-Status CameraRenderer::ensure_camera_binding(const mjModel& model, const CameraConfig& spec,
-                                             int* camera_id, double* fovy_degrees) {
+ResultCode CameraRenderer::ensure_camera_binding(const mjModel& model, const CameraConfig& spec,
+                                                 int* camera_id, double* fovy_degrees) {
   if (camera_id == nullptr || fovy_degrees == nullptr) {
-    return Status::invalid_argument("Camera binding output pointers must not be null.");
+    return ResultCode::InvalidArgument;
   }
   if (spec.common.name.empty()) {
-    return Status::invalid_argument("Camera name must not be empty.");
+    return ResultCode::InvalidArgument;
   }
   if (spec.camera_name.empty()) {
-    return Status::invalid_argument("MuJoCo camera name must not be empty for camera '" +
-                                    spec.common.name + "'.");
+    return ResultCode::InvalidArgument;
   }
   if (spec.width <= 0 || spec.height <= 0) {
-    return Status::invalid_argument("Camera '" + spec.common.name +
-                                    "' requires positive width and height.");
+    return ResultCode::InvalidArgument;
   }
   if (!spec.enable_rgb && !spec.enable_depth) {
-    return Status::invalid_argument("Camera '" + spec.common.name +
-                                    "' must enable rgb or depth output.");
+    return ResultCode::InvalidArgument;
   }
 
   const int id = mj_name2id(&model, mjOBJ_CAMERA, spec.camera_name.c_str());
   if (id < 0) {
-    return Status::binding_failed("Camera '" + spec.common.name +
-                                  "' could not bind to MuJoCo camera '" + spec.camera_name + "'.");
+    return ResultCode::BindingFailed;
   }
 
   *camera_id = id;
   *fovy_degrees = static_cast<double>(model.cam_fovy[id]);
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
-CameraIntrinsics CameraRenderer::compute_intrinsics(double fovy_degrees, std::uint32_t width,
-                                                    std::uint32_t height) const {
-  CameraIntrinsics intrinsics;
+CameraRenderIntrinsics CameraRenderer::compute_intrinsics(double fovy_degrees, std::uint32_t width,
+                                                          std::uint32_t height) const {
+  CameraRenderIntrinsics intrinsics;
   if (width == 0 || height == 0) {
     return intrinsics;
   }
@@ -384,21 +370,21 @@ void CameraRenderer::convert_and_flip_depth(const mjModel& model, const std::vec
   }
 }
 
-Status CameraRenderer::initialize_egl_context() {
+ResultCode CameraRenderer::initialize_egl_context() {
   gl_context_.egl_display =
       eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
   if (gl_context_.egl_display == EGL_NO_DISPLAY) {
     gl_context_.egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
   }
   if (gl_context_.egl_display == EGL_NO_DISPLAY) {
-    return Status::render_failed("CameraRenderer failed to acquire an EGL display.");
+    return ResultCode::RenderFailed;
   }
 
   EGLint major = 0;
   EGLint minor = 0;
   if (!eglInitialize(static_cast<::EGLDisplay>(gl_context_.egl_display), &major, &minor)) {
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return Status::render_failed("CameraRenderer failed to initialize EGL.");
+    return ResultCode::RenderFailed;
   }
 
   const EGLint config_attribs[] = {EGL_SURFACE_TYPE,
@@ -423,13 +409,13 @@ Status CameraRenderer::initialize_egl_context() {
       num_configs == 0) {
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return Status::render_failed("CameraRenderer failed to choose a compatible EGL config.");
+    return ResultCode::RenderFailed;
   }
 
   if (!eglBindAPI(EGL_OPENGL_API)) {
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return Status::render_failed("CameraRenderer failed to bind the EGL OpenGL API.");
+    return ResultCode::RenderFailed;
   }
 
   gl_context_.egl_context = eglCreateContext(static_cast<::EGLDisplay>(gl_context_.egl_display),
@@ -437,7 +423,7 @@ Status CameraRenderer::initialize_egl_context() {
   if (gl_context_.egl_context == EGL_NO_CONTEXT) {
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return Status::render_failed("CameraRenderer failed to create an EGL context.");
+    return ResultCode::RenderFailed;
   }
 
   const EGLint pbuffer_attribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
@@ -449,7 +435,7 @@ Status CameraRenderer::initialize_egl_context() {
     gl_context_.egl_context = EGL_NO_CONTEXT;
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return Status::render_failed("CameraRenderer failed to create an EGL pbuffer surface.");
+    return ResultCode::RenderFailed;
   }
 
   if (!eglMakeCurrent(static_cast<::EGLDisplay>(gl_context_.egl_display),
@@ -464,11 +450,11 @@ Status CameraRenderer::initialize_egl_context() {
     gl_context_.egl_context = EGL_NO_CONTEXT;
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return Status::render_failed("CameraRenderer failed to activate the EGL context.");
+    return ResultCode::RenderFailed;
   }
 
   gl_context_.backend = OffscreenGlBackend::Egl;
-  return Status::Ok();
+  return ResultCode::Ok;
 }
 
 void CameraRenderer::release_current_context() {

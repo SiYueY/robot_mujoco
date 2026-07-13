@@ -68,9 +68,9 @@ TEST_F(JointComponentTest, DirectPositionActuatorWritesControl) {
   JointComponent joint({.name = "hinge",
                         .actuator_name = "hinge_pos",
                         .command_mode = CommandInterfaceType::Position});
-  ASSERT_TRUE(joint.bind(*model_).ok());
+  ASSERT_EQ(joint.bind(*model_), ResultCode::Ok);
 
-  ASSERT_TRUE(joint.write(*model_, *data_, {"hinge", 0.4, 0.0, 0.0, 0.0}).ok());
+  ASSERT_EQ(joint.write(*model_, *data_, {"hinge", 0.4, 0.0, 0.0, 0.0}), ResultCode::Ok);
   const int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, "hinge_pos");
   ASSERT_GE(actuator_id, 0);
   EXPECT_DOUBLE_EQ(data_->ctrl[actuator_id], 0.4);
@@ -93,9 +93,8 @@ TEST_F(JointComponentTest, InvalidActuatorModeFailsBinding) {
   JointComponent joint({.name = "hinge",
                         .actuator_name = "hinge_pos",
                         .command_mode = CommandInterfaceType::Velocity});
-  const Status status = joint.bind(*model_);
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::ModelValidationFailed);
+  const ResultCode status = joint.bind(*model_);
+  EXPECT_EQ(status, ResultCode::ModelValidationFailed);
 }
 
 TEST_F(JointComponentTest, MissingActuatorFailsWithBindingError) {
@@ -112,9 +111,8 @@ TEST_F(JointComponentTest, MissingActuatorFailsWithBindingError) {
   JointComponent joint({.name = "hinge",
                         .actuator_name = "missing_actuator",
                         .command_mode = CommandInterfaceType::Velocity});
-  const Status status = joint.bind(*model_);
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::BindingFailed);
+  const ResultCode status = joint.bind(*model_);
+  EXPECT_EQ(status, ResultCode::BindingFailed);
 }
 
 TEST_F(JointComponentTest, SoftwarePdOnPassiveJointWritesAppliedForceAndResetClearsIt) {
@@ -135,12 +133,12 @@ TEST_F(JointComponentTest, SoftwarePdOnPassiveJointWritesAppliedForceAndResetCle
                         .velocity_kd = 1.0,
                         .command_min = -5.0,
                         .command_max = 5.0});
-  ASSERT_TRUE(joint.bind(*model_).ok());
+  ASSERT_EQ(joint.bind(*model_), ResultCode::Ok);
 
-  ASSERT_TRUE(joint.write(*model_, *data_, {"hinge", 1.0, 0.0, 0.0, 0.0}).ok());
+  ASSERT_EQ(joint.write(*model_, *data_, {"hinge", 1.0, 0.0, 0.0, 0.0}), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(data_->qfrc_applied[model_->jnt_dofadr[0]], 5.0);
 
-  ASSERT_TRUE(joint.reset(*model_, *data_).ok());
+  ASSERT_EQ(joint.reset(*model_, *data_), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(data_->qfrc_applied[model_->jnt_dofadr[0]], 0.0);
 }
 
@@ -163,14 +161,14 @@ TEST_F(JointComponentTest, SoftwarePdOnMotorActuatorClampsToActuatorLimits) {
                         .command_mode = CommandInterfaceType::Velocity,
                         .controller_type = JointControllerType::SoftwarePd,
                         .velocity_kd = 10.0});
-  ASSERT_TRUE(joint.bind(*model_).ok());
+  ASSERT_EQ(joint.bind(*model_), ResultCode::Ok);
 
-  ASSERT_TRUE(joint.write(*model_, *data_, {"hinge", 0.0, 1.0, 0.0, 0.0}).ok());
+  ASSERT_EQ(joint.write(*model_, *data_, {"hinge", 0.0, 1.0, 0.0, 0.0}), ResultCode::Ok);
   const int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, "hinge_motor");
   ASSERT_GE(actuator_id, 0);
   EXPECT_DOUBLE_EQ(data_->ctrl[actuator_id], 1.5);
 
-  ASSERT_TRUE(joint.reset(*model_, *data_).ok());
+  ASSERT_EQ(joint.reset(*model_, *data_), ResultCode::Ok);
   EXPECT_DOUBLE_EQ(data_->ctrl[actuator_id], 0.0);
 }
 

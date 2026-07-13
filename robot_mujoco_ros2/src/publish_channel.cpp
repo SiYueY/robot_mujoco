@@ -82,98 +82,103 @@ bool PublishChannel::initialize_small_snapshot_slot(SmallSnapshotSlot* slot) {
     slot->snapshot.lidars[i].publisher_index = i;
     const std::size_t range_count =
         i < config_.lidar_sample_counts.size() ? config_.lidar_sample_counts[i] : 0U;
-    slot->snapshot.lidars[i].sample.ranges.resize(range_count, 0.0);
-    slot->snapshot.lidars[i].sample.intensities.resize(range_count, 0.0);
+    slot->snapshot.lidars[i].state.ranges.resize(range_count, 0.0);
+    slot->snapshot.lidars[i].state.intensities.resize(range_count, 0.0);
   }
   slot->sequence = 0;
   return true;
 }
 
-bool PublishChannel::copy_lidar_sample(const PublishLidarSample& source,
-                                       PublishLidarSample* target) {
+bool PublishChannel::copy_lidar_state(const PublishLidarState& source, PublishLidarState* target) {
   if (target == nullptr) {
     return false;
   }
   target->publisher_index = source.publisher_index;
-  target->sample.sequence = source.sample.sequence;
-  target->sample.timestamp_ns = source.sample.timestamp_ns;
-  target->sample.frame_id = source.sample.frame_id;
-  target->sample.angle_min = source.sample.angle_min;
-  target->sample.angle_max = source.sample.angle_max;
-  target->sample.angle_increment = source.sample.angle_increment;
-  target->sample.time_increment = source.sample.time_increment;
-  target->sample.scan_time = source.sample.scan_time;
-  target->sample.range_min = source.sample.range_min;
-  target->sample.range_max = source.sample.range_max;
+  target->state.sequence = source.state.sequence;
+  target->state.timestamp_ns = source.state.timestamp_ns;
+  target->state.frame_id = source.state.frame_id;
+  target->state.angle_min = source.state.angle_min;
+  target->state.angle_max = source.state.angle_max;
+  target->state.angle_increment = source.state.angle_increment;
+  target->state.time_increment = source.state.time_increment;
+  target->state.scan_time = source.state.scan_time;
+  target->state.range_min = source.state.range_min;
+  target->state.range_max = source.state.range_max;
 
-  if (target->sample.ranges.size() < source.sample.ranges.size() ||
-      target->sample.intensities.size() < source.sample.ranges.size()) {
+  if (target->state.ranges.size() < source.state.ranges.size() ||
+      target->state.intensities.size() < source.state.ranges.size()) {
     return false;
   }
 
-  std::copy(source.sample.ranges.begin(), source.sample.ranges.end(),
-            target->sample.ranges.begin());
-  if (source.sample.intensities.empty()) {
-    std::fill(target->sample.intensities.begin(),
-              target->sample.intensities.begin() +
-                  static_cast<std::ptrdiff_t>(source.sample.ranges.size()),
-              0.0);
+  std::copy(source.state.ranges.begin(), source.state.ranges.end(), target->state.ranges.begin());
+  if (source.state.intensities.empty()) {
+    std::fill(
+        target->state.intensities.begin(),
+        target->state.intensities.begin() + static_cast<std::ptrdiff_t>(source.state.ranges.size()),
+        0.0);
   } else {
-    if (target->sample.intensities.size() < source.sample.intensities.size()) {
+    if (target->state.intensities.size() < source.state.intensities.size()) {
       return false;
     }
-    std::copy(source.sample.intensities.begin(), source.sample.intensities.end(),
-              target->sample.intensities.begin());
+    std::copy(source.state.intensities.begin(), source.state.intensities.end(),
+              target->state.intensities.begin());
   }
   return true;
 }
 
-bool PublishChannel::copy_camera_sample(std::size_t publisher_index,
-                                        const mujoco_simulation::CameraSample& sample,
-                                        CameraFrame* frame) {
+bool PublishChannel::copy_camera_state(std::size_t publisher_index,
+                                       const mujoco_simulation::CameraState& state,
+                                       CameraFrame* frame) {
   if (frame == nullptr || publisher_index >= config_.camera_frames.size()) {
     return false;
   }
 
   const auto& config = config_.camera_frames[publisher_index];
   frame->publisher_index = publisher_index;
-  frame->sequence = sample.sequence;
+  frame->sequence = state.sequence;
   frame->acquisition_stamp =
-      sample.timestamp_ns == 0
+      state.timestamp_ns == 0
           ? rclcpp::Time(0, 0, RCL_ROS_TIME)
-          : rclcpp::Time(static_cast<int64_t>(sample.timestamp_ns), RCL_ROS_TIME);
-  frame->intrinsics = sample.intrinsics;
-  frame->has_rgb = config.enable_rgb && sample.color.has_value();
-  frame->has_depth = config.enable_depth && sample.depth.has_value();
-  frame->width = frame->has_rgb ? sample.color->width
-                                : (frame->has_depth ? sample.depth->width : config.width);
-  frame->height = frame->has_rgb ? sample.color->height
-                                 : (frame->has_depth ? sample.depth->height : config.height);
-  frame->rgb_step = frame->has_rgb ? sample.color->step : frame->width * 3U;
+          : rclcpp::Time(static_cast<int64_t>(state.timestamp_ns), RCL_ROS_TIME);
+  frame->camera_info.width = state.camera_info.width;
+  frame->camera_info.height = state.camera_info.height;
+  frame->camera_info.distortion_model = state.camera_info.distortion_model;
+  frame->camera_info.d = state.camera_info.d;
+  frame->camera_info.k = state.camera_info.k;
+  frame->camera_info.r = state.camera_info.r;
+  frame->camera_info.p = state.camera_info.p;
+  frame->camera_info.binning_x = state.camera_info.binning_x;
+  frame->camera_info.binning_y = state.camera_info.binning_y;
+  frame->has_rgb = config.enable_rgb && !state.image.data.empty();
+  frame->has_depth = config.enable_depth && !state.depth_image.data.empty();
+  frame->width = frame->has_rgb ? state.image.width
+                                : (frame->has_depth ? state.depth_image.width : config.width);
+  frame->height = frame->has_rgb ? state.image.height
+                                 : (frame->has_depth ? state.depth_image.height : config.height);
+  frame->rgb_step = frame->has_rgb ? state.image.step : frame->width * 3U;
   frame->depth_step = frame->width * static_cast<std::uint32_t>(sizeof(float));
 
   if (frame->has_rgb) {
-    const std::size_t rgb_bytes = sample.color->data.size();
+    const std::size_t rgb_bytes = state.image.data.size();
     if (frame->rgb_data.size() < rgb_bytes) {
       return false;
     }
-    std::memcpy(frame->rgb_data.data(), sample.color->data.data(), rgb_bytes);
+    std::memcpy(frame->rgb_data.data(), state.image.data.data(), rgb_bytes);
   }
   if (frame->has_depth) {
-    const std::size_t depth_bytes = sample.depth->data.size() * sizeof(float);
+    const std::size_t depth_bytes = state.depth_image.data.size();
     if (frame->depth_data.size() < depth_bytes) {
       return false;
     }
-    std::memcpy(frame->depth_data.data(), sample.depth->data.data(), depth_bytes);
+    std::memcpy(frame->depth_data.data(), state.depth_image.data.data(), depth_bytes);
   }
   return true;
 }
 
-mujoco_simulation::Status PublishChannel::publish_bundle(const PublishBundle& bundle) {
+mujoco_simulation::ResultCode PublishChannel::publish_bundle(const PublishBundle& bundle) {
   if (bundle.imus.size() != config_.imu_count || bundle.lidars.size() != config_.lidar_count ||
       bundle.cameras.size() != config_.camera_frames.size()) {
-    return mujoco_simulation::Status::invalid_argument(
-        "Publish bundle does not match configured sensor counts.");
+    return mujoco_simulation::ResultCode::InvalidArgument;
   }
 
   const std::size_t next_slot = (active_small_snapshot_slot_.load(std::memory_order_relaxed) + 1U) %
@@ -184,35 +189,31 @@ mujoco_simulation::Status PublishChannel::publish_bundle(const PublishBundle& bu
     snapshot_slot.snapshot.imus[i] = bundle.imus[i];
   }
   for (std::size_t i = 0; i < bundle.lidars.size(); ++i) {
-    if (!copy_lidar_sample(bundle.lidars[i], &snapshot_slot.snapshot.lidars[i])) {
-      return mujoco_simulation::Status::failed_precondition(
-          "Lidar publish channel buffer is smaller than the incoming sample.");
+    if (!copy_lidar_state(bundle.lidars[i], &snapshot_slot.snapshot.lidars[i])) {
+      return mujoco_simulation::ResultCode::FailedPrecondition;
     }
   }
 
   for (const auto& camera : bundle.cameras) {
-    if (camera.sample == nullptr) {
+    if (camera.state == nullptr) {
       continue;
     }
     std::size_t slot_index = 0;
     if (!camera_free_slots_->pop(slot_index)) {
       if (!camera_ready_slots_->pop(slot_index)) {
-        return mujoco_simulation::Status::failed_precondition(
-            "Camera publish channel could not reclaim a frame slot.");
+        return mujoco_simulation::ResultCode::FailedPrecondition;
       }
     }
     CameraFrame& frame = camera_slots_[slot_index];
-    if (!copy_camera_sample(camera.publisher_index, *camera.sample, &frame)) {
+    if (!copy_camera_state(camera.publisher_index, *camera.state, &frame)) {
       (void)camera_free_slots_->push(slot_index);
-      return mujoco_simulation::Status::failed_precondition(
-          "Camera publish channel buffer is smaller than the incoming sample.");
+      return mujoco_simulation::ResultCode::FailedPrecondition;
     }
     if (!camera_ready_slots_->push(slot_index)) {
       std::size_t discarded_slot = 0;
       if (!camera_ready_slots_->pop(discarded_slot) || !camera_ready_slots_->push(slot_index)) {
         (void)camera_free_slots_->push(slot_index);
-        return mujoco_simulation::Status::failed_precondition(
-            "Camera publish channel queue push failed.");
+        return mujoco_simulation::ResultCode::FailedPrecondition;
       }
       (void)camera_free_slots_->push(discarded_slot);
     }
@@ -223,7 +224,7 @@ mujoco_simulation::Status PublishChannel::publish_bundle(const PublishBundle& bu
   snapshot_slot.sequence = latest_small_snapshot_sequence_.load(std::memory_order_relaxed) + 1U;
   active_small_snapshot_slot_.store(next_slot, std::memory_order_release);
   latest_small_snapshot_sequence_.store(snapshot_slot.sequence, std::memory_order_release);
-  return mujoco_simulation::Status::Ok();
+  return mujoco_simulation::ResultCode::Ok;
 }
 
 void PublishChannel::update_clock(const rclcpp::Time& sim_time) {

@@ -13,7 +13,7 @@ baseline 入口与样例见 [`performance_baseline.md`](./performance_baseline.m
 - 主硬件插件：`robot_mujoco_ros2::MuJoCoHardwareInterface`
 - ROS bridge：`robot_mujoco_ros2::SimulationRosBridge`
 
-更细的 `Simulation` API 迁移说明见 [`mujoco_simulation/docs/simulation_api_migration.md`](../mujoco_simulation/docs/simulation_api_migration.md)。
+`mujoco_simulation` 当前实现、公开接口约定和设备语义见 [`mujoco_simulation/docs/architecture.md`](../mujoco_simulation/docs/architecture.md)。
 
 ## 2. 包边界迁移
 

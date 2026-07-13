@@ -10,28 +10,29 @@
 #include <thread>
 
 #include "mujoco_simulation/runtime/model_runtime.hpp"
-#include "mujoco_simulation/viewer/viewer.hpp"
+#include "mujoco_simulation/viewer/mujoco_viewer.hpp"
 
 namespace mujoco_simulation {
 
 using namespace std::chrono_literals;
 
-#define ASSERT_OK_STATUS(expr)                        \
-  do {                                                \
-    const Status status__ = (expr);                   \
-    ASSERT_TRUE(status__.ok()) << status__.message(); \
+#define ASSERT_OK_STATUS(expr)           \
+  do {                                   \
+    const ResultCode status__ = (expr);  \
+    ASSERT_EQ(status__, ResultCode::Ok); \
   } while (false)
 
-class ViewerTestPeer {
+class MuJoCoViewerTestPeer {
  public:
   static void set_render_thread_entry(
-      Viewer& viewer, std::function<void(Viewer&, mjModel*, mjData*, const std::string&)> entry) {
+      MuJoCoViewer& viewer,
+      std::function<void(MuJoCoViewer&, mjModel*, mjData*, const std::string&)> entry) {
     viewer.render_thread_entry_ = std::move(entry);
   }
 
-  static void mark_ready(Viewer& viewer) { viewer.mark_ready(); }
+  static void mark_ready(MuJoCoViewer& viewer) { viewer.mark_ready(); }
 
-  static void inject_async_failure(Viewer& viewer, Status status) {
+  static void inject_async_failure(MuJoCoViewer& viewer, ResultCode status) {
     viewer.record_async_failure(std::move(status));
   }
 };
@@ -100,14 +101,14 @@ bool viewer_start_available(const std::string& model_path) {
   }
   if (pid == 0) {
     ModelRuntime runtime;
-    const Status load_status = runtime.load({model_path});
-    if (!load_status.ok()) {
+    const ResultCode load_status = runtime.load({model_path});
+    if (load_status != ResultCode::Ok) {
       _exit(2);
     }
-    Viewer viewer;
-    const Status start_status =
+    MuJoCoViewer viewer;
+    const ResultCode start_status =
         viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path);
-    if (start_status.ok()) {
+    if (start_status == ResultCode::Ok) {
       viewer.stop();
       _exit(0);
     }
@@ -122,11 +123,9 @@ bool viewer_start_available(const std::string& model_path) {
 }
 
 TEST_F(ViewerTest, StartRejectsNullModelOrData) {
-  Viewer viewer;
-  const Status status = viewer.start(nullptr, nullptr, "");
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.code(), StatusCode::InvalidArgument);
-  EXPECT_FALSE(status.message().empty());
+  MuJoCoViewer viewer;
+  const ResultCode status = viewer.start(nullptr, nullptr, "");
+  EXPECT_EQ(status, ResultCode::InvalidArgument);
 }
 
 TEST_F(ViewerTest, RestartAndStopRemainSafeOnSingleViewerInstance) {
@@ -152,11 +151,11 @@ TEST_F(ViewerTest, RestartAndStopRemainSafeOnSingleViewerInstance) {
   ModelRuntime runtime;
   ASSERT_OK_STATUS(runtime.load({model_path}));
 
-  Viewer viewer;
-  const Status start_status =
+  MuJoCoViewer viewer;
+  const ResultCode start_status =
       viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path);
-  if (!start_status.ok()) {
-    GTEST_SKIP() << start_status.message();
+  if (start_status != ResultCode::Ok) {
+    GTEST_SKIP() << "viewer start failed";
   }
 
   EXPECT_TRUE(viewer.is_running());
@@ -167,10 +166,8 @@ TEST_F(ViewerTest, RestartAndStopRemainSafeOnSingleViewerInstance) {
   EXPECT_FALSE(viewer.is_running());
   EXPECT_FALSE(viewer.is_ready());
 
-  const Status sync_after_stop = viewer.sync(false);
-  EXPECT_FALSE(sync_after_stop.ok());
-  EXPECT_EQ(sync_after_stop.code(), StatusCode::InvalidState);
-  EXPECT_FALSE(sync_after_stop.message().empty());
+  const ResultCode sync_after_stop = viewer.sync(false);
+  EXPECT_EQ(sync_after_stop, ResultCode::InvalidState);
 
   ASSERT_OK_STATUS(viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path));
   EXPECT_TRUE(viewer.is_running());
@@ -191,33 +188,29 @@ TEST_F(ViewerTest, AsyncFailureInjectedAfterStartupIsReturnedBySync) {
   ModelRuntime runtime;
   ASSERT_OK_STATUS(runtime.load({model_path}));
 
-  Viewer viewer;
-  ViewerTestPeer::set_render_thread_entry(
-      viewer, [](Viewer& viewer, mjModel*, mjData*, const std::string&) {
-        ViewerTestPeer::mark_ready(viewer);
+  MuJoCoViewer viewer;
+  MuJoCoViewerTestPeer::set_render_thread_entry(
+      viewer, [](MuJoCoViewer& viewer, mjModel*, mjData*, const std::string&) {
+        MuJoCoViewerTestPeer::mark_ready(viewer);
         std::this_thread::sleep_for(20ms);
-        ViewerTestPeer::inject_async_failure(
-            viewer, Status::thread_failed("Injected async viewer failure for test."));
+        MuJoCoViewerTestPeer::inject_async_failure(viewer, ResultCode::ThreadFailed);
       });
 
   ASSERT_OK_STATUS(viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path));
   EXPECT_TRUE(viewer.is_running());
   EXPECT_TRUE(viewer.is_ready());
 
-  Status sync_status = Status::invalid_state("Injected async viewer failure was not observed.");
+  ResultCode sync_status = ResultCode::InvalidState;
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (std::chrono::steady_clock::now() < deadline) {
     sync_status = viewer.sync(true);
-    if (!sync_status.ok() && sync_status.code() == StatusCode::ThreadFailed) {
+    if (sync_status == ResultCode::ThreadFailed) {
       break;
     }
     std::this_thread::sleep_for(10ms);
   }
 
-  EXPECT_FALSE(sync_status.ok());
-  EXPECT_EQ(sync_status.code(), StatusCode::ThreadFailed);
-  EXPECT_NE(sync_status.message().find("Injected async viewer failure for test."),
-            std::string::npos);
+  EXPECT_EQ(sync_status, ResultCode::ThreadFailed);
 
   viewer.stop();
   EXPECT_FALSE(viewer.is_running());

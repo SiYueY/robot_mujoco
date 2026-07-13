@@ -79,50 +79,45 @@ Simulation
 它对外暴露的能力主要有：
 
 - 初始化仿真
-  - `Status initialize(const SimulationConfig&)`
-  - `Status shutdown()`
+  - `ResultCode initialize(const SimulationConfig&)`
+  - `ResultCode shutdown()`
 - 控制运行
-  - `Status start()`
-  - `Status stop()`
-  - `Status pause()`
-  - `Status resume()`
-  - `Status set_realtime_factor(double)`
-  - `Status request_reset(const ResetOptions& = {})`
+  - `ResultCode start()`
+  - `ResultCode stop()`
+  - `ResultCode pause()`
+  - `ResultCode resume()`
+  - `ResultCode set_realtime_factor(double)`
+  - `ResultCode request_reset(const ResetOptions& = {})`
     - 异步提交 reset 请求，适合 ROS service / callback 线程
-  - `Status reset(const ResetOptions& = {})`
+  - `ResultCode reset(const ResetOptions& = {})`
     - 同步等待 reset 完成，适合需要明确执行结果的调用路径
-  - `Status step(uint32_t)`
+  - `ResultCode step(uint32_t)`
 - 组件配置与设备访问
   - `SimulationConfig.components`
     - 唯一组件注册入口
-  - `Status reconfigure_component(const ComponentConfig&)`
+  - `ResultCode reconfigure_component(const ComponentConfig&)`
     - 运行时重配置入口；当前保证 `JointConfig` 可用，其他组件类型会显式返回错误
-  - `Status set_joint_command(...)`
-  - `Result<JointState> joint_state(...)`
-  - `Result<ImuSample> imu_sample(...)`
-  - `Result<std::shared_ptr<const CameraSample>> camera_sample(...)`
-  - `Result<LidarSample> lidar_sample(...)`
-  - `Status set_mobile_base_command(...)`
-  - `Result<MobileBaseState> mobile_base_state(...)`
+  - `ResultCode set_joint_command(...)`
+  - `bool joint_state(..., JointState* out)`
+  - `bool imu_state(..., ImuState* out)`
+  - `bool camera_state(..., CameraState* out)`
+  - `bool lidar_state(..., LidarState* out)`
+  - `ResultCode set_mobile_base_command(...)`
+  - `bool mobile_base_state(..., MobileBaseState* out)`
   - `state_snapshot()`
 
 ## 错误返回模型
 
-公开运行时接口统一返回 `Status` 或 `Result<T>`。
+公开运行时接口现在严格区分两类概念：
 
-- 成功路径只看 `ok()`
-- 失败路径优先看 `code()`，再看 `message()`
-- 当前公开错误码语义已经统一为：
-  - `ModelLoadFailed`
-  - `ModelValidationFailed`
-  - `BindingFailed`
-  - `CommandRejected`
-  - `RenderFailed`
-  - `ThreadFailed`
-  - `Timeout`
-  - 以及通用的 `InvalidArgument` / `InvalidState` / `FailedPrecondition` / `NotFound` / `AlreadyExists` / `Internal`
+- `SimulationStatus`
+  - 只表达仿真生命周期状态：`Uninitialized / Stopped / Running / Paused / Stopping / Error`
+- `ResultCode`
+  - 只表达接口调用结果：`Ok / InvalidArgument / AlreadyExists / InvalidState / FailedPrecondition / NotFound / ModelLoadFailed / ModelValidationFailed / BindingFailed / CommandRejected / RenderFailed / ThreadFailed / Timeout / Internal`
+- 非值接口统一返回 `ResultCode`
+- 公开 typed read 接口统一使用 `bool + out-parameter`
 
-对下游调用者的建议是：把 `StatusCode` 当作稳定分支条件，把 `message()` 当作诊断信息，而不是反过来依赖字符串匹配。
+对下游调用者的建议是：把 `ResultCode` 当作稳定分支条件，不再依赖动态错误字符串。
 
 ## 运行配置
 
@@ -136,12 +131,12 @@ Simulation
 - `components`
   - 组件配置列表，作为后续 `ComponentManager::build(...)` 的标准输入
   - IMU / Lidar / Camera 现在统一通过 `SensorCommonConfig common` 暴露 `name`、`frame_id`、`update_rate`
-- `viewer`
-  - viewer 侧配置
 - `camera_renderer`
   - 离屏渲染资源配置
 - `render_mode`
   - `headless` 或 `viewer`
+- `viewer_startup_timeout`
+  - viewer 启动等待超时
 
 当前 `render_mode` 的含义：
 
@@ -168,7 +163,7 @@ Simulation
 | --- | --- | --- |
 | `Joint` | 单关节状态/命令读写 | 主要面向 1-DoF joint，支持 position / velocity / effort 命令语义 |
 | `Imu` | 组合多个 MuJoCo sensor 输出 IMU 状态 | 只读，依赖 `framequat` / `gyro` / `accelerometer` |
-| `Camera` | 从渲染管线读取 RGB / depth 图像 | 通过统一的 `SensorComponent` 路径调度，渲染资源独立于 Viewer |
+| `Camera` | 从渲染管线读取 RGB / depth 图像 | 通过统一的 `SimulationComponent` 调度，渲染资源独立于 Viewer |
 | `Lidar` | 由 `rangefinder` 传感器阵列拼装 `LaserScan` | 依赖 `<prefix>-<index>` 命名约定 |
 | `MobileBase` | 底盘运动学封装 | 当前支持 differential / omnidirectional |
 
@@ -183,10 +178,9 @@ Simulation
 - `MobileBase` 是多个 traction joint 的组合包装
   - 它不是一个特殊 joint，而是更上层的运动学设备
 
-更细的设备原理说明见：
+更完整的当前实现说明见：
 
-- [`docs/hardware_devices_principles.md`](./docs/hardware_devices_principles.md)
-- [`docs/refactor_roadmap.md`](./docs/refactor_roadmap.md)
+- [`docs/architecture.md`](./docs/architecture.md)
 
 ## Viewer 的定位
 
@@ -196,7 +190,7 @@ viewer 相关代码位于 [`src/viewer`](./src/viewer)。
 
 - `Simulation` 持有真正的 `mjModel` / `mjData`
 - 物理步进仍然由 `Simulation` 驱动
-- `Viewer` 只负责渲染和状态同步
+- `MuJoCoViewer` 只负责渲染和状态同步
 
 Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer 的渲染资源。
 
@@ -212,30 +206,27 @@ Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer
 mujoco_simulation/
 ├── include/mujoco_simulation/
 │   ├── simulation.hpp               # 对外主入口
-│   ├── simulation_config.hpp        # RenderMode / SimulationConfig
+│   ├── simulation_config.hpp        # RenderMode / ModelConfig / SchedulerConfig / SimulationConfig
 │   ├── reset_options.hpp            # 顶层 reset 选项
-│   ├── simulation_status.hpp        # SimulationStatus 兼容入口
-│   ├── status.hpp / result.hpp      # 顶层基础返回类型
-│   ├── runtime/                     # ModelRuntime / SimulationScheduler / RAII
+│   ├── simulation_status.hpp        # 仿真生命周期状态
+│   ├── result_code.hpp              # 接口返回结果码
+│   ├── runtime/                     # ModelRuntime / SimulationScheduler
 │   ├── buffer/                      # CommandBuffer / StateBuffer / CameraBuffer
-│   ├── scheduler/                   # SensorScheduler
 │   ├── component/                   # 组件抽象与按类型分组的组件实现
 │   │   ├── component_config.hpp     # ComponentConfig / ComponentConfigList
-│   │   ├── joint/ imu/ lidar/       # 已拆出 config / binding / state(sample) 等类型头
-│   │   ├── camera/                  # 已拆出 camera_config / binding / sample / renderer config / offscreen context
-│   │   └── mobile_base/             # 已拆出 config / binding / command / state
+│   │   ├── joint/ imu/ lidar/       # 统一为 *_data.hpp + *_component.hpp
+│   │   ├── camera/                  # camera_data + component，加独立 renderer 子系统头
+│   │   └── mobile_base/             # 统一为 mobile_base_data.hpp + mobile_base_component.hpp
 │   ├── viewer/                      # viewer 对外接口
-│   └── hardware/                    # 主要剩余 mj_context / data
+│   └── hardware/                    # 公共基础数据类型
 ├── src/
 │   ├── runtime/                     # ModelRuntime / SimulationScheduler 实现
 │   ├── buffer/                      # 预留给 buffer 独立实现
-│   ├── scheduler/                   # SensorScheduler 实现
 │   ├── component/                   # 组件管理与组件实现
 │   │   ├── joint/ imu/ lidar/       # 新组件实现主路径
 │   │   ├── camera/                  # Camera wrapper / CameraRenderer 实现
 │   │   └── mobile_base/             # MobileBase 实现
 │   ├── simulation.cpp               # 仿真主实现
-│   ├── hardware/                    # 主要剩余轻量上下文与设备基础接口
 │   └── viewer/                      # viewer 与官方 simulate 集成
 ├── test/
 │   ├── unit/                        # 当前单元测试
@@ -243,10 +234,7 @@ mujoco_simulation/
 │   ├── concurrency/                 # 预留给并发测试
 │   └── performance/                 # 预留给性能测试
 ├── docs/
-│   ├── hardware_devices_principles.md
-│   ├── simulation_api_migration.md
-│   ├── mujoco_simulation_refactoring.md
-│   └── refactor_roadmap.md
+│   └── architecture.md
 ├── CMakeLists.txt
 └── package.xml
 ```
@@ -300,7 +288,7 @@ ros2_control
 3. 它把 joint、imu、camera、lidar、mobile base 一次性写入 `SimulationConfig.components`
 4. 它在 `read()` / `write()` 周期里转发状态和命令
 
-当前 ROS 侧控制服务与传感器发布已经由 `robot_mujoco_ros2::SimulationRosBridge` 提供，统一由 `robot_mujoco_ros2` 包内部接线到 `Status` 风格控制回调。当前控制服务包括：
+当前 ROS 侧控制服务与传感器发布已经由 `robot_mujoco_ros2::SimulationRosBridge` 提供，统一由 `robot_mujoco_ros2` 包内部接线到 `ResultCode` 风格控制回调。当前控制服务包括：
 
 - `/start`
 - `/stop`
