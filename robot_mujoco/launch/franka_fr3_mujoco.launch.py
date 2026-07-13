@@ -1,9 +1,9 @@
-from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-
 from robot_mujoco.launch_utils import package_file
+
+from launch import LaunchDescription
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -17,7 +17,9 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("mujoco_model_path", default_value=default_model_path),
-            DeclareLaunchArgument("robot_description_template", default_value=default_template_path),
+            DeclareLaunchArgument(
+                "robot_description_template", default_value=default_template_path
+            ),
             DeclareLaunchArgument("controllers_yaml", default_value=default_controllers_path),
             DeclareLaunchArgument("primary_controller", default_value="arm_position_controller"),
             DeclareLaunchArgument("rviz_config", default_value=default_rviz_config),

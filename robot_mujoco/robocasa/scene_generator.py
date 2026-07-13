@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -122,9 +123,7 @@ class SceneGenerator:
             ) from exc
 
         try:
-            controller_configs = load_part_controller_config(
-                default_controller=config.controller
-            )
+            controller_configs = load_part_controller_config(default_controller=config.controller)
 
             return robosuite.make(
                 env_name=config.task_name,
@@ -156,12 +155,8 @@ class SceneGenerator:
         if getattr(env, "model", None) is not None:
             return
 
-        try:
+        with suppress(Exception):
             env.reset()
-        except Exception:
-            # Fallback below may still work for model generation without a full
-            # successful environment reset.
-            pass
 
         if getattr(env, "model", None) is not None:
             return
@@ -179,14 +174,10 @@ class SceneGenerator:
 
         model = getattr(env, "model", None)
         if model is None:
-            raise RoboCasaSceneGenerationError(
-                "RoboCasa environment has no model after loading."
-            )
+            raise RoboCasaSceneGenerationError("RoboCasa environment has no model after loading.")
 
         if not hasattr(model, "get_xml"):
-            raise RoboCasaSceneGenerationError(
-                "RoboCasa model does not provide get_xml()."
-            )
+            raise RoboCasaSceneGenerationError("RoboCasa model does not provide get_xml().")
 
         xml = model.get_xml()
         if not isinstance(xml, str) or not xml.strip():
@@ -291,9 +282,7 @@ def _as_float_tuple(value: Any, *, expected_len: int) -> tuple[float, ...]:
     np = _import_numpy()
     array = np.asarray(value, dtype=float).reshape(-1)
     if array.shape[0] != expected_len:
-        raise RoboCasaSceneGenerationError(
-            f"Expected {expected_len} values, got {array.shape[0]}."
-        )
+        raise RoboCasaSceneGenerationError(f"Expected {expected_len} values, got {array.shape[0]}.")
 
     return tuple(float(x) for x in array)
 

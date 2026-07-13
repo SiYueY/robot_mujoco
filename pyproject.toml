@@ -16,5 +16,45 @@ robot-mujoco-robocasa-scene = "robot_mujoco.robocasa.scene_runner_cli:main"
 [project.optional-dependencies]
 robocasa = ["numpy", "PyYAML", "scipy"]
 
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.0",
+    "ruff>=0.15.12",
+]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["robot_mujoco", "scripts", "mujoco_simulation"]
+exclude = [
+    ".git",
+    ".venv",
+    "build",
+    "install",
+    "log",
+    "third_party",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "UP",
+    "B",
+    "SIM",
+]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = true
+
 [tool.setuptools.packages.find]
 include = ["robot_mujoco*"]

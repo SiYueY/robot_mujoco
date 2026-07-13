@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import copy
-from pathlib import Path
-from typing import Iterable
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable
+from pathlib import Path
 
 from .exceptions import RoboCasaMjcfAdaptationError
 from .scene_data import ObjectPlacement, SpawnPose
-
 
 RUNTIME_ELEMENT_TAGS = ("actuator", "sensor", "option")
 TRANSPARENT_RGBA = "1 1 1 0"
@@ -83,9 +82,7 @@ def _parse_mjcf(xml: str) -> ET.Element:
         raise RoboCasaMjcfAdaptationError("Failed to parse RoboCasa MJCF XML.") from exc
 
     if root.tag != "mujoco":
-        raise RoboCasaMjcfAdaptationError(
-            f"Expected MJCF root tag 'mujoco', got: {root.tag}"
-        )
+        raise RoboCasaMjcfAdaptationError(f"Expected MJCF root tag 'mujoco', got: {root.tag}")
 
     return root
 
@@ -266,9 +263,7 @@ def _apply_spawn_pose(
 
     body = _find_body_by_name(root, robot_body_name)
     if body is None:
-        raise RoboCasaMjcfAdaptationError(
-            f"Project robot body not found: {robot_body_name}"
-        )
+        raise RoboCasaMjcfAdaptationError(f"Project robot body not found: {robot_body_name}")
 
     body.set("pos", _format_float_sequence(spawn_pose.pos))
     body.set("quat", _format_float_sequence(spawn_pose.quat))

@@ -10,7 +10,7 @@ import sys
 def load_json(path: pathlib.Path) -> dict | None:
     if not path.is_file():
         return None
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -79,7 +79,15 @@ def overall_status(perf_summary: dict, tsan_summary: dict) -> str:
     perf_warnings = perf_summary.get("summary", {}).get("warnings", 0)
     if perf_status in {"fail", "error", "missing"}:
         return "fail"
-    if tsan_status in {"fail", "build_failed", "compile_failed", "invalid_results", "missing", "no_results", "preflight_failed"}:
+    if tsan_status in {
+        "fail",
+        "build_failed",
+        "compile_failed",
+        "invalid_results",
+        "missing",
+        "no_results",
+        "preflight_failed",
+    }:
         return "fail"
     if perf_warnings > 0:
         return "warn"
@@ -125,7 +133,9 @@ def extract_nightly_metrics(perf_summary: dict, tsan_summary: dict, overall: str
         "summary": {
             "overall_status": overall,
             "performance_status": perf_summary.get("status"),
-            "performance_gating_failures": perf_summary.get("summary", {}).get("gating_failures", 0),
+            "performance_gating_failures": perf_summary.get("summary", {}).get(
+                "gating_failures", 0
+            ),
             "performance_warnings": perf_summary.get("summary", {}).get("warnings", 0),
             "performance_errors": perf_summary.get("summary", {}).get("errors", 0),
             "tsan_status": tsan_summary.get("status"),
@@ -290,7 +300,9 @@ def main() -> int:
     report = build_report(args)
     json_output_path = pathlib.Path(args.json_output)
     json_output_path.parent.mkdir(parents=True, exist_ok=True)
-    json_output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    json_output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     write_markdown(report, pathlib.Path(args.markdown_output))
     metrics_output_path = pathlib.Path(args.metrics_output)
     metrics_output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -62,9 +62,7 @@ class SceneConfig:
             raise RoboCasaSceneConfigError("robot_xml_path must not be empty.")
 
         if not Path(self.robot_xml_path).expanduser().exists():
-            raise RoboCasaSceneConfigError(
-                f"robot_xml_path does not exist: {self.robot_xml_path}"
-            )
+            raise RoboCasaSceneConfigError(f"robot_xml_path does not exist: {self.robot_xml_path}")
 
         if not self.robot_root_body_name:
             raise RoboCasaSceneConfigError("robot_root_body_name must not be empty.")
@@ -73,9 +71,7 @@ class SceneConfig:
             raise RoboCasaSceneConfigError("placeholder_robot must not be empty.")
 
         if not self.placeholder_robot_body_name:
-            raise RoboCasaSceneConfigError(
-                "placeholder_robot_body_name must not be empty."
-            )
+            raise RoboCasaSceneConfigError("placeholder_robot_body_name must not be empty.")
 
         if self.control_freq <= 0:
             raise RoboCasaSceneConfigError("control_freq must be greater than zero.")
@@ -133,9 +129,7 @@ def load_config(path: str | Path) -> SceneConfig:
         ) from exc
 
     if not isinstance(raw, dict):
-        raise RoboCasaSceneConfigError(
-            f"RoboCasa scene config must be a mapping: {config_path}"
-        )
+        raise RoboCasaSceneConfigError(f"RoboCasa scene config must be a mapping: {config_path}")
 
     config = config_from_mapping(raw, base_dir=config_path.parent)
     config.validate()
@@ -180,15 +174,11 @@ def config_from_mapping(
         robot_xml_path=robot_xml_path,
         robot_root_body_name=str(robot.get("root_body_name", "robot_base")),
         placeholder_robot=str(robocasa.get("placeholder_robot", "PandaMobile")),
-        placeholder_robot_body_name=str(
-            robocasa.get("placeholder_robot_body_name", "robot0_base")
-        ),
+        placeholder_robot_body_name=str(robocasa.get("placeholder_robot_body_name", "robot0_base")),
         controller=str(robocasa.get("controller", "OSC_POSE")),
         control_freq=_as_int(robocasa.get("control_freq", 20), "robocasa.control_freq"),
         write_generated_xml=bool(output.get("write_generated_xml", False)),
-        generated_xml_path=(
-            str(generated_xml_path) if generated_xml_path is not None else None
-        ),
+        generated_xml_path=(str(generated_xml_path) if generated_xml_path is not None else None),
     )
 
 

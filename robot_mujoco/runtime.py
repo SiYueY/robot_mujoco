@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from robot_mujoco.launch_utils import package_share_dir
 
@@ -72,14 +72,20 @@ def launch_viewer_simulation(
 ) -> int:
     """Launch the ROS 2 MuJoCo viewer pipeline and return its exit code."""
 
-    template_path = Path(
-        robot_description_template
-        if robot_description_template is not None
-        else default_robot_description_template()
-    ).expanduser().resolve()
-    controllers_path = Path(
-        controllers_yaml if controllers_yaml is not None else default_controllers_yaml()
-    ).expanduser().resolve()
+    template_path = (
+        Path(
+            robot_description_template
+            if robot_description_template is not None
+            else default_robot_description_template()
+        )
+        .expanduser()
+        .resolve()
+    )
+    controllers_path = (
+        Path(controllers_yaml if controllers_yaml is not None else default_controllers_yaml())
+        .expanduser()
+        .resolve()
+    )
     model_path = Path(mujoco_model_path).expanduser().resolve()
     launch_path = default_launch_file()
 

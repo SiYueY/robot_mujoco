@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import replace
 from pathlib import Path
-import sys
 
 from robot_mujoco.runtime import (
     FRANKA_FR3_PRIMARY_CONTROLLER,
@@ -16,7 +16,6 @@ from robot_mujoco.runtime import (
 from .cli_options import TASK_CHOICES, choose_option, choose_randomized_scene_ids
 from .exceptions import RoboCasaIntegrationError
 from .scene_config import config_from_mapping
-
 
 DEFAULT_ROBOT_XML_SENTINELS = {"", "/path/to/robot.xml", "__DEFAULT_FR3_XML__"}
 
@@ -116,9 +115,7 @@ def _load_scene_config(path: str | Path):
         ) from exc
 
     if not isinstance(raw, dict):
-        raise RoboCasaIntegrationError(
-            f"RoboCasa scene config must be a mapping: {config_path}"
-        )
+        raise RoboCasaIntegrationError(f"RoboCasa scene config must be a mapping: {config_path}")
 
     robot = raw.get("robot")
     if robot is None:

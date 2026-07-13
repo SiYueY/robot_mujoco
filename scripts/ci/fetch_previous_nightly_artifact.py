@@ -45,7 +45,9 @@ def github_download_bytes(url: str, token: str) -> bytes:
         return response.read()
 
 
-def list_workflow_runs(server_url: str, repository: str, workflow: str, token: str, per_page: int) -> list[dict]:
+def list_workflow_runs(
+    server_url: str, repository: str, workflow: str, token: str, per_page: int
+) -> list[dict]:
     query = urllib.parse.urlencode({"status": "completed", "per_page": per_page})
     url = f"{github_api_base_url(server_url)}/repos/{repository}/actions/workflows/{workflow}/runs?{query}"
     return github_api_request(url, token).get("workflow_runs", [])
@@ -57,7 +59,9 @@ def list_run_artifacts(server_url: str, repository: str, run_id: int, token: str
 
 
 def download_artifact_zip(server_url: str, repository: str, artifact_id: int, token: str) -> bytes:
-    url = f"{github_api_base_url(server_url)}/repos/{repository}/actions/artifacts/{artifact_id}/zip"
+    url = (
+        f"{github_api_base_url(server_url)}/repos/{repository}/actions/artifacts/{artifact_id}/zip"
+    )
     return github_download_bytes(url, token)
 
 
@@ -119,7 +123,9 @@ def main() -> int:
                 run_id=run_id,
                 token=args.token,
             )
-            artifact = next((item for item in artifacts if item.get("name") == args.artifact_name), None)
+            artifact = next(
+                (item for item in artifacts if item.get("name") == args.artifact_name), None
+            )
             if artifact is None:
                 continue
 
@@ -148,7 +154,9 @@ def main() -> int:
             return 0
 
         index_path = output_dir / "download_index.json"
-        index_path.write_text(json.dumps({"downloads": downloaded}, indent=2) + "\n", encoding="utf-8")
+        index_path.write_text(
+            json.dumps({"downloads": downloaded}, indent=2) + "\n", encoding="utf-8"
+        )
         print(
             "previous_nightly_artifact_status=downloaded "
             f"count={len(downloaded)} latest_run_id={downloaded[0]['run_id']}"

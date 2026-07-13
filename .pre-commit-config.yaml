@@ -1,0 +1,9 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^(robot_mujoco|scripts|mujoco_simulation/test)/.*\.py$
+      - id: ruff-format
+        files: ^(robot_mujoco|scripts|mujoco_simulation/test)/.*\.py$

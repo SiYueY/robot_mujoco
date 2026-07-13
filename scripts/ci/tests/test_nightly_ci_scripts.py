@@ -6,7 +6,6 @@ import pathlib
 import tempfile
 import unittest
 
-
 TEST_ROOT = pathlib.Path(__file__).resolve().parent
 CI_ROOT = TEST_ROOT.parent
 
@@ -20,7 +19,9 @@ def load_module(name: str, filename: str):
     return module
 
 
-fetch_previous = load_module("fetch_previous_nightly_artifact", "fetch_previous_nightly_artifact.py")
+fetch_previous = load_module(
+    "fetch_previous_nightly_artifact", "fetch_previous_nightly_artifact.py"
+)
 compare_performance = load_module("compare_performance_baseline", "compare_performance_baseline.py")
 compare_nightly = load_module("compare_nightly_metrics", "compare_nightly_metrics.py")
 summarize_nightly = load_module("summarize_nightly_results", "summarize_nightly_results.py")
@@ -139,7 +140,8 @@ class ComparePerformanceBaselineTest(unittest.TestCase):
         }
         report = compare_performance.build_report(baseline, candidate)
         latency_check = next(
-            check for check in report["checks"]
+            check
+            for check in report["checks"]
             if check["name"] == "headless_camera.sample_latency_ms_mean_mean"
         )
         self.assertEqual(latency_check["status"], "warn")

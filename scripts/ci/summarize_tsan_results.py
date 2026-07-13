@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 def load_json(path: pathlib.Path) -> dict | None:
     if not path.is_file():
         return None
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -106,7 +106,10 @@ def determine_status(
             return "runtime_unsupported", "host ThreadSanitizer runtime is unsupported"
         if preflight_status == "compile_failed":
             return "compile_failed", "ThreadSanitizer preflight compilation failed"
-        return "preflight_failed", f"ThreadSanitizer preflight failed with status {preflight_status}"
+        return (
+            "preflight_failed",
+            f"ThreadSanitizer preflight failed with status {preflight_status}",
+        )
 
     if build_exit_code != 0:
         return "build_failed", "TSan build failed before test execution"
@@ -212,9 +215,7 @@ def write_markdown(report: dict, output_path: pathlib.Path) -> None:
             message = testcase["message"] or testcase["status"]
             lines.append(f"- `{label}.{testcase['name']}`: {message}")
         if len(tests["failing_testcases"]) > 20:
-            lines.append(
-                f"- ... and {len(tests['failing_testcases']) - 20} more failing testcases"
-            )
+            lines.append(f"- ... and {len(tests['failing_testcases']) - 20} more failing testcases")
         lines.append("")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -223,7 +224,9 @@ def write_markdown(report: dict, output_path: pathlib.Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--workspace-root", default=str(pathlib.Path(__file__).resolve().parents[2]))
+    parser.add_argument(
+        "--workspace-root", default=str(pathlib.Path(__file__).resolve().parents[2])
+    )
     parser.add_argument("--build-base", required=True)
     parser.add_argument("--log-base", required=True)
     parser.add_argument("--preflight-report", required=True)
@@ -239,7 +242,9 @@ def main() -> int:
     report = build_report(args)
     json_output_path = pathlib.Path(args.json_output)
     json_output_path.parent.mkdir(parents=True, exist_ok=True)
-    json_output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    json_output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     write_markdown(report, pathlib.Path(args.markdown_output))
 
     print(

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 import random
-from typing import Callable
+from collections import OrderedDict
+from collections.abc import Callable
 
 from .exceptions import RoboCasaIntegrationError
-
 
 TASK_CHOICES = OrderedDict(
     [
@@ -33,9 +32,7 @@ def get_layout_choices() -> OrderedDict[int, str]:
     try:
         from robocasa.models.scenes.scene_registry import LayoutType
     except ImportError as exc:
-        raise RoboCasaIntegrationError(
-            "robocasa is required to enumerate layout choices."
-        ) from exc
+        raise RoboCasaIntegrationError("robocasa is required to enumerate layout choices.") from exc
 
     choices = OrderedDict()
     for item in sorted(LayoutType, key=lambda entry: entry.value):
@@ -51,9 +48,7 @@ def get_style_choices() -> OrderedDict[int, str]:
     try:
         from robocasa.models.scenes.scene_registry import StyleType
     except ImportError as exc:
-        raise RoboCasaIntegrationError(
-            "robocasa is required to enumerate style choices."
-        ) from exc
+        raise RoboCasaIntegrationError("robocasa is required to enumerate style choices.") from exc
 
     choices = OrderedDict()
     for item in sorted(StyleType, key=lambda entry: entry.value):
@@ -95,10 +90,7 @@ def choose_option(
             output_func(f"[{index}] {label}")
     output_func("")
 
-    prompt = (
-        f"Choose {option_name} 1-{len(items)}, or 0/Enter for default "
-        f"({default_message}): "
-    )
+    prompt = f"Choose {option_name} 1-{len(items)}, or 0/Enter for default ({default_message}): "
     while True:
         raw = input_func(prompt).strip()
         if raw == "" or raw == "0":

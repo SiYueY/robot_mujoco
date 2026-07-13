@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 from dataclasses import replace
 from pathlib import Path
-import tempfile
 from typing import Any
 
 from robot_mujoco.robocasa.scene_config import config_from_mapping
@@ -78,9 +78,7 @@ def load_robot_description(
         robot_description = robot_description.replace("__INITIAL_KEYFRAME__", initial_keyframe)
     else:
         lines = robot_description.splitlines()
-        filtered_lines = [
-            line for line in lines if "__INITIAL_KEYFRAME__" not in line
-        ]
+        filtered_lines = [line for line in lines if "__INITIAL_KEYFRAME__" not in line]
         robot_description = "\n".join(filtered_lines)
         if robot_description and not robot_description.endswith("\n"):
             robot_description += "\n"
@@ -119,14 +117,10 @@ def generate_robocasa_scene(
     try:
         raw = yaml.safe_load(resolved_config_path.read_text(encoding="utf-8")) or {}
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            f"Failed to read RoboCasa scene config: {resolved_config_path}"
-        ) from exc
+        raise RuntimeError(f"Failed to read RoboCasa scene config: {resolved_config_path}") from exc
 
     if not isinstance(raw, dict):
-        raise RuntimeError(
-            f"RoboCasa scene config must be a mapping: {resolved_config_path}"
-        )
+        raise RuntimeError(f"RoboCasa scene config must be a mapping: {resolved_config_path}")
 
     robocasa_section = raw.setdefault("robocasa", {})
     robot_section = raw.setdefault("robot", {})

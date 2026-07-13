@@ -51,6 +51,28 @@ Install the workspace Python package first so `robot_mujoco.robocasa` is importa
 uv pip install -e .
 ```
 
+### 3a. Install Python development tooling
+
+Install the repository's Python lint and formatting tools:
+
+```bash
+uv sync --group dev
+```
+
+Run the checks locally with:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+```
+
+To enable automatic checks before each commit:
+
+```bash
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
 ### 4. Install `robosuite` and `robocasa`
 
 Install the vendored submodules in editable mode:

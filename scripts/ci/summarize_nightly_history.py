@@ -10,7 +10,7 @@ import sys
 def load_json(path: pathlib.Path) -> dict | None:
     if not path.is_file():
         return None
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -81,7 +81,7 @@ def build_run_summaries(runs: list[dict]) -> list[dict]:
 
 
 def build_check_histories(runs: list[dict]) -> list[dict]:
-    names = sorted({name for run in runs for name in check_map(run).keys()})
+    names = sorted({name for run in runs for name in check_map(run)})
     histories = []
     for name in names:
         observations = []
@@ -113,7 +113,10 @@ def persistent_warnings(histories: list[dict]) -> list[dict]:
         observations = history["observations"]
         if len(observations) < 2:
             continue
-        if all(obs.get("status") in {"warn", "fail"} for obs in observations[: min(3, len(observations))]):
+        if all(
+            obs.get("status") in {"warn", "fail"}
+            for obs in observations[: min(3, len(observations))]
+        ):
             result.append(history)
     return result
 
@@ -146,7 +149,7 @@ def window_regressions(histories: list[dict]) -> list[dict]:
 
 
 def scenario_histories(runs: list[dict]) -> list[dict]:
-    names = sorted({name for run in runs for name in scenario_map(run).keys()})
+    names = sorted({name for run in runs for name in scenario_map(run)})
     result = []
     for name in names:
         observations = []
@@ -221,9 +224,7 @@ def write_markdown(report: dict, output_path: pathlib.Path) -> None:
     if highlights.get("persistent_warnings"):
         for history in highlights["persistent_warnings"]:
             obs = history["observations"][:3]
-            rendered = ", ".join(
-                f"{item.get('run_id')}: {item.get('status')}" for item in obs
-            )
+            rendered = ", ".join(f"{item.get('run_id')}: {item.get('status')}" for item in obs)
             lines.append(f"- `{history['name']}`: {rendered}")
     else:
         lines.append("- None")
@@ -267,7 +268,9 @@ def main() -> int:
 
     json_output_path = pathlib.Path(args.json_output)
     json_output_path.parent.mkdir(parents=True, exist_ok=True)
-    json_output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    json_output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     write_markdown(report, pathlib.Path(args.markdown_output))
 
     print(f"nightly_history_status={report['status']} runs={len(runs)}")

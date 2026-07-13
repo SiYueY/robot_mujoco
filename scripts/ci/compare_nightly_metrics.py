@@ -9,7 +9,7 @@ import sys
 def load_json(path: pathlib.Path) -> dict | None:
     if not path.is_file():
         return None
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -106,12 +106,16 @@ def build_report(previous: dict | None, current: dict) -> dict:
     scenarios = scenario_comparisons(previous, current)
     status_changes = [check for check in checks if check["status_changed"]]
     worse_checks = [
-        check for check in checks
-        if isinstance(check.get("semantic_delta_change"), (int, float)) and check["semantic_delta_change"] < 0.0
+        check
+        for check in checks
+        if isinstance(check.get("semantic_delta_change"), (int, float))
+        and check["semantic_delta_change"] < 0.0
     ]
     better_checks = [
-        check for check in checks
-        if isinstance(check.get("semantic_delta_change"), (int, float)) and check["semantic_delta_change"] > 0.0
+        check
+        for check in checks
+        if isinstance(check.get("semantic_delta_change"), (int, float))
+        and check["semantic_delta_change"] > 0.0
     ]
     worse_checks.sort(key=lambda item: item["semantic_delta_change"])
     better_checks.sort(key=lambda item: item["semantic_delta_change"], reverse=True)
@@ -232,13 +236,12 @@ def main() -> int:
 
     json_output_path = pathlib.Path(args.json_output)
     json_output_path.parent.mkdir(parents=True, exist_ok=True)
-    json_output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    json_output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     write_markdown(report, pathlib.Path(args.markdown_output))
 
-    print(
-        "nightly_trend_status="
-        f"{report['status']}"
-    )
+    print(f"nightly_trend_status={report['status']}")
     return 0
 
 

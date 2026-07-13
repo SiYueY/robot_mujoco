@@ -8,7 +8,7 @@ import sys
 
 
 def load_json(path: pathlib.Path) -> dict:
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, encoding="utf-8") as handle:
         return json.load(handle)
 
 
@@ -61,7 +61,9 @@ def make_check(
         check["message"] = "metric is missing from baseline or candidate report"
         return check
 
-    if not isinstance(baseline_value, (int, float)) or not isinstance(candidate_value, (int, float)):
+    if not isinstance(baseline_value, (int, float)) or not isinstance(
+        candidate_value, (int, float)
+    ):
         check["status"] = "error"
         check["message"] = "metric is not numeric"
         return check
@@ -73,20 +75,18 @@ def make_check(
 
     delta = percent_delta(float(candidate_value), float(baseline_value))
     check["delta_percent"] = delta
-    check["semantic_delta_percent"] = None if delta is None else (delta if higher_is_better else -delta)
+    check["semantic_delta_percent"] = (
+        None if delta is None else (delta if higher_is_better else -delta)
+    )
 
     if min_ratio is not None and candidate_value < baseline_value * min_ratio:
         check["status"] = "fail" if gating else "warn"
-        check["message"] = (
-            f"candidate dropped below {min_ratio:.2f}x baseline"
-        )
+        check["message"] = f"candidate dropped below {min_ratio:.2f}x baseline"
         return check
 
     if max_ratio is not None and candidate_value > baseline_value * max_ratio:
         check["status"] = "fail" if gating else "warn"
-        check["message"] = (
-            f"candidate exceeded {max_ratio:.2f}x baseline"
-        )
+        check["message"] = f"candidate exceeded {max_ratio:.2f}x baseline"
         return check
 
     return check
@@ -194,9 +194,7 @@ def highlight_checks(checks: list[dict], *, limit: int = 3) -> dict:
     return {
         "largest_regressions": regressions[:limit],
         "largest_improvements": improvements[:limit],
-        "missing_or_invalid": [
-            check for check in checks if check["status"] == "error"
-        ][:limit],
+        "missing_or_invalid": [check for check in checks if check["status"] == "error"][:limit],
     }
 
 

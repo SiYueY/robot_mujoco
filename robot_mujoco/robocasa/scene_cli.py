@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import replace
 from pathlib import Path
-import sys
 
 from .cli_options import TASK_CHOICES, choose_option, get_layout_choices, get_style_choices
 from .exceptions import RoboCasaIntegrationError
@@ -78,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"Unexpected RoboCasa scene generation failure: {exc}", file=sys.stderr)
         return 1
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

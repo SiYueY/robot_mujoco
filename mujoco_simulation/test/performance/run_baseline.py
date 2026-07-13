@@ -24,7 +24,7 @@ def parse_metrics(stdout: str) -> dict:
 
 def sample_rss_kb(pid: int) -> int:
     try:
-        with open(f"/proc/{pid}/status", "r", encoding="utf-8") as handle:
+        with open(f"/proc/{pid}/status", encoding="utf-8") as handle:
             for line in handle:
                 if line.startswith("VmRSS:"):
                     return int(line.split()[1])
@@ -129,7 +129,7 @@ def main() -> int:
 
     workspace_root = pathlib.Path(args.workspace_root).resolve()
     scenario_file = pathlib.Path(args.scenario_file).resolve()
-    with open(scenario_file, "r", encoding="utf-8") as handle:
+    with open(scenario_file, encoding="utf-8") as handle:
         scenarios = json.load(handle)["scenarios"]
 
     report = {
@@ -141,15 +141,17 @@ def main() -> int:
 
     for scenario in scenarios:
         runs = [run_command(scenario["command"], workspace_root) for _ in range(args.repeat)]
-        keys = sorted({key for run in runs for key in run.keys()})
+        keys = sorted({key for run in runs for key in run})
         aggregated = {}
         for key in keys:
             values = [run[key] for run in runs if isinstance(run.get(key), (int, float))]
             if values:
                 aggregated[f"{key}_mean"] = statistics.fmean(values)
-                aggregated[f"{key}_p95"] = max(values) if len(values) == 1 else sorted(values)[
-                    max(0, int(len(values) * 0.95) - 1)
-                ]
+                aggregated[f"{key}_p95"] = (
+                    max(values)
+                    if len(values) == 1
+                    else sorted(values)[max(0, int(len(values) * 0.95) - 1)]
+                )
             else:
                 aggregated[key] = runs[-1].get(key)
         report["scenarios"].append(
