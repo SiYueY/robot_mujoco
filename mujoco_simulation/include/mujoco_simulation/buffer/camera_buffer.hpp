@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -10,32 +11,17 @@ namespace mujoco_simulation {
 
 class CameraBuffer {
  public:
-  void write(std::string camera_name, CameraState state) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    states_[std::string(camera_name)] = std::move(state);
-  }
+  void write(std::string camera_name, CameraState state);
 
-  bool read(std::string camera_name, CameraState* out) const {
-    if (out == nullptr) {
-      return false;
-    }
-    std::lock_guard<std::mutex> lock(mutex_);
-    const auto it = states_.find(std::string(camera_name));
-    if (it == states_.end()) {
-      return false;
-    }
-    *out = it->second;
-    return true;
-  }
+  bool read(std::string camera_name, CameraState* out) const;
 
-  void clear() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    states_.clear();
-  }
+  std::shared_ptr<const CameraState> read_shared(std::string camera_name) const;
+
+  void clear();
 
  private:
   mutable std::mutex mutex_;
-  std::unordered_map<std::string, CameraState> states_;
+  std::unordered_map<std::string, std::shared_ptr<const CameraState>> states_;
 };
 
 }  // namespace mujoco_simulation

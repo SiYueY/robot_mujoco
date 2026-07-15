@@ -103,11 +103,11 @@ ResultCode CameraComponent::bind(const mjModel& model) {
     return ResultCode::InvalidArgument;
   }
 
-  binding_.camera_id = mj_name2id(&model, mjOBJ_CAMERA, config_.camera_name.c_str());
-  if (binding_.camera_id < 0) {
+  camera_id_ = mj_name2id(&model, mjOBJ_CAMERA, config_.camera_name.c_str());
+  if (camera_id_ < 0) {
     return ResultCode::BindingFailed;
   }
-  binding_.fovy_degrees = static_cast<double>(model.cam_fovy[binding_.camera_id]);
+  fovy_degrees_ = static_cast<double>(model.cam_fovy[camera_id_]);
   const ResultCode schedule_status =
       set_update_rate(config_.common.update_rate, 1.0 / model.opt.timestep);
   if (schedule_status != ResultCode::Ok) {
@@ -127,7 +127,7 @@ ResultCode CameraComponent::reset(const mjModel& model, mjData& data) {
 
 ResultCode CameraComponent::update(const UpdateContext& context) {
   (void)context.step_count;
-  if (binding_.camera_id < 0) {
+  if (camera_id_ < 0) {
     return ResultCode::FailedPrecondition;
   }
   if (context.camera_renderer == nullptr || context.camera_buffer == nullptr) {

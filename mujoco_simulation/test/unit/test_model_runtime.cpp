@@ -66,7 +66,7 @@ TEST_F(ModelRuntimeTest, ResetToNamedKeyframe) {
   const auto model_path = write_model_file("model_runtime_keyframe.xml", kFallingBodyXml);
 
   ASSERT_EQ(runtime.load({model_path.string()}), mujoco_simulation::ResultCode::Ok);
-  ASSERT_EQ(runtime.reset({.keyframe_name = "raised"}), mujoco_simulation::ResultCode::Ok);
+  ASSERT_EQ(runtime.reset_to_keyframe_name("raised"), mujoco_simulation::ResultCode::Ok);
   EXPECT_NEAR(runtime.data().qpos[2], 1.0, 1e-9);
 }
 
@@ -143,7 +143,7 @@ TEST_F(ModelRuntimeTest, ResetRejectsMissingRuntimeKeyframeWithoutUnloadingModel
   const auto model_path = write_model_file("model_runtime_runtime_keyframe.xml", kFallingBodyXml);
 
   ASSERT_EQ(runtime.load({model_path.string()}), mujoco_simulation::ResultCode::Ok);
-  const mujoco_simulation::ResultCode reset_status = runtime.reset({.keyframe_name = "missing"});
+  const mujoco_simulation::ResultCode reset_status = runtime.reset_to_keyframe_name("missing");
   EXPECT_EQ(reset_status, mujoco_simulation::ResultCode::NotFound);
   EXPECT_TRUE(runtime.is_loaded());
 }

@@ -8,6 +8,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 
 #include "mujoco_simulation/reset_options.hpp"
@@ -17,7 +18,20 @@
 
 namespace mujoco_simulation {
 
+enum class ResetTargetType {
+  Default,
+  KeyframeName,
+  KeyframeId,
+};
+
+struct ResetTarget {
+  ResetTargetType type{ResetTargetType::Default};
+  std::string keyframe_name;
+  int keyframe_id{-1};
+};
+
 struct ResetRequest {
+  ResetTarget target;
   ResetOptions options;
   std::shared_ptr<std::promise<ResultCode>> completion;
 };
@@ -26,10 +40,10 @@ struct SchedulerCallbacks {
   std::function<double()> timestep_provider;
   std::function<ResultCode()> write_commands;
   std::function<ResultCode()> step_physics;
-  std::function<ResultCode()> read_components;
-  std::function<ResultCode()> publish_state_snapshot;
+  std::function<ResultCode()> update_components;
+  std::function<ResultCode()> write_state_snapshot;
   std::function<ResultCode()> sync_viewer_if_due;
-  std::function<ResultCode(const ResetOptions&)> reset_runtime;
+  std::function<ResultCode(const ResetRequest&)> reset_runtime;
 };
 
 struct SchedulerStatistics {

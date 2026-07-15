@@ -1,27 +1,23 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
-#include <vector>
 
 #include "mujoco_simulation/component/lidar/lidar_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
 
 namespace mujoco_simulation {
 
-struct LidarBeamBinding {
-  std::size_t beam_index{0};
-  int sensor_id{-1};
-  int sensor_address{-1};
-};
-
-struct LidarBinding {
-  std::vector<LidarBeamBinding> beams;
-};
-
 class LidarComponent : public SimulationComponent {
  public:
   explicit LidarComponent(LidarConfig info);
+  ~LidarComponent();
+
+  LidarComponent(const LidarComponent&) = delete;
+  LidarComponent& operator=(const LidarComponent&) = delete;
+  LidarComponent(LidarComponent&&) noexcept;
+  LidarComponent& operator=(LidarComponent&&) noexcept;
 
   std::string name() const noexcept override;
   ResultCode bind(const mjModel& model) override;
@@ -34,9 +30,10 @@ class LidarComponent : public SimulationComponent {
  private:
   ResultCode set_defaults();
 
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
   LidarConfig info_;
   LidarState state_{};
-  LidarBinding binding_{};
   std::uint64_t sample_sequence_{0};
 };
 

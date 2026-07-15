@@ -42,13 +42,13 @@ ResultCode invoke_required_status_callback(const std::function<ResultCode()>& ca
   return invoke_status_callback(callback, operation_name);
 }
 
-ResultCode invoke_reset_callback(const std::function<ResultCode(const ResetOptions&)>& callback,
-                                 const ResetOptions& options) {
+ResultCode invoke_reset_callback(const std::function<ResultCode(const ResetRequest&)>& callback,
+                                 const ResetRequest& request) {
   if (!callback) {
     return ResultCode::Internal;
   }
   try {
-    return callback(options);
+    return callback(request);
   } catch (const std::exception&) {
     return ResultCode::ThreadFailed;
   } catch (...) {
@@ -334,11 +334,11 @@ ResultCode SimulationScheduler::run_step_cycle(bool manual_step) {
   }
   const auto step_end = std::chrono::steady_clock::now();
 
-  status = invoke_optional(callbacks_.read_components);
+  status = invoke_optional(callbacks_.update_components);
   if (status != ResultCode::Ok) {
     return status;
   }
-  status = invoke_optional(callbacks_.publish_state_snapshot);
+  status = invoke_optional(callbacks_.write_state_snapshot);
   if (status != ResultCode::Ok) {
     return status;
   }
@@ -391,7 +391,7 @@ ResultCode SimulationScheduler::process_pending_requests(bool* reset_deadline) {
 ResultCode SimulationScheduler::process_reset_request(const ResetRequest& request,
                                                       bool* reset_deadline) {
   std::lock_guard<std::mutex> execution_lock(execution_mutex_);
-  ResultCode status = invoke_reset_callback(callbacks_.reset_runtime, request.options);
+  ResultCode status = invoke_reset_callback(callbacks_.reset_runtime, request);
   if (status != ResultCode::Ok) {
     return status;
   }

@@ -250,7 +250,7 @@ TEST_F(BufferedSimulationTest, ResetReturnsRuntimeFailureWhileRunning) {
   ASSERT_OK_STATUS(simulation.initialize({.model = {.model_path = model_path}}));
   ASSERT_OK_STATUS(simulation.start());
 
-  const ResultCode reset_status = simulation.reset({.keyframe_name = "missing_keyframe"});
+  const ResultCode reset_status = simulation.reset_to_keyframe_name("missing_keyframe");
   EXPECT_EQ(reset_status, ResultCode::NotFound);
 
   ASSERT_OK_STATUS(simulation.stop());

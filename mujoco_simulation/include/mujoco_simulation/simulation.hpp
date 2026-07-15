@@ -7,9 +7,8 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
-#include <unordered_map>
+#include <string_view>
 
 #include "mujoco_simulation/buffer/camera_buffer.hpp"
 #include "mujoco_simulation/buffer/command_buffer.hpp"
@@ -24,6 +23,7 @@
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 #include "mujoco_simulation/reset_options.hpp"
 #include "mujoco_simulation/result_code.hpp"
+#include "mujoco_simulation/runtime/simulation_scheduler.hpp"
 #include "mujoco_simulation/simulation_config.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
 
@@ -52,7 +52,13 @@ class Simulation {
   ResultCode resume();
   ResultCode set_realtime_factor(double realtime_factor);
   ResultCode request_reset(const ResetOptions &options = {});
+  ResultCode request_reset_to_keyframe_name(std::string_view keyframe_name,
+                                            const ResetOptions &options = {});
+  ResultCode request_reset_to_keyframe_id(int keyframe_id, const ResetOptions &options = {});
   ResultCode reset(const ResetOptions &options = {});
+  ResultCode reset_to_keyframe_name(std::string_view keyframe_name,
+                                    const ResetOptions &options = {});
+  ResultCode reset_to_keyframe_id(int keyframe_id, const ResetOptions &options = {});
   ResultCode step(uint32_t steps);
 
   ResultCode reconfigure_component(const ComponentConfig &updated_component);
@@ -73,28 +79,29 @@ class Simulation {
   void set_snapshot_observer(SnapshotObserver observer);
 
  private:
-  struct PendingStateSnapshot {
-    std::unordered_map<std::string, JointState> joints;
-    std::unordered_map<std::string, MobileBaseState> mobile_bases;
-  };
-
   ResultCode initialize_scheduler();
   ResultCode initialize_components();
   ResultCode load_model(const ModelConfig &model_config);
+  ResultCode request_reset_internal(const ResetRequest &request);
+  ResultCode reset_internal(ResetRequest request);
   ResultCode apply_component_reconfiguration_locked(
       const ComponentConfig &updated_component,
       std::shared_ptr<const StateSnapshot> *published_snapshot);
-  ResultCode publish_state_snapshot(bool increment_step_count);
-  ResultCode read_component_states_locked(bool increment_step_count);
-  ResultCode publish_state_snapshot_locked(
-      bool increment_step_count, std::shared_ptr<const StateSnapshot> *published_snapshot);
-  ResultCode scheduler_apply_commands_locked();
-  ResultCode scheduler_read_components_locked(bool increment_step_count);
-  ResultCode scheduler_step_physics_locked();
+  ResultCode write_state_snapshot(bool increment_step_count);
+  ResultCode write_state_snapshot_locked(bool increment_step_count,
+                                         std::shared_ptr<const StateSnapshot> *published_snapshot);
+  ResultCode update_components_for_step_locked(std::uint64_t step_count, double simulation_time);
+  ResultCode build_state_snapshot_locked(std::uint64_t step_count, double simulation_time,
+                                         std::shared_ptr<const StateSnapshot> *published_snapshot);
+  ResultCode scheduler_write_commands();
+  ResultCode scheduler_update_components();
+  ResultCode scheduler_step_physics();
   ResultCode scheduler_sync_viewer_if_due();
-  ResultCode scheduler_reset_locked(const ResetOptions &options);
-  double scheduler_timestep_locked() const;
+  ResultCode scheduler_reset(const ResetRequest &request);
+  double scheduler_timestep() const;
   ResultCode start_viewer();
+  ResultCode stop_viewer();
+  ResultCode build_state_snapshot(StateSnapshot *snapshot) const;
 
   SimulationConfig config_;
   std::unique_ptr<CameraBuffer> camera_buffer_;
@@ -108,14 +115,14 @@ class Simulation {
 
   ComponentManager component_manager_;
   std::unique_ptr<MuJoCoViewer> viewer_;
-  std::optional<PendingStateSnapshot> pending_state_snapshot_;
   std::chrono::steady_clock::time_point next_viewer_sync_time_{};
   ResultCode runtime_error_{ResultCode::Ok};
   std::uint64_t state_snapshot_sequence_{0};
   std::uint64_t state_snapshot_step_count_{0};
   SnapshotObserver snapshot_observer_;
 
-  mutable std::mutex mutex_;
+  mutable std::mutex runtime_mutex_;
+  mutable std::mutex viewer_mutex_;
 };
 
 }  // namespace mujoco_simulation

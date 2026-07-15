@@ -54,34 +54,6 @@ class MobileBaseTest : public ::testing::Test {
     return joint;
   }
 
-  MobileBaseBinding differential_binding(const JointComponent& left_joint,
-                                         const JointComponent& right_joint) {
-    MobileBaseBinding binding;
-    binding.differential.emplace();
-    binding.differential->left_wheel.joint_name = std::string(left_joint.name());
-    binding.differential->left_wheel.joint = left_joint.binding();
-    binding.differential->right_wheel.joint_name = std::string(right_joint.name());
-    binding.differential->right_wheel.joint = right_joint.binding();
-    return binding;
-  }
-
-  MobileBaseBinding omnidirectional_binding(const JointComponent& front_left,
-                                            const JointComponent& front_right,
-                                            const JointComponent& rear_left,
-                                            const JointComponent& rear_right) {
-    MobileBaseBinding binding;
-    binding.omnidirectional.emplace();
-    binding.omnidirectional->front_left.joint_name = std::string(front_left.name());
-    binding.omnidirectional->front_left.joint = front_left.binding();
-    binding.omnidirectional->front_right.joint_name = std::string(front_right.name());
-    binding.omnidirectional->front_right.joint = front_right.binding();
-    binding.omnidirectional->rear_left.joint_name = std::string(rear_left.name());
-    binding.omnidirectional->rear_left.joint = rear_left.binding();
-    binding.omnidirectional->rear_right.joint_name = std::string(rear_right.name());
-    binding.omnidirectional->rear_right.joint = rear_right.binding();
-    return binding;
-  }
-
   mjModel* model_{nullptr};
   mjData* data_{nullptr};
   std::filesystem::path model_path_;
@@ -118,8 +90,8 @@ TEST_F(MobileBaseTest, DifferentialWriteMapsTwistToWheelVelocityCommands) {
                             .left_wheel_joint = "left_wheel",
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.2,
-                            .track_width = 0.6},
-                           differential_binding(*left_joint, *right_joint));
+                            .track_width = 0.6});
+  ASSERT_EQ(base.configure_differential_drive(*left_joint, *right_joint), ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   ASSERT_EQ(base.write(*model_, *data_, {.linear = {1.0, 0.0, 0.0}, .angular = {0.0, 0.0, 0.5}}),
@@ -158,8 +130,8 @@ TEST_F(MobileBaseTest, DifferentialReadComputesTwistFromWheelVelocities) {
                             .left_wheel_joint = "left_wheel",
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.1,
-                            .track_width = 0.5},
-                           differential_binding(*left_joint, *right_joint));
+                            .track_width = 0.5});
+  ASSERT_EQ(base.configure_differential_drive(*left_joint, *right_joint), ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   MobileBaseState state;
@@ -195,17 +167,18 @@ TEST_F(MobileBaseTest, OmnidirectionalReadComputesTwistFromWheelVelocities) {
   data_->qvel[model_->jnt_dofadr[rl_id]] = 4.0;
   data_->qvel[model_->jnt_dofadr[rr_id]] = 8.0;
 
-  MobileBaseComponent base(
-      {.name = "base",
-       .type = MobileBaseType::Omnidirectional,
-       .front_left_joint = "fl",
-       .front_right_joint = "fr",
-       .rear_left_joint = "rl",
-       .rear_right_joint = "rr",
-       .wheel_radius = 0.1,
-       .track_width = 0.3,
-       .wheel_base = 0.5},
-      omnidirectional_binding(*front_left, *front_right, *rear_left, *rear_right));
+  MobileBaseComponent base({.name = "base",
+                            .type = MobileBaseType::Omnidirectional,
+                            .front_left_joint = "fl",
+                            .front_right_joint = "fr",
+                            .rear_left_joint = "rl",
+                            .rear_right_joint = "rr",
+                            .wheel_radius = 0.1,
+                            .track_width = 0.3,
+                            .wheel_base = 0.5});
+  ASSERT_EQ(
+      base.configure_omnidirectional_drive(*front_left, *front_right, *rear_left, *rear_right),
+      ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   MobileBaseState state;
@@ -244,17 +217,18 @@ TEST_F(MobileBaseTest, OmnidirectionalWriteMapsTwistToWheelVelocityCommands) {
   auto rear_right = bind_joint(
       {.name = "rr", .actuator_name = "rr_act", .command_mode = CommandInterfaceType::Velocity});
 
-  MobileBaseComponent base(
-      {.name = "base",
-       .type = MobileBaseType::Omnidirectional,
-       .front_left_joint = "fl",
-       .front_right_joint = "fr",
-       .rear_left_joint = "rl",
-       .rear_right_joint = "rr",
-       .wheel_radius = 0.1,
-       .track_width = 0.3,
-       .wheel_base = 0.5},
-      omnidirectional_binding(*front_left, *front_right, *rear_left, *rear_right));
+  MobileBaseComponent base({.name = "base",
+                            .type = MobileBaseType::Omnidirectional,
+                            .front_left_joint = "fl",
+                            .front_right_joint = "fr",
+                            .rear_left_joint = "rl",
+                            .rear_right_joint = "rr",
+                            .wheel_radius = 0.1,
+                            .track_width = 0.3,
+                            .wheel_base = 0.5});
+  ASSERT_EQ(
+      base.configure_omnidirectional_drive(*front_left, *front_right, *rear_left, *rear_right),
+      ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   ASSERT_EQ(base.write(*model_, *data_, {.linear = {1.0, 0.2, 0.0}, .angular = {0.0, 0.0, 0.5}}),
@@ -289,8 +263,8 @@ TEST_F(MobileBaseTest, WheelIntegrationAccumulatesOdometryAndResetClearsIt) {
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.1,
                             .track_width = 0.5,
-                            .odometry_source = OdometrySource::WheelIntegration},
-                           differential_binding(*left_joint, *right_joint));
+                            .odometry_source = OdometrySource::WheelIntegration});
+  ASSERT_EQ(base.configure_differential_drive(*left_joint, *right_joint), ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   const int left_id = mj_name2id(model_, mjOBJ_JOINT, "left_wheel");
@@ -332,18 +306,19 @@ TEST_F(MobileBaseTest, OmnidirectionalWheelIntegrationAndResetClearOdometry) {
   auto rear_left = bind_joint({.name = "rl"});
   auto rear_right = bind_joint({.name = "rr"});
 
-  MobileBaseComponent base(
-      {.name = "base",
-       .type = MobileBaseType::Omnidirectional,
-       .front_left_joint = "fl",
-       .front_right_joint = "fr",
-       .rear_left_joint = "rl",
-       .rear_right_joint = "rr",
-       .wheel_radius = 0.1,
-       .track_width = 0.3,
-       .wheel_base = 0.5,
-       .odometry_source = OdometrySource::WheelIntegration},
-      omnidirectional_binding(*front_left, *front_right, *rear_left, *rear_right));
+  MobileBaseComponent base({.name = "base",
+                            .type = MobileBaseType::Omnidirectional,
+                            .front_left_joint = "fl",
+                            .front_right_joint = "fr",
+                            .rear_left_joint = "rl",
+                            .rear_right_joint = "rr",
+                            .wheel_radius = 0.1,
+                            .track_width = 0.3,
+                            .wheel_base = 0.5,
+                            .odometry_source = OdometrySource::WheelIntegration});
+  ASSERT_EQ(
+      base.configure_omnidirectional_drive(*front_left, *front_right, *rear_left, *rear_right),
+      ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   const int fl_id = mj_name2id(model_, mjOBJ_JOINT, "fl");
@@ -402,8 +377,8 @@ TEST_F(MobileBaseTest, GroundTruthPoseOverridesIntegratedOdometry) {
                             .wheel_radius = 0.1,
                             .track_width = 0.5,
                             .odometry_source = OdometrySource::GroundTruthBodyPose,
-                            .base_body_name = "base_link"},
-                           differential_binding(*left_joint, *right_joint));
+                            .base_body_name = "base_link"});
+  ASSERT_EQ(base.configure_differential_drive(*left_joint, *right_joint), ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   const int left_id = mj_name2id(model_, mjOBJ_JOINT, "left_wheel");
@@ -451,8 +426,8 @@ TEST_F(MobileBaseTest, DifferentialBaseRejectsLateralVelocityCommand) {
                             .left_wheel_joint = "left_wheel",
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.2,
-                            .track_width = 0.6},
-                           differential_binding(*left_joint, *right_joint));
+                            .track_width = 0.6});
+  ASSERT_EQ(base.configure_differential_drive(*left_joint, *right_joint), ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   const ResultCode status =
@@ -485,8 +460,8 @@ TEST_F(MobileBaseTest, MissingGroundTruthBodyFailsWithBindingError) {
                             .wheel_radius = 0.1,
                             .track_width = 0.5,
                             .odometry_source = OdometrySource::GroundTruthBodyPose,
-                            .base_body_name = "missing_body"},
-                           differential_binding(*left_joint, *right_joint));
+                            .base_body_name = "missing_body"});
+  ASSERT_EQ(base.configure_differential_drive(*left_joint, *right_joint), ResultCode::Ok);
   const ResultCode status = base.bind(*model_);
   EXPECT_EQ(status, ResultCode::BindingFailed);
 }
@@ -524,8 +499,8 @@ TEST_F(MobileBaseTest, RebindingNewJointComponentsDoesNotInvalidateResolvedBindi
                             .left_wheel_joint = "left_wheel",
                             .right_wheel_joint = "right_wheel",
                             .wheel_radius = 0.2,
-                            .track_width = 0.6},
-                           differential_binding(*left_joint, *right_joint));
+                            .track_width = 0.6});
+  ASSERT_EQ(base.configure_differential_drive(*left_joint, *right_joint), ResultCode::Ok);
   ASSERT_EQ(base.bind(*model_), ResultCode::Ok);
 
   ASSERT_EQ(base.write(*model_, *data_, {.linear = {0.4, 0.0, 0.0}, .angular = {0.0, 0.0, 0.0}}),

@@ -18,11 +18,8 @@ TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAddAndRemove) {
   auto lidar = std::make_unique<LidarComponent>(
       LidarConfig{.common = {.name = "lidar", .update_rate = 10.0}});
 
-  MobileBaseBinding mobile_base_binding;
-  mobile_base_binding.differential.emplace();
   auto mobile_base = std::make_unique<MobileBaseComponent>(
-      MobileBaseConfig{.name = "base", .type = MobileBaseType::Differential},
-      std::move(mobile_base_binding));
+      MobileBaseConfig{.name = "base", .type = MobileBaseType::Differential});
 
   ASSERT_EQ(registry.add(std::move(joint)), ResultCode::Ok);
   ASSERT_EQ(registry.add(std::move(imu)), ResultCode::Ok);

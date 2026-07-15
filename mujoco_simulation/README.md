@@ -35,11 +35,23 @@
 Simulation
   -> ComponentManager
     -> Joint / Imu / Camera / Lidar / MobileBase
-  -> CameraRenderer + CameraBuffer
+  -> SimulationScheduler
+  -> CommandBuffer / StateBuffer / CameraBuffer
+  -> CameraRenderer
+  -> MuJoCoViewer
     -> mjModel / mjData
 ```
 
 上层只需要面向 `Simulation` 调用，而不需要到处直接操作 MuJoCo 原生数组。
+
+当前线程模型收敛为：
+
+- scheduler worker thread
+  - 唯一连续推进 `mjModel / mjData` 的线程
+- viewer render thread
+  - 只负责被动渲染与 viewer 同步
+- external caller threads
+  - 只负责写命令、读 buffer、提交 lifecycle/reset 请求
 
 ## 在工作区中的职责边界
 
@@ -106,6 +118,14 @@ Simulation
   - `bool mobile_base_state(..., MobileBaseState* out)`
   - `state_snapshot()`
 
+内部约束：
+
+- `mjModel / mjData` 保持单写线程原则
+- `ComponentManager` 负责组件更新、命令分发和状态汇总
+- `CommandBuffer / StateBuffer / CameraBuffer` 统一采用 `write(...) / read(...)` 语义
+  - `StateBuffer` 以原子发布 `StateSnapshot` 指针为主
+  - `CameraBuffer` 以每个 camera 的不可变状态指针为主，避免在锁内复制大对象
+
 ## 错误返回模型
 
 公开运行时接口现在严格区分两类概念：
@@ -146,9 +166,14 @@ Simulation
   - 启动 viewer，并以独立频率同步显示；camera 不再依赖 viewer 渲染资源
   - `stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会按当前配置自动重建 viewer
 
-`ResetOptions` 当前公开字段为：
+reset 当前公开接口为：
 
-- `keyframe_name` / `keyframe_id`
+- `reset(...)`
+- `reset_to_keyframe_name(...)`
+- `reset_to_keyframe_id(...)`
+
+`ResetOptions` 当前只保留行为开关：
+
 - `clear_commands`
 - `reset_components`
 - `clear_state_buffer`

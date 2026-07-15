@@ -7,20 +7,20 @@
 namespace mujoco_simulation {
 namespace {
 
-TEST(StateBufferTest, TypedReadsReturnInvalidStateBeforeFirstPublish) {
+TEST(StateBufferTest, TypedReadsReturnFalseBeforeFirstWrite) {
   StateBuffer buffer;
   JointState joint{.name = "sentinel"};
   ImuState imu{.frame_id = "sentinel"};
   LidarState lidar{.frame_id = "sentinel"};
   MobileBaseState mobile_base{.base_frame_id = "sentinel"};
 
-  EXPECT_FALSE(buffer.joint_state("joint", &joint));
+  EXPECT_FALSE(buffer.read_joint_state("joint", &joint));
   EXPECT_EQ(joint.name, "sentinel");
-  EXPECT_FALSE(buffer.imu_state("imu", &imu));
+  EXPECT_FALSE(buffer.read_imu_state("imu", &imu));
   EXPECT_EQ(imu.frame_id, "sentinel");
-  EXPECT_FALSE(buffer.lidar_state("lidar", &lidar));
+  EXPECT_FALSE(buffer.read_lidar_state("lidar", &lidar));
   EXPECT_EQ(lidar.frame_id, "sentinel");
-  EXPECT_FALSE(buffer.mobile_base_state("base", &mobile_base));
+  EXPECT_FALSE(buffer.read_mobile_base_state("base", &mobile_base));
   EXPECT_EQ(mobile_base.base_frame_id, "sentinel");
 }
 
@@ -34,24 +34,24 @@ TEST(StateBufferTest, TypedReadsDelegateToSnapshotLookups) {
   buffer.write(snapshot);
 
   JointState joint;
-  ASSERT_TRUE(buffer.joint_state("joint", &joint));
+  ASSERT_TRUE(buffer.read_joint_state("joint", &joint));
   EXPECT_EQ(joint.name, "joint");
   EXPECT_DOUBLE_EQ(joint.position, 1.5);
 
   ImuState imu;
-  ASSERT_TRUE(buffer.imu_state("imu", &imu));
+  ASSERT_TRUE(buffer.read_imu_state("imu", &imu));
   EXPECT_EQ(imu.frame_id, "imu_link");
 
   LidarState lidar;
-  ASSERT_TRUE(buffer.lidar_state("lidar", &lidar));
+  ASSERT_TRUE(buffer.read_lidar_state("lidar", &lidar));
   EXPECT_EQ(lidar.frame_id, "lidar_link");
 
   MobileBaseState mobile_base;
-  ASSERT_TRUE(buffer.mobile_base_state("base", &mobile_base));
+  ASSERT_TRUE(buffer.read_mobile_base_state("base", &mobile_base));
   EXPECT_EQ(mobile_base.base_frame_id, "base_link");
 
   joint.name = "unchanged";
-  EXPECT_FALSE(buffer.joint_state("missing_joint", &joint));
+  EXPECT_FALSE(buffer.read_joint_state("missing_joint", &joint));
   EXPECT_EQ(joint.name, "unchanged");
 }
 

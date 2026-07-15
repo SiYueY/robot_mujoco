@@ -1,7 +1,7 @@
 #pragma once
 
 #include <limits>
-#include <optional>
+#include <memory>
 #include <string>
 
 #include "mujoco_simulation/component/joint/joint_component.hpp"
@@ -10,32 +10,22 @@
 
 namespace mujoco_simulation {
 
-struct MobileBaseWheelBinding {
-  std::string joint_name;
-  JointBinding joint{};
-};
-
-struct DifferentialBinding {
-  MobileBaseWheelBinding left_wheel;
-  MobileBaseWheelBinding right_wheel;
-};
-
-struct OmnidirectionalBinding {
-  MobileBaseWheelBinding front_left;
-  MobileBaseWheelBinding front_right;
-  MobileBaseWheelBinding rear_left;
-  MobileBaseWheelBinding rear_right;
-};
-
-struct MobileBaseBinding {
-  std::optional<DifferentialBinding> differential;
-  std::optional<OmnidirectionalBinding> omnidirectional;
-  int base_body_id{-1};
-};
-
 class MobileBaseComponent : public SimulationComponent {
  public:
-  MobileBaseComponent(MobileBaseConfig config, MobileBaseBinding binding);
+  explicit MobileBaseComponent(MobileBaseConfig config);
+  ~MobileBaseComponent();
+
+  MobileBaseComponent(const MobileBaseComponent&) = delete;
+  MobileBaseComponent& operator=(const MobileBaseComponent&) = delete;
+  MobileBaseComponent(MobileBaseComponent&&) noexcept;
+  MobileBaseComponent& operator=(MobileBaseComponent&&) noexcept;
+
+  ResultCode configure_differential_drive(const JointComponent& left_wheel,
+                                          const JointComponent& right_wheel);
+  ResultCode configure_omnidirectional_drive(const JointComponent& front_left,
+                                             const JointComponent& front_right,
+                                             const JointComponent& rear_left,
+                                             const JointComponent& rear_right);
 
   std::string name() const noexcept override;
   ResultCode bind(const mjModel& model) override;
@@ -65,15 +55,9 @@ class MobileBaseComponent : public SimulationComponent {
   ResultCode read_differential(const mjData& data, MobileBaseState& state);
   ResultCode read_omnidirectional(const mjData& data, MobileBaseState& state);
   std::size_t wheel_count() const;
-  static double clamp_actuator_control_limits(const mjModel& model, const JointBinding& binding,
-                                              double value);
-  static ResultCode write_wheel_velocity_command(const mjModel& model, mjData& data,
-                                                 const MobileBaseWheelBinding& wheel,
-                                                 double velocity);
-  static ResultCode read_wheel_velocity(const mjData& data, const MobileBaseWheelBinding& wheel,
-                                        double& velocity);
 
-  MobileBaseBinding binding_{};
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
   double last_simulation_time_{std::numeric_limits<double>::quiet_NaN()};
   MobileBaseConfig config_;
   MobileBaseCommand command_;

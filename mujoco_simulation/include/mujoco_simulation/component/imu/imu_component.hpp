@@ -7,15 +7,6 @@
 
 namespace mujoco_simulation {
 
-struct ImuBinding {
-  int framequat_sensor_id{-1};
-  int framequat_address{-1};
-  int gyro_sensor_id{-1};
-  int gyro_address{-1};
-  int accelerometer_sensor_id{-1};
-  int accelerometer_address{-1};
-};
-
 class ImuComponent : public SimulationComponent {
  public:
   explicit ImuComponent(ImuConfig info);
@@ -35,7 +26,12 @@ class ImuComponent : public SimulationComponent {
 
   ImuConfig info_;
   ImuState state_{};
-  ImuBinding binding_{};
+  int framequat_sensor_id_{-1};
+  int framequat_address_{-1};
+  int gyro_sensor_id_{-1};
+  int gyro_address_{-1};
+  int accelerometer_sensor_id_{-1};
+  int accelerometer_address_{-1};
   std::uint64_t sample_sequence_{0};
 };
 

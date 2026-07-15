@@ -5,7 +5,7 @@
 namespace mujoco_simulation {
 namespace {
 
-TEST(CameraBufferTest, PublishReadAndClearStates) {
+TEST(CameraBufferTest, WriteReadAndClearStates) {
   CameraBuffer buffer;
 
   CameraState state;

@@ -30,25 +30,32 @@ ResultCode JointComponent::bind(const mjModel& model) {
     return ResultCode::InvalidArgument;
   }
 
-  binding_ = {};
-  binding_.joint_id = mj_name2id(&model, mjOBJ_JOINT, config_.name.c_str());
-  if (binding_.joint_id < 0) {
+  joint_id_ = -1;
+  qpos_address_ = -1;
+  dof_address_ = -1;
+  joint_type_ = -1;
+  actuator_id_ = -1;
+  actuator_type_ = -1;
+  has_actuator_ = false;
+
+  joint_id_ = mj_name2id(&model, mjOBJ_JOINT, config_.name.c_str());
+  if (joint_id_ < 0) {
     return ResultCode::BindingFailed;
   }
 
-  binding_.joint_type = model.jnt_type[binding_.joint_id];
-  binding_.qpos_address = model.jnt_qposadr[binding_.joint_id];
-  binding_.dof_address = model.jnt_dofadr[binding_.joint_id];
-  if (binding_.qpos_address < 0 || binding_.dof_address < 0) {
+  joint_type_ = model.jnt_type[joint_id_];
+  qpos_address_ = model.jnt_qposadr[joint_id_];
+  dof_address_ = model.jnt_dofadr[joint_id_];
+  if (qpos_address_ < 0 || dof_address_ < 0) {
     return ResultCode::BindingFailed;
   }
 
-  binding_.actuator_id = find_actuator_id(model);
-  if (!config_.actuator_name.empty() && binding_.actuator_id < 0) {
+  actuator_id_ = find_actuator_id(model);
+  if (!config_.actuator_name.empty() && actuator_id_ < 0) {
     return ResultCode::BindingFailed;
   }
-  binding_.has_actuator = binding_.actuator_id >= 0;
-  binding_.actuator_type = static_cast<int>(parse_actuator_type(model, binding_.actuator_id));
+  has_actuator_ = actuator_id_ >= 0;
+  actuator_type_ = static_cast<int>(parse_actuator_type(model, actuator_id_));
 
   ResultCode status = validate_binding();
   if (status != ResultCode::Ok) {
@@ -59,15 +66,15 @@ ResultCode JointComponent::bind(const mjModel& model) {
 
 ResultCode JointComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
-  if (binding_.joint_id < 0 || binding_.dof_address < 0) {
+  if (joint_id_ < 0 || dof_address_ < 0) {
     return ResultCode::FailedPrecondition;
   }
 
   last_command_ = {};
-  if (binding_.has_actuator && binding_.actuator_id >= 0) {
-    data.ctrl[binding_.actuator_id] = 0.0;
+  if (has_actuator_ && actuator_id_ >= 0) {
+    data.ctrl[actuator_id_] = 0.0;
   }
-  data.qfrc_applied[binding_.dof_address] = 0.0;
+  data.qfrc_applied[dof_address_] = 0.0;
   state_ = {};
   state_.name = config_.name;
   return ResultCode::Ok;
@@ -78,7 +85,7 @@ ResultCode JointComponent::update(const UpdateContext& context) {
 }
 
 ResultCode JointComponent::write(const mjModel& model, mjData& data, const JointCommand& command) {
-  if (binding_.joint_id < 0) {
+  if (joint_id_ < 0) {
     return ResultCode::FailedPrecondition;
   }
 
@@ -100,27 +107,25 @@ ResultCode JointComponent::write(const mjModel& model, mjData& data, const Joint
 }
 
 ResultCode JointComponent::read(const mjData& data, JointState& state) const {
-  if (binding_.joint_id < 0 || binding_.qpos_address < 0 || binding_.dof_address < 0) {
+  if (joint_id_ < 0 || qpos_address_ < 0 || dof_address_ < 0) {
     return ResultCode::FailedPrecondition;
   }
 
   state.name = config_.name;
-  state.position = data.qpos[binding_.qpos_address];
-  state.velocity = data.qvel[binding_.dof_address];
-  state.effort = data.qfrc_actuator[binding_.dof_address];
+  state.position = data.qpos[qpos_address_];
+  state.velocity = data.qvel[dof_address_];
+  state.effort = data.qfrc_actuator[dof_address_];
   return ResultCode::Ok;
 }
 
-JointType JointComponent::joint_type() const noexcept {
-  return parse_joint_type(binding_.joint_type);
-}
+JointType JointComponent::joint_type() const noexcept { return parse_joint_type(joint_type_); }
 
 ActuatorType JointComponent::actuator_type() const noexcept {
-  return static_cast<ActuatorType>(binding_.actuator_type);
+  return static_cast<ActuatorType>(actuator_type_);
 }
 
 ResultCode JointComponent::validate_binding() const {
-  const JointType joint_kind = parse_joint_type(binding_.joint_type);
+  const JointType joint_kind = parse_joint_type(joint_type_);
   if (joint_kind != JointType::Hinge && joint_kind != JointType::Slide) {
     return ResultCode::ModelValidationFailed;
   }
@@ -181,21 +186,21 @@ ResultCode JointComponent::write_direct_command(const mjModel& model, mjData& da
       if (!finite(command.position)) {
         return ResultCode::InvalidArgument;
       }
-      if (!binding_.has_actuator) {
+      if (!has_actuator_) {
         return ResultCode::FailedPrecondition;
       }
       value = clamp_actuator_control_limits(model, clamp_command_limits(command.position));
-      data.ctrl[binding_.actuator_id] = value;
+      data.ctrl[actuator_id_] = value;
       return ResultCode::Ok;
     case CommandInterfaceType::Velocity:
       if (!finite(command.velocity)) {
         return ResultCode::InvalidArgument;
       }
-      if (!binding_.has_actuator) {
+      if (!has_actuator_) {
         return ResultCode::FailedPrecondition;
       }
       value = clamp_actuator_control_limits(model, clamp_command_limits(command.velocity));
-      data.ctrl[binding_.actuator_id] = value;
+      data.ctrl[actuator_id_] = value;
       return ResultCode::Ok;
     case CommandInterfaceType::Effort:
       if (!finite(command.effort)) {
@@ -216,8 +221,8 @@ ResultCode JointComponent::write_software_pd_command(const mjModel& model, mjDat
     return ResultCode::InvalidArgument;
   }
 
-  const double q = data.qpos[binding_.qpos_address];
-  const double dq = data.qvel[binding_.dof_address];
+  const double q = data.qpos[qpos_address_];
+  const double dq = data.qvel[dof_address_];
   double effort = command.effort;
 
   if (config_.command_mode == CommandInterfaceType::Position) {
@@ -241,17 +246,17 @@ ResultCode JointComponent::write_software_pd_command(const mjModel& model, mjDat
 
 ResultCode JointComponent::write_effort_output(const mjModel& model, mjData& data,
                                                double effort) const {
-  if (binding_.has_actuator) {
+  if (has_actuator_) {
     const ActuatorType actuator_kind = actuator_type();
     if (actuator_kind != ActuatorType::Motor && actuator_kind != ActuatorType::Custom) {
       return ResultCode::FailedPrecondition;
     }
-    data.ctrl[binding_.actuator_id] = clamp_actuator_control_limits(model, effort);
-    data.qfrc_applied[binding_.dof_address] = 0.0;
+    data.ctrl[actuator_id_] = clamp_actuator_control_limits(model, effort);
+    data.qfrc_applied[dof_address_] = 0.0;
     return ResultCode::Ok;
   }
 
-  data.qfrc_applied[binding_.dof_address] = effort;
+  data.qfrc_applied[dof_address_] = effort;
   return ResultCode::Ok;
 }
 
@@ -260,24 +265,24 @@ double JointComponent::clamp_command_limits(double value) const {
 }
 
 double JointComponent::clamp_actuator_control_limits(const mjModel& model, double value) const {
-  if (!binding_.has_actuator) {
+  if (!has_actuator_) {
     return value;
   }
-  if (!is_limited(model.actuator_ctrllimited[binding_.actuator_id])) {
+  if (!is_limited(model.actuator_ctrllimited[actuator_id_])) {
     return value;
   }
-  const mjtNum* range = model.actuator_ctrlrange + 2 * binding_.actuator_id;
+  const mjtNum* range = model.actuator_ctrlrange + 2 * actuator_id_;
   return std::clamp(value, static_cast<double>(range[0]), static_cast<double>(range[1]));
 }
 
 double JointComponent::clamp_actuator_force_limits(const mjModel& model, double value) const {
-  if (!binding_.has_actuator) {
+  if (!has_actuator_) {
     return value;
   }
-  if (!is_limited(model.actuator_forcelimited[binding_.actuator_id])) {
+  if (!is_limited(model.actuator_forcelimited[actuator_id_])) {
     return value;
   }
-  const mjtNum* range = model.actuator_forcerange + 2 * binding_.actuator_id;
+  const mjtNum* range = model.actuator_forcerange + 2 * actuator_id_;
   return std::clamp(value, static_cast<double>(range[0]), static_cast<double>(range[1]));
 }
 
@@ -292,7 +297,7 @@ int JointComponent::find_actuator_id(const mjModel& model) const {
     if (model.actuator_trntype[actuator_id] != mjTRN_JOINT) {
       continue;
     }
-    if (model.actuator_trnid[2 * actuator_id] == binding_.joint_id) {
+    if (model.actuator_trnid[2 * actuator_id] == joint_id_) {
       return actuator_id;
     }
   }

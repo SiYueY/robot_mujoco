@@ -79,6 +79,16 @@ target_include_directories(mujoco_simulation_headers INTERFACE
   ${MUJOCO_SIMULATION_PUBLIC_INCLUDE_DIRS}
 )
 
+add_library(mujoco_simulation_buffer STATIC
+  src/buffer/command_buffer.cpp
+  src/buffer/state_buffer.cpp
+  src/buffer/camera_buffer.cpp
+)
+target_link_libraries(mujoco_simulation_buffer PUBLIC
+  mujoco_simulation_headers
+)
+set_target_properties(mujoco_simulation_buffer PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(mujoco_simulation_components STATIC
   src/component/simulation_component.cpp
   src/component/component_manager.cpp
@@ -142,6 +152,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
   Threads::Threads
+  mujoco_simulation_buffer
   mujoco_simulation_components
   mujoco_simulation_runtime
   mujoco_simulation_camera
@@ -231,7 +242,7 @@ if(BUILD_TESTING)
     test/unit/test_command_buffer.cpp
   )
   if(TARGET test_command_buffer)
-    target_link_libraries(test_command_buffer mujoco_simulation_headers)
+    target_link_libraries(test_command_buffer mujoco_simulation_buffer)
   endif()
 
   ament_add_gtest(test_simulation_component

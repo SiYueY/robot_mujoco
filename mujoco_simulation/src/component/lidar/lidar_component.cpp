@@ -11,6 +11,16 @@
 namespace mujoco_simulation {
 namespace {
 
+struct LidarBeamBinding {
+  std::size_t beam_index{0};
+  int sensor_id{-1};
+  int sensor_address{-1};
+};
+
+struct LidarBinding {
+  std::vector<LidarBeamBinding> beams;
+};
+
 int parse_beam_index(const std::string& sensor_name, const std::string& prefix) {
   const std::string expected_prefix = prefix + "-";
   if (sensor_name.rfind(expected_prefix, 0) != 0) {
@@ -28,7 +38,18 @@ int parse_beam_index(const std::string& sensor_name, const std::string& prefix) 
 
 }  // namespace
 
-LidarComponent::LidarComponent(LidarConfig info) : info_(std::move(info)) {}
+struct LidarComponent::Impl {
+  LidarBinding binding;
+};
+
+LidarComponent::LidarComponent(LidarConfig info)
+    : impl_(std::make_unique<Impl>()), info_(std::move(info)) {}
+
+LidarComponent::~LidarComponent() = default;
+
+LidarComponent::LidarComponent(LidarComponent&&) noexcept = default;
+
+LidarComponent& LidarComponent::operator=(LidarComponent&&) noexcept = default;
 
 std::string LidarComponent::name() const noexcept { return info_.common.name; }
 
@@ -55,12 +76,12 @@ ResultCode LidarComponent::bind(const mjModel& model) {
     return ResultCode::InvalidArgument;
   }
 
-  binding_.beams.assign(static_cast<std::size_t>(beam_count), {});
+  impl_->binding.beams.assign(static_cast<std::size_t>(beam_count), {});
   for (int beam_index = 0; beam_index < beam_count; ++beam_index) {
-    binding_.beams[static_cast<std::size_t>(beam_index)].beam_index =
+    impl_->binding.beams[static_cast<std::size_t>(beam_index)].beam_index =
         static_cast<std::size_t>(beam_index);
-    binding_.beams[static_cast<std::size_t>(beam_index)].sensor_id = -1;
-    binding_.beams[static_cast<std::size_t>(beam_index)].sensor_address = -1;
+    impl_->binding.beams[static_cast<std::size_t>(beam_index)].sensor_id = -1;
+    impl_->binding.beams[static_cast<std::size_t>(beam_index)].sensor_address = -1;
   }
 
   for (int sensor_id = 0; sensor_id < model.nsensor; ++sensor_id) {
@@ -81,7 +102,7 @@ ResultCode LidarComponent::bind(const mjModel& model) {
       continue;
     }
 
-    LidarBeamBinding& beam = binding_.beams[static_cast<std::size_t>(beam_index)];
+    LidarBeamBinding& beam = impl_->binding.beams[static_cast<std::size_t>(beam_index)];
     if (beam.sensor_id >= 0) {
       return ResultCode::ModelValidationFailed;
     }
@@ -94,7 +115,7 @@ ResultCode LidarComponent::bind(const mjModel& model) {
     beam.sensor_address = address;
   }
 
-  for (const LidarBeamBinding& beam : binding_.beams) {
+  for (const LidarBeamBinding& beam : impl_->binding.beams) {
     if (beam.sensor_id < 0 || beam.sensor_address < 0) {
       return ResultCode::ModelValidationFailed;
     }
@@ -119,7 +140,7 @@ ResultCode LidarComponent::reset(const mjModel& model, mjData& data) {
 ResultCode LidarComponent::update(const UpdateContext& context) {
   (void)context.model;
   (void)context.step_count;
-  if (binding_.beams.empty()) {
+  if (impl_->binding.beams.empty()) {
     return ResultCode::FailedPrecondition;
   }
 
@@ -131,7 +152,7 @@ ResultCode LidarComponent::update(const UpdateContext& context) {
   state_.scan_time = info_.common.update_rate > 0.0 ? 1.0 / info_.common.update_rate : 0.0;
   state_.time_increment = 0.0;
 
-  for (const LidarBeamBinding& beam : binding_.beams) {
+  for (const LidarBeamBinding& beam : impl_->binding.beams) {
     const double range = context.data.sensordata[beam.sensor_address];
     state_.ranges[beam.beam_index] =
         (!std::isfinite(range) || range < info_.range_min || range > info_.range_max)
@@ -158,8 +179,8 @@ ResultCode LidarComponent::set_defaults() {
   state_.range_max = info_.range_max;
   state_.time_increment = 0.0;
   state_.scan_time = 0.0;
-  state_.ranges.assign(binding_.beams.size(), std::numeric_limits<double>::infinity());
-  state_.intensities.assign(binding_.beams.size(), 0.0);
+  state_.ranges.assign(impl_->binding.beams.size(), std::numeric_limits<double>::infinity());
+  state_.intensities.assign(impl_->binding.beams.size(), 0.0);
   return ResultCode::Ok;
 }
 

@@ -41,8 +41,10 @@ void MuJoCoViewer::record_async_failure(ResultCode status) {
   cv_.notify_all();
 }
 
-ResultCode MuJoCoViewer::start(mjModel* model, mjData* data,
+ResultCode MuJoCoViewer::start(const ViewerRuntimeHandle& runtime_handle,
                                const std::string& displayed_filename) {
+  const mjModel* model = runtime_handle.model();
+  const mjData* data = runtime_handle.data();
   if (model == nullptr || data == nullptr) {
     return ResultCode::InvalidArgument;
   }
@@ -59,12 +61,21 @@ ResultCode MuJoCoViewer::start(mjModel* model, mjData* data,
       ready_ = false;
       stop_requested_ = false;
       async_failure_.reset();
+      runtime_handle_ = runtime_handle;
     }
 
-    render_thread_ = std::thread([this, model, data, displayed_filename]() {
+    render_thread_ = std::thread([this, displayed_filename]() {
       try {
         if (render_thread_entry_) {
-          render_thread_entry_(*this, model, data, displayed_filename);
+          render_thread_entry_(*this, const_cast<mjModel*>(runtime_handle_.model()),
+                               const_cast<mjData*>(runtime_handle_.data()), displayed_filename);
+          return;
+        }
+
+        mjModel* model = const_cast<mjModel*>(runtime_handle_.model());
+        mjData* data = const_cast<mjData*>(runtime_handle_.data());
+        if (model == nullptr || data == nullptr) {
+          record_async_failure(ResultCode::InvalidState);
           return;
         }
 
@@ -145,6 +156,7 @@ void MuJoCoViewer::stop() {
   }
   std::lock_guard<std::mutex> lock(mutex_);
   simulate_.reset();
+  runtime_handle_ = ViewerRuntimeHandle{};
 }
 
 ResultCode MuJoCoViewer::sync(bool state_only) {

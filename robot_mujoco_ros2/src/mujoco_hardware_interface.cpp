@@ -227,7 +227,7 @@ mujoco_simulation::ResultCode MuJoCoHardwareInterface::request_keyframe_reset_st
   if (simulation_ == nullptr) {
     return mujoco_simulation::ResultCode::InvalidState;
   }
-  return simulation_->reset({.keyframe_name = keyframe});
+  return simulation_->reset_to_keyframe_name(keyframe);
 }
 
 mujoco_simulation::ResultCode MuJoCoHardwareInterface::request_reset_status() {

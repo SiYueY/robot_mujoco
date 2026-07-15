@@ -9,16 +9,6 @@
 
 namespace mujoco_simulation {
 
-struct JointBinding {
-  int joint_id{-1};
-  int qpos_address{-1};
-  int dof_address{-1};
-  int joint_type{-1};
-  int actuator_id{-1};
-  int actuator_type{-1};
-  bool has_actuator{false};
-};
-
 class JointComponent : public SimulationComponent {
  public:
   explicit JointComponent(JointConfig config);
@@ -32,7 +22,10 @@ class JointComponent : public SimulationComponent {
   ResultCode read(const mjData& data, JointState& state) const;
 
   const JointConfig& config() const noexcept { return config_; }
-  const JointBinding& binding() const noexcept { return binding_; }
+  int joint_id() const noexcept { return joint_id_; }
+  int dof_address() const noexcept { return dof_address_; }
+  int actuator_id() const noexcept { return actuator_id_; }
+  bool has_actuator() const noexcept { return has_actuator_; }
   JointType joint_type() const noexcept;
   ActuatorType actuator_type() const noexcept;
 
@@ -53,7 +46,13 @@ class JointComponent : public SimulationComponent {
   static ActuatorType parse_actuator_type(const mjModel& model, int actuator_id);
 
   JointConfig config_;
-  JointBinding binding_{};
+  int joint_id_{-1};
+  int qpos_address_{-1};
+  int dof_address_{-1};
+  int joint_type_{-1};
+  int actuator_id_{-1};
+  int actuator_type_{-1};
+  bool has_actuator_{false};
   JointCommand last_command_{};
   JointState state_{};
 };

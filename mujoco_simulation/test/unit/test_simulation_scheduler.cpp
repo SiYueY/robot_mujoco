@@ -18,10 +18,10 @@ using namespace std::chrono_literals;
 
 SchedulerCallbacks make_callbacks(std::atomic<int>& physics_steps,
                                   std::function<void()> after_step = {},
-                                  std::function<ResultCode(const ResetOptions&)> reset = {},
+                                  std::function<ResultCode(const ResetRequest&)> reset = {},
                                   std::function<ResultCode()> write = {},
-                                  std::function<ResultCode()> read = {},
-                                  std::function<ResultCode()> publish = {},
+                                  std::function<ResultCode()> update = {},
+                                  std::function<ResultCode()> write_snapshot = {},
                                   std::function<ResultCode()> sync_viewer = {}) {
   SchedulerCallbacks callbacks;
   callbacks.timestep_provider = []() { return 0.001; };
@@ -33,11 +33,11 @@ SchedulerCallbacks make_callbacks(std::atomic<int>& physics_steps,
     }
     return ResultCode::Ok;
   };
-  callbacks.read_components = std::move(read);
-  callbacks.publish_state_snapshot = std::move(publish);
+  callbacks.update_components = std::move(update);
+  callbacks.write_state_snapshot = std::move(write_snapshot);
   callbacks.sync_viewer_if_due = std::move(sync_viewer);
   callbacks.reset_runtime =
-      reset ? std::move(reset) : [](const ResetOptions&) { return ResultCode::Ok; };
+      reset ? std::move(reset) : [](const ResetRequest&) { return ResultCode::Ok; };
   return callbacks;
 }
 
@@ -105,7 +105,7 @@ TEST(SimulationSchedulerTest, ManualStepExecutesCallbacksInDocumentedOrder) {
 
   SchedulerCallbacks callbacks = make_callbacks(
       physics_steps, {}, {}, [&record]() { return record("write"); },
-      [&record]() { return record("read"); }, [&record]() { return record("publish"); },
+      [&record]() { return record("update"); }, [&record]() { return record("write_snapshot"); },
       [&record]() { return record("sync"); });
   callbacks.step_physics = [&physics_steps, &record]() {
     ++physics_steps;
@@ -119,8 +119,8 @@ TEST(SimulationSchedulerTest, ManualStepExecutesCallbacksInDocumentedOrder) {
   ASSERT_EQ(events.size(), 5u);
   EXPECT_EQ(events[0], "write");
   EXPECT_EQ(events[1], "step");
-  EXPECT_EQ(events[2], "read");
-  EXPECT_EQ(events[3], "publish");
+  EXPECT_EQ(events[2], "update");
+  EXPECT_EQ(events[3], "write_snapshot");
   EXPECT_EQ(events[4], "sync");
 
   const SchedulerStatistics statistics = scheduler.statistics();
@@ -138,7 +138,7 @@ TEST(SimulationSchedulerTest, ResetRequestRunsOnWorkerThread) {
   std::future<std::thread::id> reset_thread_future = reset_thread_promise.get_future();
   const std::thread::id caller_thread = std::this_thread::get_id();
 
-  auto reset_callback = [&reset_thread_promise](const ResetOptions&) {
+  auto reset_callback = [&reset_thread_promise](const ResetRequest&) {
     reset_thread_promise.set_value(std::this_thread::get_id());
     return ResultCode::Ok;
   };
@@ -158,7 +158,7 @@ TEST(SimulationSchedulerTest, ResetRequestRunsOnWorkerThread) {
 TEST(SimulationSchedulerTest, WaitableResetReturnsExecutionFailure) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  auto reset_callback = [](const ResetOptions&) { return ResultCode::Internal; };
+  auto reset_callback = [](const ResetRequest&) { return ResultCode::Internal; };
 
   ASSERT_EQ(scheduler.initialize({}, make_callbacks(physics_steps, {}, std::move(reset_callback))),
             ResultCode::Ok);
@@ -178,7 +178,7 @@ TEST(SimulationSchedulerTest, WaitableResetReturnsExecutionFailure) {
 TEST(SimulationSchedulerTest, WaitableResetReturnsThreadFailureWhenCallbackThrows) {
   SimulationScheduler scheduler;
   std::atomic<int> physics_steps{0};
-  auto reset_callback = [](const ResetOptions&) -> ResultCode {
+  auto reset_callback = [](const ResetRequest&) -> ResultCode {
     throw std::runtime_error("reset callback boom");
   };
 

@@ -9,11 +9,6 @@
 
 namespace mujoco_simulation {
 
-struct CameraBinding {
-  int camera_id{-1};
-  double fovy_degrees{0.0};
-};
-
 class CameraComponent : public SimulationComponent {
  public:
   explicit CameraComponent(CameraConfig config);
@@ -24,11 +19,11 @@ class CameraComponent : public SimulationComponent {
   ResultCode update(const UpdateContext& context) override;
 
   const CameraConfig& config() const noexcept { return config_; }
-  const CameraBinding& binding() const noexcept { return binding_; }
 
  private:
   CameraConfig config_;
-  CameraBinding binding_{};
+  int camera_id_{-1};
+  double fovy_degrees_{0.0};
   std::uint64_t sample_sequence_{0};
 };
 

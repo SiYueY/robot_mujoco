@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "mujoco_simulation/result_code.hpp"
+#include "mujoco_simulation/runtime/model_runtime.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
 
 namespace mujoco {
@@ -22,8 +23,8 @@ namespace mujoco_simulation {
 
 class MuJoCoViewerTestPeer;
 
-// Passive MuJoCo viewer frontend. Simulation owns model/data and
-// drives simulation stepping; MuJoCoViewer only renders borrowed state.
+// Passive MuJoCo viewer frontend. Simulation owns runtime state and
+// drives simulation stepping; MuJoCoViewer only renders through a controlled runtime handle.
 class MuJoCoViewer {
  public:
   MuJoCoViewer();
@@ -35,7 +36,8 @@ class MuJoCoViewer {
   MuJoCoViewer(MuJoCoViewer&&) = delete;
   MuJoCoViewer& operator=(MuJoCoViewer&&) = delete;
 
-  ResultCode start(mjModel* model, mjData* data, const std::string& displayed_filename);
+  ResultCode start(const ViewerRuntimeHandle& runtime_handle,
+                   const std::string& displayed_filename);
   void stop();
 
   ResultCode sync(bool state_only);
@@ -53,6 +55,7 @@ class MuJoCoViewer {
   void record_async_failure(ResultCode status);
 
   std::chrono::milliseconds startup_timeout_{5000};
+  ViewerRuntimeHandle runtime_handle_{};
   mjvCamera camera_{};
   mjvOption visual_options_{};
   mjvPerturb perturb_{};

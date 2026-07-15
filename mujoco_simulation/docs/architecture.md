@@ -44,7 +44,18 @@ Simulation
 - `SimulationScheduler` 负责运行态调度和状态机
 - `ComponentManager` 负责组件装配、统一更新、命令下发和聚合读状态
 - `CameraRenderer` 与 `MuJoCoViewer` 是独立渲染资源
+- `MuJoCoViewer` 通过受控 runtime handle 同步 MuJoCo 运行时，不直接对外暴露裸 `mjModel* / mjData*` 启动接口
 - viewer 启动超时通过 `SimulationConfig.viewer_startup_timeout` 控制
+- `mjModel / mjData` 保持单写线程原则，只在 scheduler/reset 安全路径中写入
+
+线程边界：
+
+- scheduler worker thread
+  - 连续运行模式下唯一推进物理和组件更新的线程
+- viewer render thread
+  - 只负责 viewer 渲染与被动同步
+- external caller threads
+  - 只写 `CommandBuffer`、读取 `StateBuffer / CameraBuffer`、提交控制请求
 
 ## 当前公开接口约定
 
@@ -70,6 +81,8 @@ Simulation
   - `step(...)`
   - `set_realtime_factor(...)`
   - `request_reset(...) / reset(...)`
+  - `request_reset_to_keyframe_name(...) / reset_to_keyframe_name(...)`
+  - `request_reset_to_keyframe_id(...) / reset_to_keyframe_id(...)`
 - 组件与命令
   - `reconfigure_component(...)`
   - `set_joint_command(...)`
@@ -102,17 +115,25 @@ Simulation
 - 是否到期由组件自己的更新节奏决定
 - `ComponentManager` 每步统一遍历组件并调用 `update(...)`
 - `camera` 的共享渲染资源协调由 manager 特殊处理，但不暴露为单独基类层次
+- step 周期固定拆为两段：
+  - `update_components_for_step()`
+  - `build_state_snapshot()`
 
 缓冲层职责：
 
 - `CommandBuffer`
-  - 缓存外部线程提交的控制命令
+  - 缓存外部线程提交的最新控制命令
 - `StateBuffer`
-  - 缓存聚合后的 `StateSnapshot`
+  - 缓存聚合后的最新 `StateSnapshot`
 - `CameraBuffer`
-  - 缓存 camera 的 `CameraState`
+  - 缓存各 camera 的最新 `CameraState`
 
 缓冲接口语义统一使用 `write(...)` / `read(...)`。
+
+- `StateBuffer`
+  - 通过原子发布 `shared_ptr<const StateSnapshot>` 共享最新快照
+- `CameraBuffer`
+  - 按 camera 名字保存不可变 `CameraState` 指针，缩短锁持有时间
 
 ## 设备当前实现语义
 

@@ -59,12 +59,56 @@ ResultCode load_model_from_path(const std::string& model_path, MjModelPtr* model
   return ResultCode::Ok;
 }
 
+ResultCode reset_to_default(mjModel* model, mjData* data) {
+  mj_resetData(model, data);
+  mj_forward(model, data);
+  return ResultCode::Ok;
+}
+
+ResultCode reset_to_keyframe_name(mjModel* model, mjData* data, std::string_view keyframe_name) {
+  if (keyframe_name.empty()) {
+    return ResultCode::InvalidArgument;
+  }
+  const int keyframe_id = mj_name2id(model, mjOBJ_KEY, std::string(keyframe_name).c_str());
+  if (keyframe_id < 0) {
+    return ResultCode::NotFound;
+  }
+  mj_resetDataKeyframe(model, data, keyframe_id);
+  mj_forward(model, data);
+  return ResultCode::Ok;
+}
+
+ResultCode reset_to_keyframe_id(mjModel* model, mjData* data, int keyframe_id) {
+  if (keyframe_id < 0) {
+    return ResultCode::InvalidArgument;
+  }
+  if (keyframe_id >= model->nkey) {
+    return ResultCode::NotFound;
+  }
+  mj_resetDataKeyframe(model, data, keyframe_id);
+  mj_forward(model, data);
+  return ResultCode::Ok;
+}
+
 }  // namespace
 
 struct ModelRuntime::Impl {
   MjModelPtr model;
   MjDataPtr data;
 };
+
+ViewerRuntimeHandle::ViewerRuntimeHandle(const ModelRuntime* runtime) noexcept
+    : runtime_(runtime) {}
+
+bool ViewerRuntimeHandle::valid() const noexcept { return model() != nullptr && data() != nullptr; }
+
+const mjModel* ViewerRuntimeHandle::model() const noexcept {
+  return runtime_ == nullptr || !runtime_->is_loaded() ? nullptr : &runtime_->model();
+}
+
+const mjData* ViewerRuntimeHandle::data() const noexcept {
+  return runtime_ == nullptr || !runtime_->is_loaded() ? nullptr : &runtime_->data();
+}
 
 ModelRuntime::ModelRuntime() : impl_(std::make_unique<Impl>()) {}
 
@@ -96,7 +140,7 @@ ResultCode ModelRuntime::load(const ModelConfig& config) {
   }
 
   if (!config.initial_keyframe.empty()) {
-    status = reset({.keyframe_name = config.initial_keyframe});
+    status = reset_to_keyframe_name(config.initial_keyframe);
     if (status != ResultCode::Ok) {
       unload();
       return status == ResultCode::NotFound ? ResultCode::ModelValidationFailed : status;
@@ -141,38 +185,27 @@ ResultCode ModelRuntime::forward() {
   return ResultCode::Ok;
 }
 
-ResultCode ModelRuntime::reset(const ResetOptions& options) {
+ResultCode ModelRuntime::reset() {
   if (!is_loaded()) {
     return ResultCode::FailedPrecondition;
   }
+  return reset_to_default(impl_->model.get(), impl_->data.get());
+}
 
-  if (options.keyframe_name.has_value() && options.keyframe_id.has_value()) {
-    return ResultCode::InvalidArgument;
+ResultCode ModelRuntime::reset_to_keyframe_name(std::string_view keyframe_name) {
+  if (!is_loaded()) {
+    return ResultCode::FailedPrecondition;
   }
+  return mujoco_simulation::reset_to_keyframe_name(impl_->model.get(), impl_->data.get(),
+                                                   keyframe_name);
+}
 
-  if (!options.keyframe_name.has_value() && !options.keyframe_id.has_value()) {
-    mj_resetData(impl_->model.get(), impl_->data.get());
-  } else {
-    int keyframe_id = -1;
-    if (options.keyframe_name.has_value()) {
-      keyframe_id = mj_name2id(impl_->model.get(), mjOBJ_KEY, options.keyframe_name->c_str());
-      if (keyframe_id < 0) {
-        return ResultCode::NotFound;
-      }
-    } else {
-      keyframe_id = *options.keyframe_id;
-    }
-    if (keyframe_id < 0) {
-      return ResultCode::InvalidArgument;
-    }
-    if (keyframe_id >= impl_->model->nkey) {
-      return ResultCode::NotFound;
-    }
-    mj_resetDataKeyframe(impl_->model.get(), impl_->data.get(), keyframe_id);
+ResultCode ModelRuntime::reset_to_keyframe_id(int keyframe_id) {
+  if (!is_loaded()) {
+    return ResultCode::FailedPrecondition;
   }
-
-  mj_forward(impl_->model.get(), impl_->data.get());
-  return ResultCode::Ok;
+  return mujoco_simulation::reset_to_keyframe_id(impl_->model.get(), impl_->data.get(),
+                                                 keyframe_id);
 }
 
 const mjModel& ModelRuntime::model() const { return *impl_->model; }
@@ -189,6 +222,10 @@ double ModelRuntime::simulation_time() const noexcept {
 
 double ModelRuntime::timestep() const noexcept {
   return impl_ == nullptr || impl_->model == nullptr ? 0.0 : impl_->model->opt.timestep;
+}
+
+ViewerRuntimeHandle ModelRuntime::viewer_runtime_handle() const noexcept {
+  return ViewerRuntimeHandle(this);
 }
 
 ResultCode ModelRuntime::validate_loaded_model(const ModelConfig& config) const {

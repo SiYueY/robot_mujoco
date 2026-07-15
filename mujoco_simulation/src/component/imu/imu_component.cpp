@@ -64,20 +64,20 @@ ResultCode ImuComponent::bind(const mjModel& model) {
     return ResultCode::InvalidArgument;
   }
 
-  ResultCode status = validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
-                                              mjSENS_FRAMEQUAT, 4, &binding_.framequat_sensor_id,
-                                              &binding_.framequat_address);
+  ResultCode status =
+      validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
+                              mjSENS_FRAMEQUAT, 4, &framequat_sensor_id_, &framequat_address_);
   if (status != ResultCode::Ok) {
     return status;
   }
   status = validate_sensor_binding(model, info_.common.name, info_.gyro_sensor_name, mjSENS_GYRO, 3,
-                                   &binding_.gyro_sensor_id, &binding_.gyro_address);
+                                   &gyro_sensor_id_, &gyro_address_);
   if (status != ResultCode::Ok) {
     return status;
   }
   status = validate_sensor_binding(model, info_.common.name, info_.accelerometer_sensor_name,
-                                   mjSENS_ACCELEROMETER, 3, &binding_.accelerometer_sensor_id,
-                                   &binding_.accelerometer_address);
+                                   mjSENS_ACCELEROMETER, 3, &accelerometer_sensor_id_,
+                                   &accelerometer_address_);
   if (status != ResultCode::Ok) {
     return status;
   }
@@ -112,8 +112,7 @@ ResultCode ImuComponent::reset(const mjModel& model, mjData& data) {
 ResultCode ImuComponent::update(const UpdateContext& context) {
   (void)context.model;
   (void)context.step_count;
-  if (binding_.framequat_address < 0 || binding_.gyro_address < 0 ||
-      binding_.accelerometer_address < 0) {
+  if (framequat_address_ < 0 || gyro_address_ < 0 || accelerometer_address_ < 0) {
     return ResultCode::FailedPrecondition;
   }
 
@@ -125,14 +124,14 @@ ResultCode ImuComponent::update(const UpdateContext& context) {
   state_.orientation_covariance = info_.orientation_covariance;
   state_.angular_velocity_covariance = info_.angular_velocity_covariance;
   state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
-  state_.orientation[3] = context.data.sensordata[binding_.framequat_address];
-  state_.orientation[0] = context.data.sensordata[binding_.framequat_address + 1];
-  state_.orientation[1] = context.data.sensordata[binding_.framequat_address + 2];
-  state_.orientation[2] = context.data.sensordata[binding_.framequat_address + 3];
+  state_.orientation[3] = context.data.sensordata[framequat_address_];
+  state_.orientation[0] = context.data.sensordata[framequat_address_ + 1];
+  state_.orientation[1] = context.data.sensordata[framequat_address_ + 2];
+  state_.orientation[2] = context.data.sensordata[framequat_address_ + 3];
 
-  if (!copy_sensor_vector(context.data, binding_.gyro_address, state_.angular_velocity.data(), 3) ||
-      !copy_sensor_vector(context.data, binding_.accelerometer_address,
-                          state_.linear_acceleration.data(), 3)) {
+  if (!copy_sensor_vector(context.data, gyro_address_, state_.angular_velocity.data(), 3) ||
+      !copy_sensor_vector(context.data, accelerometer_address_, state_.linear_acceleration.data(),
+                          3)) {
     return ResultCode::Internal;
   }
   return ResultCode::Ok;

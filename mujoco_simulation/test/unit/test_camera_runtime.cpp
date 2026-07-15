@@ -123,8 +123,7 @@ bool viewer_start_available(const std::string& model_path) {
       _exit(2);
     }
     MuJoCoViewer viewer;
-    const ResultCode start_status =
-        viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path);
+    const ResultCode start_status = viewer.start(runtime.viewer_runtime_handle(), model_path);
     if (start_status == ResultCode::Ok) {
       viewer.stop();
       _exit(0);

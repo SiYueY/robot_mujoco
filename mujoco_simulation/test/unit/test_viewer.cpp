@@ -106,8 +106,7 @@ bool viewer_start_available(const std::string& model_path) {
       _exit(2);
     }
     MuJoCoViewer viewer;
-    const ResultCode start_status =
-        viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path);
+    const ResultCode start_status = viewer.start(runtime.viewer_runtime_handle(), model_path);
     if (start_status == ResultCode::Ok) {
       viewer.stop();
       _exit(0);
@@ -124,7 +123,7 @@ bool viewer_start_available(const std::string& model_path) {
 
 TEST_F(ViewerTest, StartRejectsNullModelOrData) {
   MuJoCoViewer viewer;
-  const ResultCode status = viewer.start(nullptr, nullptr, "");
+  const ResultCode status = viewer.start(ViewerRuntimeHandle{}, "");
   EXPECT_EQ(status, ResultCode::InvalidArgument);
 }
 
@@ -152,8 +151,7 @@ TEST_F(ViewerTest, RestartAndStopRemainSafeOnSingleViewerInstance) {
   ASSERT_OK_STATUS(runtime.load({model_path}));
 
   MuJoCoViewer viewer;
-  const ResultCode start_status =
-      viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path);
+  const ResultCode start_status = viewer.start(runtime.viewer_runtime_handle(), model_path);
   if (start_status != ResultCode::Ok) {
     GTEST_SKIP() << "viewer start failed";
   }
@@ -169,7 +167,7 @@ TEST_F(ViewerTest, RestartAndStopRemainSafeOnSingleViewerInstance) {
   const ResultCode sync_after_stop = viewer.sync(false);
   EXPECT_EQ(sync_after_stop, ResultCode::InvalidState);
 
-  ASSERT_OK_STATUS(viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path));
+  ASSERT_OK_STATUS(viewer.start(runtime.viewer_runtime_handle(), model_path));
   EXPECT_TRUE(viewer.is_running());
   EXPECT_TRUE(viewer.is_ready());
   viewer.stop();
@@ -196,7 +194,7 @@ TEST_F(ViewerTest, AsyncFailureInjectedAfterStartupIsReturnedBySync) {
         MuJoCoViewerTestPeer::inject_async_failure(viewer, ResultCode::ThreadFailed);
       });
 
-  ASSERT_OK_STATUS(viewer.start(&runtime.mutable_model(), &runtime.mutable_data(), model_path));
+  ASSERT_OK_STATUS(viewer.start(runtime.viewer_runtime_handle(), model_path));
   EXPECT_TRUE(viewer.is_running());
   EXPECT_TRUE(viewer.is_ready());
 
