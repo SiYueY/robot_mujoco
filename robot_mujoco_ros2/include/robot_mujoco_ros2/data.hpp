@@ -73,7 +73,6 @@ struct HardwareConfig {
 bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info,
                            HardwareConfig* config, std::string& error_message);
 
-mujoco_simulation::CommandInterfaceType to_joint_control_mode(const std::string& interface_name);
 bool is_joint_command_interface(const std::string& interface_name);
 bool is_joint_state_interface(const std::string& interface_name);
 bool is_imu_state_interface(const std::string& interface_name);

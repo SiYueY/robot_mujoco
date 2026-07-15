@@ -151,14 +151,16 @@
     </hardware>
 
     <joint name="wheel_left">
-      <param name="actuator_name">wheel_left</param>
+      <param name="motor_name">wheel_left</param>
+      <param name="velocity_damping">5.0</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
 
     <joint name="wheel_right">
-      <param name="actuator_name">wheel_right</param>
+      <param name="motor_name">wheel_right</param>
+      <param name="velocity_damping">5.0</param>
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>

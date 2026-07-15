@@ -4,27 +4,29 @@
 #include <utility>
 #include <vector>
 
+#include "mujoco_simulation/component/logging.hpp"
 #include "mujoco_simulation/component/update_context.hpp"
 
 namespace mujoco_simulation {
 namespace {
 
-std::vector<std::string> traction_joint_names(const MobileBaseConfig& config) {
-  if (config.type == MobileBaseType::Differential) {
-    return {config.left_wheel_joint, config.right_wheel_joint};
+std::vector<std::string> traction_joint_names(const MobileBaseInfo& info) {
+  if (info.type == MobileBaseType::Differential) {
+    return {info.left_wheel_joint, info.right_wheel_joint};
   }
-  if (config.type == MobileBaseType::Omnidirectional) {
-    return {config.front_left_joint, config.front_right_joint, config.rear_left_joint,
-            config.rear_right_joint};
+  if (info.type == MobileBaseType::Omnidirectional) {
+    return {info.front_left_joint, info.front_right_joint, info.rear_left_joint,
+            info.rear_right_joint};
   }
   return {};
 }
 
-ResultCode validate_mobile_base_joint_binding(const JointComponent& joint_component) {
+bool validate_mobile_base_joint_binding(const JointComponent& joint_component) {
   if (joint_component.joint_id() < 0 || joint_component.dof_address() < 0) {
-    return ResultCode::BindingFailed;
+    return log_component_error("ComponentManager::validate_mobile_base_joint_binding",
+                               "wheel joint is not bound.");
   }
-  return ResultCode::Ok;
+  return true;
 }
 
 JointComponent* joint(ComponentRegistry& registry, std::string_view name) {
@@ -41,269 +43,227 @@ MobileBaseComponent* mobile_base(ComponentRegistry& registry, std::string_view n
 
 }  // namespace
 
-ResultCode ComponentManager::build(const mjModel& model, const ComponentConfigList& components) {
+bool ComponentManager::build(const mjModel& model, const ComponentConfigList& components) {
   clear();
 
   for (const ComponentConfig& component : components) {
-    if (const auto* joint = std::get_if<JointConfig>(&component)) {
-      ResultCode status = register_joint(model, std::make_unique<JointComponent>(*joint));
-      if (status != ResultCode::Ok) {
+    if (const auto* joint = std::get_if<JointInfo>(&component)) {
+      if (!register_joint(model, std::make_unique<JointComponent>(*joint))) {
         clear();
-        return status;
+        return false;
       }
     }
   }
   for (const ComponentConfig& component : components) {
-    if (const auto* imu = std::get_if<ImuConfig>(&component)) {
-      ResultCode status = register_imu(model, std::make_unique<ImuComponent>(*imu));
-      if (status != ResultCode::Ok) {
+    if (const auto* imu = std::get_if<ImuInfo>(&component)) {
+      if (!register_imu(model, std::make_unique<ImuComponent>(*imu))) {
         clear();
-        return status;
+        return false;
       }
     }
   }
   for (const ComponentConfig& component : components) {
-    if (const auto* lidar = std::get_if<LidarConfig>(&component)) {
-      ResultCode status = register_lidar(model, std::make_unique<LidarComponent>(*lidar));
-      if (status != ResultCode::Ok) {
+    if (const auto* lidar = std::get_if<LidarInfo>(&component)) {
+      if (!register_lidar(model, std::make_unique<LidarComponent>(*lidar))) {
         clear();
-        return status;
+        return false;
       }
     }
   }
   for (const ComponentConfig& component : components) {
-    if (const auto* mobile_base = std::get_if<MobileBaseConfig>(&component)) {
-      ResultCode status = register_mobile_base(model, *mobile_base);
-      if (status != ResultCode::Ok) {
+    if (const auto* mobile_base = std::get_if<MobileBaseInfo>(&component)) {
+      if (!register_mobile_base(model, *mobile_base)) {
         clear();
-        return status;
+        return false;
       }
     }
   }
   for (const ComponentConfig& component : components) {
     if (const auto* camera = std::get_if<CameraConfig>(&component)) {
-      ResultCode status = register_camera(model, std::make_unique<CameraComponent>(*camera));
-      if (status != ResultCode::Ok) {
+      if (!register_camera(model, std::make_unique<CameraComponent>(*camera))) {
         clear();
-        return status;
+        return false;
       }
     }
   }
 
-  return ResultCode::Ok;
+  return true;
 }
 
 void ComponentManager::clear() { registry_.clear(); }
 
-ResultCode ComponentManager::register_joint(const mjModel& model,
-                                            std::unique_ptr<JointComponent> joint) {
+bool ComponentManager::register_joint(const mjModel& model, std::unique_ptr<JointComponent> joint) {
   if (joint == nullptr) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ComponentManager::register_joint", "joint must not be null.");
   }
-
-  ResultCode status = joint->bind(model);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!joint->bind(model)) {
+    return false;
   }
-
-  JointComponent* joint_ptr = joint.get();
-  status = registry_.add(std::move(joint));
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  (void)joint_ptr;
-  return ResultCode::Ok;
+  return registry_.add(std::move(joint));
 }
 
-ResultCode ComponentManager::register_camera(const mjModel& model,
-                                             std::unique_ptr<CameraComponent> camera) {
+bool ComponentManager::register_camera(const mjModel& model,
+                                       std::unique_ptr<CameraComponent> camera) {
   if (camera == nullptr) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ComponentManager::register_camera", "camera must not be null.");
   }
-
-  ResultCode status = camera->bind(model);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!camera->bind(model)) {
+    return false;
   }
-
-  status = registry_.add(std::move(camera));
-  return ResultCode::Ok;
+  return registry_.add(std::move(camera));
 }
 
-ResultCode ComponentManager::register_imu(const mjModel& model, std::unique_ptr<ImuComponent> imu) {
+bool ComponentManager::register_imu(const mjModel& model, std::unique_ptr<ImuComponent> imu) {
   if (imu == nullptr) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ComponentManager::register_imu", "imu must not be null.");
   }
-
-  ResultCode status = imu->bind(model);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!imu->bind(model)) {
+    return false;
   }
-
-  status = registry_.add(std::move(imu));
-  return ResultCode::Ok;
+  return registry_.add(std::move(imu));
 }
 
-ResultCode ComponentManager::register_lidar(const mjModel& model,
-                                            std::unique_ptr<LidarComponent> lidar) {
+bool ComponentManager::register_lidar(const mjModel& model, std::unique_ptr<LidarComponent> lidar) {
   if (lidar == nullptr) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ComponentManager::register_lidar", "lidar must not be null.");
   }
-
-  ResultCode status = lidar->bind(model);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!lidar->bind(model)) {
+    return false;
   }
-
-  status = registry_.add(std::move(lidar));
-  return ResultCode::Ok;
+  return registry_.add(std::move(lidar));
 }
 
-ResultCode ComponentManager::register_mobile_base(const mjModel& model,
-                                                  const MobileBaseConfig& config) {
-  if (config.name.empty()) {
-    return ResultCode::InvalidArgument;
+bool ComponentManager::register_mobile_base(const mjModel& model, const MobileBaseInfo& info) {
+  if (info.name.empty()) {
+    return log_component_error("ComponentManager::register_mobile_base",
+                               "mobile base name must not be empty.");
   }
-  if (registry_.has_mobile_base(config.name)) {
-    return ResultCode::AlreadyExists;
+  if (registry_.has_mobile_base(info.name)) {
+    return log_component_error("ComponentManager::register_mobile_base",
+                               "mobile base name already exists.");
   }
 
-  const std::vector<std::string> joint_names = traction_joint_names(config);
+  const std::vector<std::string> joint_names = traction_joint_names(info);
   std::vector<const JointComponent*> wheel_components;
   wheel_components.reserve(joint_names.size());
   for (const std::string& joint_name : joint_names) {
     if (joint_name.empty()) {
-      return ResultCode::InvalidArgument;
+      return log_component_error("ComponentManager::register_mobile_base",
+                                 "traction joint name must not be empty.");
     }
     JointComponent* joint_component = joint(registry_, joint_name);
     if (joint_component == nullptr) {
-      return ResultCode::NotFound;
+      return log_component_error("ComponentManager::register_mobile_base",
+                                 "traction joint was not found.");
     }
-    ResultCode status = validate_mobile_base_joint_binding(*joint_component);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!validate_mobile_base_joint_binding(*joint_component)) {
+      return false;
     }
     wheel_components.push_back(joint_component);
   }
 
-  auto mobile_base = std::make_unique<MobileBaseComponent>(config);
-  ResultCode status = ResultCode::Ok;
-  if (config.type == MobileBaseType::Differential) {
+  auto mobile_base = std::make_unique<MobileBaseComponent>(info);
+  if (info.type == MobileBaseType::Differential) {
     if (wheel_components.size() != 2U) {
-      return ResultCode::Internal;
+      return log_component_error("ComponentManager::register_mobile_base",
+                                 "differential drive requires two wheel components.");
     }
-    status = mobile_base->configure_differential_drive(*wheel_components[0], *wheel_components[1]);
-  } else if (config.type == MobileBaseType::Omnidirectional) {
+    if (!mobile_base->configure_differential_drive(*wheel_components[0], *wheel_components[1])) {
+      return false;
+    }
+  } else if (info.type == MobileBaseType::Omnidirectional) {
     if (wheel_components.size() != 4U) {
-      return ResultCode::Internal;
+      return log_component_error("ComponentManager::register_mobile_base",
+                                 "omnidirectional drive requires four wheel components.");
     }
-    status = mobile_base->configure_omnidirectional_drive(
-        *wheel_components[0], *wheel_components[1], *wheel_components[2], *wheel_components[3]);
+    if (!mobile_base->configure_omnidirectional_drive(*wheel_components[0], *wheel_components[1],
+                                                      *wheel_components[2], *wheel_components[3])) {
+      return false;
+    }
   }
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!mobile_base->bind(model)) {
+    return false;
   }
-  status = mobile_base->bind(model);
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-
-  MobileBaseComponent* mobile_base_ptr = mobile_base.get();
-  status = registry_.add(std::move(mobile_base));
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  (void)mobile_base_ptr;
-  return ResultCode::Ok;
+  return registry_.add(std::move(mobile_base));
 }
 
-ResultCode ComponentManager::reconfigure_joint(const mjModel& model, const JointConfig& config) {
-  if (config.name.empty()) {
-    return ResultCode::InvalidArgument;
+bool ComponentManager::reconfigure_joint(const mjModel& model, const JointInfo& info) {
+  if (info.joint.empty()) {
+    return log_component_error("ComponentManager::reconfigure_joint",
+                               "joint name must not be empty.");
   }
 
-  const JointComponent* existing = joint(registry_, config.name);
+  const JointComponent* existing = joint(registry_, info.joint);
   if (existing == nullptr) {
-    return ResultCode::NotFound;
+    return log_component_error("ComponentManager::reconfigure_joint", "joint was not found.");
   }
 
-  const JointConfig previous_config = existing->config();
-  auto replacement = std::make_unique<JointComponent>(config);
-  ResultCode status = replacement->bind(model);
-  if (status != ResultCode::Ok) {
-    return status;
+  const JointInfo previous_info = existing->info();
+  auto replacement = std::make_unique<JointComponent>(info);
+  if (!replacement->bind(model)) {
+    return false;
   }
 
-  status = registry_.remove(config.name);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!registry_.remove(info.joint)) {
+    return false;
   }
 
-  status = registry_.add(std::move(replacement));
-  if (status == ResultCode::Ok) {
-    return ResultCode::Ok;
+  if (registry_.add(std::move(replacement))) {
+    return true;
   }
 
-  auto restore = std::make_unique<JointComponent>(previous_config);
-  const ResultCode restore_bind_status = restore->bind(model);
-  if (restore_bind_status == ResultCode::Ok) {
-    const ResultCode restore_add_status = registry_.add(std::move(restore));
-    if (restore_add_status == ResultCode::Ok) {
-      return status;
+  auto restore = std::make_unique<JointComponent>(previous_info);
+  if (restore->bind(model)) {
+    if (registry_.add(std::move(restore))) {
+      return log_component_error(
+          "ComponentManager::reconfigure_joint",
+          "failed to add replacement joint; restored previous configuration.");
     }
-    return ResultCode::Internal;
+    return log_component_error("ComponentManager::reconfigure_joint",
+                               "failed to restore previous joint after replacement add failure.");
   }
 
-  return ResultCode::Internal;
+  return log_component_error("ComponentManager::reconfigure_joint",
+                             "failed to restore previous joint after replacement add failure.");
 }
 
-ResultCode ComponentManager::reconfigure_component(const mjModel& model,
-                                                   const ComponentConfig& config) {
-  if (const auto* joint_config = std::get_if<JointConfig>(&config)) {
-    return reconfigure_joint(model, *joint_config);
+bool ComponentManager::reconfigure_component(const mjModel& model, const ComponentConfig& config) {
+  if (const auto* joint_info = std::get_if<JointInfo>(&config)) {
+    return reconfigure_joint(model, *joint_info);
   }
-  return ResultCode::FailedPrecondition;
+  return log_component_error("ComponentManager::reconfigure_component",
+                             "only joint reconfiguration is supported.");
 }
 
-CommandInterfaceType ComponentManager::joint_command_mode(std::string name) const {
-  const JointComponent* component = joint(registry_, name);
-  return component == nullptr ? CommandInterfaceType::None : component->config().command_mode;
-}
-
-ResultCode ComponentManager::reset_all(const mjModel& model, mjData& data) {
+bool ComponentManager::reset_all(const mjModel& model, mjData& data) {
   for (const auto& [name, joint_component] : registry_.joints()) {
     (void)name;
-    ResultCode status = joint_component->reset(model, data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!joint_component->reset(model, data)) {
+      return false;
     }
   }
   for (const auto& [name, camera_component] : registry_.cameras()) {
     (void)name;
-    ResultCode status = camera_component->reset(model, data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!camera_component->reset(model, data)) {
+      return false;
     }
   }
   for (const auto& [name, imu_component] : registry_.imus()) {
     (void)name;
-    ResultCode status = imu_component->reset(model, data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!imu_component->reset(model, data)) {
+      return false;
     }
   }
   for (const auto& [name, lidar_component] : registry_.lidars()) {
     (void)name;
-    ResultCode status = lidar_component->reset(model, data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!lidar_component->reset(model, data)) {
+      return false;
     }
   }
   for (const auto& [name, mobile_base_component] : registry_.mobile_bases()) {
     (void)name;
-    ResultCode status = mobile_base_component->reset(model, data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!mobile_base_component->reset(model, data)) {
+      return false;
     }
   }
   for (const auto& [name, joint_component] : registry_.joints()) {
@@ -326,13 +286,13 @@ ResultCode ComponentManager::reset_all(const mjModel& model, mjData& data) {
     (void)name;
     mobile_base_component->reset_update_schedule();
   }
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ComponentManager::update_components(const mjModel& model, const mjData& data,
-                                               double simulation_time, std::uint64_t step_count,
-                                               CameraRenderer* camera_renderer,
-                                               CameraBuffer* camera_buffer) {
+bool ComponentManager::update_components(const mjModel& model, const mjData& data,
+                                         double simulation_time, std::uint64_t step_count,
+                                         CameraRenderer* camera_renderer,
+                                         CameraBuffer* camera_buffer) {
   std::vector<JointComponent*> due_joints;
   std::vector<MobileBaseComponent*> due_mobile_bases;
   std::vector<ImuComponent*> due_imus;
@@ -378,11 +338,12 @@ ResultCode ComponentManager::update_components(const mjModel& model, const mjDat
 
   if (!due_cameras.empty()) {
     if (camera_renderer == nullptr || camera_buffer == nullptr) {
-      return ResultCode::FailedPrecondition;
+      return log_component_error("ComponentManager::update_components",
+                                 "camera update requires camera_renderer and camera_buffer.");
     }
-    ResultCode status = camera_renderer->copy_simulation_data(model, data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!camera_renderer->copy_simulation_data(model, data)) {
+      return log_component_error("ComponentManager::update_components",
+                                 "failed to copy simulation data for camera rendering.");
     }
   }
 
@@ -390,142 +351,128 @@ ResultCode ComponentManager::update_components(const mjModel& model, const mjDat
                               camera_renderer, camera_buffer};
 
   for (JointComponent* joint_component : due_joints) {
-    ResultCode status = joint_component->update(context);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!joint_component->update(context)) {
+      return false;
     }
   }
   for (MobileBaseComponent* mobile_base_component : due_mobile_bases) {
-    ResultCode status = mobile_base_component->update(context);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!mobile_base_component->update(context)) {
+      return false;
     }
   }
   for (ImuComponent* imu_component : due_imus) {
-    ResultCode status = imu_component->update(context);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!imu_component->update(context)) {
+      return false;
     }
   }
   for (LidarComponent* lidar_component : due_lidars) {
-    ResultCode status = lidar_component->update(context);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!lidar_component->update(context)) {
+      return false;
     }
   }
   for (CameraComponent* camera_component : due_cameras) {
-    ResultCode status = camera_component->update(context);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!camera_component->update(context)) {
+      return false;
     }
   }
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ComponentManager::write_commands(const mjModel& model, mjData& data,
-                                            const CommandSnapshot& snapshot) {
+bool ComponentManager::write_commands(const mjModel& model, mjData& data,
+                                      const CommandSnapshot& snapshot) {
   for (const auto& [joint_name, command] : snapshot.joint_commands) {
     JointComponent* joint_component = joint(registry_, joint_name);
     if (joint_component == nullptr) {
-      return ResultCode::NotFound;
+      return log_component_error("ComponentManager::write_commands",
+                                 "joint command target was not found.");
     }
-    ResultCode status = joint_component->write(model, data, command);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!joint_component->write(model, data, command)) {
+      return false;
     }
   }
   for (const auto& [mobile_base_name, command] : snapshot.mobile_base_commands) {
     MobileBaseComponent* mobile_base_component = mobile_base(registry_, mobile_base_name);
     if (mobile_base_component == nullptr) {
-      return ResultCode::NotFound;
+      return log_component_error("ComponentManager::write_commands",
+                                 "mobile base command target was not found.");
     }
-    ResultCode status = mobile_base_component->write(model, data, command);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!mobile_base_component->write(model, data, command)) {
+      return false;
     }
   }
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ComponentManager::build_state_snapshot(const mjData& data,
-                                                  StateSnapshot& snapshot) const {
-  ResultCode status = read_joint_states(data, snapshot.joints);
-  if (status != ResultCode::Ok) {
-    return status;
+bool ComponentManager::build_state_snapshot(const mjData& data, StateSnapshot& snapshot) const {
+  if (!read_joint_states(data, snapshot.joints)) {
+    return false;
   }
-  status = read_mobile_base_states(data, snapshot.mobile_bases);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!read_mobile_base_states(data, snapshot.mobile_bases)) {
+    return false;
   }
-  status = read_imu_states(snapshot.imus);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!read_imu_states(snapshot.imus)) {
+    return false;
   }
   return read_lidar_states(snapshot.lidars);
 }
 
-ResultCode ComponentManager::read_joint_states(
+bool ComponentManager::read_joint_states(
     const mjData& data, std::unordered_map<std::string, JointState>& states) const {
   std::unordered_map<std::string, JointState> snapshot;
   snapshot.reserve(registry_.joints().size());
   for (const auto& [name, joint_component] : registry_.joints()) {
     JointState state;
-    ResultCode status = joint_component->read(data, state);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!joint_component->read(data, state)) {
+      return false;
     }
     snapshot.emplace(name, std::move(state));
   }
   states = std::move(snapshot);
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ComponentManager::read_imu_states(
-    std::unordered_map<std::string, ImuState>& states) const {
+bool ComponentManager::read_imu_states(std::unordered_map<std::string, ImuState>& states) const {
   std::unordered_map<std::string, ImuState> snapshot;
   snapshot.reserve(registry_.imus().size());
   for (const auto& [name, imu_component] : registry_.imus()) {
     ImuState state;
-    ResultCode status = imu_component->read(state);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!imu_component->read(state)) {
+      return false;
     }
     snapshot.emplace(name, std::move(state));
   }
   states = std::move(snapshot);
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ComponentManager::read_lidar_states(
+bool ComponentManager::read_lidar_states(
     std::unordered_map<std::string, LidarState>& states) const {
   std::unordered_map<std::string, LidarState> snapshot;
   snapshot.reserve(registry_.lidars().size());
   for (const auto& [name, lidar_component] : registry_.lidars()) {
     LidarState state;
-    ResultCode status = lidar_component->read(state);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!lidar_component->read(state)) {
+      return false;
     }
     snapshot.emplace(name, std::move(state));
   }
   states = std::move(snapshot);
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ComponentManager::read_mobile_base_states(
+bool ComponentManager::read_mobile_base_states(
     const mjData& data, std::unordered_map<std::string, MobileBaseState>& states) const {
   std::unordered_map<std::string, MobileBaseState> snapshot;
   snapshot.reserve(registry_.mobile_bases().size());
   for (const auto& [name, mobile_base_component] : registry_.mobile_bases()) {
     MobileBaseState state;
-    ResultCode status = mobile_base_component->read(data, state);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!mobile_base_component->read(data, state)) {
+      return false;
     }
     snapshot.emplace(name, std::move(state));
   }
   states = std::move(snapshot);
-  return ResultCode::Ok;
+  return true;
 }
 
 }  // namespace mujoco_simulation

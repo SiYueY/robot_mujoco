@@ -14,9 +14,9 @@ class CameraComponent : public SimulationComponent {
   explicit CameraComponent(CameraConfig config);
 
   std::string name() const noexcept override;
-  ResultCode bind(const mjModel& model) override;
-  ResultCode reset(const mjModel& model, mjData& data) override;
-  ResultCode update(const UpdateContext& context) override;
+  bool bind(const mjModel& model) override;
+  bool reset(const mjModel& model, mjData& data) override;
+  bool update(const UpdateContext& context) override;
 
   const CameraConfig& config() const noexcept { return config_; }
 

@@ -5,6 +5,7 @@
 #include <limits>
 #include <utility>
 
+#include "mujoco_simulation/component/logging.hpp"
 #include "mujoco_simulation/component/update_context.hpp"
 
 namespace mujoco_simulation {
@@ -17,9 +18,8 @@ struct MobileBaseWheelBinding {
   struct JointDriveHandle {
     int joint_id{-1};
     int dof_address{-1};
-    int actuator_id{-1};
-    int actuator_type{-1};
-    bool has_actuator{false};
+    int motor_id{-1};
+    double velocity_damping{0.0};
   } drive{};
 };
 
@@ -49,63 +49,63 @@ double yaw_from_xmat(const mjtNum* xmat) {
   return std::atan2(static_cast<double>(xmat[3]), static_cast<double>(xmat[0]));
 }
 
-ResultCode validate_wheel_binding(const std::string& mobile_base_name,
-                                  const MobileBaseWheelBinding& wheel) {
+bool validate_wheel_binding(const std::string& mobile_base_name,
+                            const MobileBaseWheelBinding& wheel) {
+  (void)mobile_base_name;
   if (wheel.joint_name.empty()) {
-    return ResultCode::BindingFailed;
+    return log_component_error("MobileBaseComponent::validate_wheel_binding",
+                               "wheel joint name must not be empty.");
   }
   if (wheel.drive.joint_id < 0 || wheel.drive.dof_address < 0) {
-    return ResultCode::BindingFailed;
+    return log_component_error("MobileBaseComponent::validate_wheel_binding",
+                               "wheel drive handle is not bound.");
   }
-  return ResultCode::Ok;
+  return true;
 }
 
 MobileBaseWheelBinding::JointDriveHandle make_drive_handle(const JointComponent& joint) {
   MobileBaseWheelBinding::JointDriveHandle handle;
   handle.joint_id = joint.joint_id();
   handle.dof_address = joint.dof_address();
-  handle.actuator_id = joint.actuator_id();
-  handle.actuator_type = static_cast<int>(joint.actuator_type());
-  handle.has_actuator = joint.has_actuator();
+  handle.motor_id = joint.motor_id();
+  handle.velocity_damping = joint.info().velocity_damping;
   return handle;
 }
 
 double clamp_actuator_control_limits(const mjModel& model,
                                      const MobileBaseWheelBinding::JointDriveHandle& drive,
                                      double value) {
-  if (!drive.has_actuator || drive.actuator_id < 0) {
+  if (drive.motor_id < 0) {
     return value;
   }
-  if (!is_limited(model.actuator_ctrllimited[drive.actuator_id])) {
+  if (!is_limited(model.actuator_ctrllimited[drive.motor_id])) {
     return value;
   }
-  const mjtNum* range = model.actuator_ctrlrange + 2 * drive.actuator_id;
+  const mjtNum* range = model.actuator_ctrlrange + 2 * drive.motor_id;
   return std::clamp(value, static_cast<double>(range[0]), static_cast<double>(range[1]));
 }
 
-ResultCode write_wheel_velocity_command(const mjModel& model, mjData& data,
-                                        const MobileBaseWheelBinding& wheel, double velocity) {
-  if (!wheel.drive.has_actuator || wheel.drive.actuator_id < 0) {
-    return ResultCode::FailedPrecondition;
+bool write_wheel_velocity_command(const mjModel& model, mjData& data,
+                                  const MobileBaseWheelBinding& wheel, double velocity) {
+  if (wheel.drive.motor_id < 0 || wheel.drive.dof_address < 0 ||
+      wheel.drive.velocity_damping <= 0.0) {
+    return log_component_error("MobileBaseComponent::write_wheel_velocity_command",
+                               "wheel drive handle is incomplete.");
   }
-  if (wheel.drive.actuator_type != static_cast<int>(ActuatorType::Velocity)) {
-    return ResultCode::FailedPrecondition;
-  }
-
-  data.ctrl[wheel.drive.actuator_id] = clamp_actuator_control_limits(model, wheel.drive, velocity);
-  if (wheel.drive.dof_address >= 0) {
-    data.qfrc_applied[wheel.drive.dof_address] = 0.0;
-  }
-  return ResultCode::Ok;
+  const double effort =
+      wheel.drive.velocity_damping * (velocity - data.qvel[wheel.drive.dof_address]);
+  data.ctrl[wheel.drive.motor_id] = clamp_actuator_control_limits(model, wheel.drive, effort);
+  return true;
 }
 
-ResultCode read_wheel_velocity(const mjData& data, const MobileBaseWheelBinding& wheel,
-                               double& velocity) {
+bool read_wheel_velocity(const mjData& data, const MobileBaseWheelBinding& wheel,
+                         double& velocity) {
   if (wheel.drive.dof_address < 0) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("MobileBaseComponent::read_wheel_velocity",
+                               "wheel drive handle is incomplete.");
   }
   velocity = data.qvel[wheel.drive.dof_address];
-  return ResultCode::Ok;
+  return true;
 }
 
 }  // namespace
@@ -114,8 +114,8 @@ struct MobileBaseComponent::Impl {
   MobileBaseBinding binding;
 };
 
-MobileBaseComponent::MobileBaseComponent(MobileBaseConfig config)
-    : impl_(std::make_unique<Impl>()), config_(std::move(config)) {
+MobileBaseComponent::MobileBaseComponent(MobileBaseInfo info)
+    : impl_(std::make_unique<Impl>()), info_(std::move(info)) {
   set_update_every_step();
 }
 
@@ -125,167 +125,156 @@ MobileBaseComponent::MobileBaseComponent(MobileBaseComponent&&) noexcept = defau
 
 MobileBaseComponent& MobileBaseComponent::operator=(MobileBaseComponent&&) noexcept = default;
 
-ResultCode MobileBaseComponent::configure_differential_drive(const JointComponent& left_wheel,
-                                                             const JointComponent& right_wheel) {
+bool MobileBaseComponent::configure_differential_drive(const JointComponent& left_wheel,
+                                                       const JointComponent& right_wheel) {
   impl_->binding = {};
   impl_->binding.has_differential = true;
-  impl_->binding.differential.left_wheel.joint_name = config_.left_wheel_joint;
+  impl_->binding.differential.left_wheel.joint_name = info_.left_wheel_joint;
   impl_->binding.differential.left_wheel.drive = make_drive_handle(left_wheel);
-  impl_->binding.differential.right_wheel.joint_name = config_.right_wheel_joint;
+  impl_->binding.differential.right_wheel.joint_name = info_.right_wheel_joint;
   impl_->binding.differential.right_wheel.drive = make_drive_handle(right_wheel);
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode MobileBaseComponent::configure_omnidirectional_drive(const JointComponent& front_left,
-                                                                const JointComponent& front_right,
-                                                                const JointComponent& rear_left,
-                                                                const JointComponent& rear_right) {
+bool MobileBaseComponent::configure_omnidirectional_drive(const JointComponent& front_left,
+                                                          const JointComponent& front_right,
+                                                          const JointComponent& rear_left,
+                                                          const JointComponent& rear_right) {
   impl_->binding = {};
   impl_->binding.has_omnidirectional = true;
-  impl_->binding.omnidirectional.front_left.joint_name = config_.front_left_joint;
+  impl_->binding.omnidirectional.front_left.joint_name = info_.front_left_joint;
   impl_->binding.omnidirectional.front_left.drive = make_drive_handle(front_left);
-  impl_->binding.omnidirectional.front_right.joint_name = config_.front_right_joint;
+  impl_->binding.omnidirectional.front_right.joint_name = info_.front_right_joint;
   impl_->binding.omnidirectional.front_right.drive = make_drive_handle(front_right);
-  impl_->binding.omnidirectional.rear_left.joint_name = config_.rear_left_joint;
+  impl_->binding.omnidirectional.rear_left.joint_name = info_.rear_left_joint;
   impl_->binding.omnidirectional.rear_left.drive = make_drive_handle(rear_left);
-  impl_->binding.omnidirectional.rear_right.joint_name = config_.rear_right_joint;
+  impl_->binding.omnidirectional.rear_right.joint_name = info_.rear_right_joint;
   impl_->binding.omnidirectional.rear_right.drive = make_drive_handle(rear_right);
-  return ResultCode::Ok;
+  return true;
 }
 
-std::string MobileBaseComponent::name() const noexcept { return config_.name; }
+std::string MobileBaseComponent::name() const noexcept { return info_.name; }
 
-ResultCode MobileBaseComponent::bind(const mjModel& model) {
+bool MobileBaseComponent::bind(const mjModel& model) {
   command_ = {};
   state_ = {};
-  state_.base_frame_id = config_.base_frame_id;
-  state_.odom_frame_id = config_.odom_frame_id;
+  state_.base_frame_id = info_.base_frame_id;
+  state_.odom_frame_id = info_.odom_frame_id;
   state_.wheel_velocities.assign(wheel_count(), 0.0);
 
-  ResultCode status = validate(model);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!validate(model)) {
+    return false;
   }
-  status = initialize_bindings(model);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!initialize_bindings(model)) {
+    return false;
   }
 
   clear_odometry();
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode MobileBaseComponent::reset(const mjModel& model, mjData& data) {
+bool MobileBaseComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
   (void)data;
   command_ = {};
   clear_odometry();
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode MobileBaseComponent::update(const UpdateContext& context) {
+bool MobileBaseComponent::update(const UpdateContext& context) {
   MobileBaseState state;
   return read(context.data, state);
 }
 
-ResultCode MobileBaseComponent::write(const mjModel& model, mjData& data,
-                                      const MobileBaseCommand& command) {
+bool MobileBaseComponent::write(const mjModel& model, mjData& data,
+                                const MobileBaseCommand& command) {
   command_ = command;
-  if (config_.type == MobileBaseType::Differential) {
+  if (info_.type == MobileBaseType::Differential) {
     return write_differential(model, data, command);
   }
-  if (config_.type == MobileBaseType::Omnidirectional) {
+  if (info_.type == MobileBaseType::Omnidirectional) {
     return write_omnidirectional(model, data, command);
   }
-  return ResultCode::InvalidArgument;
+  return log_component_error("MobileBaseComponent::write", "unsupported mobile base type.");
 }
 
-ResultCode MobileBaseComponent::read(const mjData& data, MobileBaseState& state) {
-  if (config_.type == MobileBaseType::Differential) {
+bool MobileBaseComponent::read(const mjData& data, MobileBaseState& state) {
+  if (info_.type == MobileBaseType::Differential) {
     return read_differential(data, state);
   }
-  if (config_.type == MobileBaseType::Omnidirectional) {
+  if (info_.type == MobileBaseType::Omnidirectional) {
     return read_omnidirectional(data, state);
   }
-  return ResultCode::InvalidArgument;
+  return log_component_error("MobileBaseComponent::read", "unsupported mobile base type.");
 }
 
-ResultCode MobileBaseComponent::validate(const mjModel& model) const {
-  if (config_.name.empty()) {
-    return ResultCode::InvalidArgument;
+bool MobileBaseComponent::validate(const mjModel& model) const {
+  if (info_.name.empty()) {
+    return log_component_error("MobileBaseComponent::validate",
+                               "mobile base name must not be empty.");
   }
-  if (config_.type != MobileBaseType::Differential &&
-      config_.type != MobileBaseType::Omnidirectional) {
-    return ResultCode::InvalidArgument;
+  if (info_.type != MobileBaseType::Differential && info_.type != MobileBaseType::Omnidirectional) {
+    return log_component_error("MobileBaseComponent::validate", "mobile base type is invalid.");
   }
-  if (config_.wheel_radius <= 0.0) {
-    return ResultCode::InvalidArgument;
+  if (info_.wheel_radius <= 0.0) {
+    return log_component_error("MobileBaseComponent::validate", "wheel_radius must be positive.");
   }
 
-  if (config_.type == MobileBaseType::Differential) {
+  if (info_.type == MobileBaseType::Differential) {
     if (!impl_->binding.has_differential) {
-      return ResultCode::BindingFailed;
+      return log_component_error("MobileBaseComponent::validate",
+                                 "differential drive bindings are missing.");
     }
-    ResultCode status =
-        validate_wheel_binding(config_.name, impl_->binding.differential.left_wheel);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!validate_wheel_binding(info_.name, impl_->binding.differential.left_wheel) ||
+        !validate_wheel_binding(info_.name, impl_->binding.differential.right_wheel)) {
+      return false;
     }
-    status = validate_wheel_binding(config_.name, impl_->binding.differential.right_wheel);
-    if (status != ResultCode::Ok) {
-      return status;
-    }
-    if (config_.track_width <= 0.0) {
-      return ResultCode::InvalidArgument;
+    if (info_.track_width <= 0.0) {
+      return log_component_error("MobileBaseComponent::validate",
+                                 "track_width must be positive for differential drive.");
     }
   }
 
-  if (config_.type == MobileBaseType::Omnidirectional) {
+  if (info_.type == MobileBaseType::Omnidirectional) {
     if (!impl_->binding.has_omnidirectional) {
-      return ResultCode::BindingFailed;
+      return log_component_error("MobileBaseComponent::validate",
+                                 "omnidirectional drive bindings are missing.");
     }
     const OmnidirectionalBinding& wheels = impl_->binding.omnidirectional;
-    ResultCode status = validate_wheel_binding(config_.name, wheels.front_left);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!validate_wheel_binding(info_.name, wheels.front_left) ||
+        !validate_wheel_binding(info_.name, wheels.front_right) ||
+        !validate_wheel_binding(info_.name, wheels.rear_left) ||
+        !validate_wheel_binding(info_.name, wheels.rear_right)) {
+      return false;
     }
-    status = validate_wheel_binding(config_.name, wheels.front_right);
-    if (status != ResultCode::Ok) {
-      return status;
-    }
-    status = validate_wheel_binding(config_.name, wheels.rear_left);
-    if (status != ResultCode::Ok) {
-      return status;
-    }
-    status = validate_wheel_binding(config_.name, wheels.rear_right);
-    if (status != ResultCode::Ok) {
-      return status;
-    }
-    if (config_.track_width <= 0.0 || config_.wheel_base <= 0.0) {
-      return ResultCode::InvalidArgument;
+    if (info_.track_width <= 0.0 || info_.wheel_base <= 0.0) {
+      return log_component_error("MobileBaseComponent::validate",
+                                 "track_width and wheel_base must be positive for omni drive.");
     }
   }
 
-  if (config_.odometry_source == OdometrySource::GroundTruthBodyPose &&
-      config_.base_body_name.empty()) {
-    return ResultCode::InvalidArgument;
+  if (info_.odometry_source == OdometrySource::GroundTruthBodyPose &&
+      info_.base_body_name.empty()) {
+    return log_component_error("MobileBaseComponent::validate",
+                               "base_body_name is required for ground-truth odometry.");
   }
 
   (void)model;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode MobileBaseComponent::initialize_bindings(const mjModel& model) {
+bool MobileBaseComponent::initialize_bindings(const mjModel& model) {
   impl_->binding.base_body_id = -1;
 
-  if (config_.odometry_source == OdometrySource::GroundTruthBodyPose) {
-    impl_->binding.base_body_id = mj_name2id(&model, mjOBJ_BODY, config_.base_body_name.c_str());
+  if (info_.odometry_source == OdometrySource::GroundTruthBodyPose) {
+    impl_->binding.base_body_id = mj_name2id(&model, mjOBJ_BODY, info_.base_body_name.c_str());
     if (impl_->binding.base_body_id < 0) {
-      return ResultCode::BindingFailed;
+      return log_component_error("MobileBaseComponent::initialize_bindings",
+                                 "base body was not found in model.");
     }
   }
 
-  return ResultCode::Ok;
+  return true;
 }
 
 void MobileBaseComponent::clear_odometry() {
@@ -328,9 +317,10 @@ void MobileBaseComponent::integrate_wheel_odometry(double simulation_time) {
   state_.yaw = normalized_yaw(state_.yaw + state_.angular_z * dt);
 }
 
-ResultCode MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
+bool MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
   if (impl_->binding.base_body_id < 0) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("MobileBaseComponent::update_ground_truth_pose",
+                               "base body binding is missing.");
   }
 
   const mjtNum* xpos = data.xpos + 3 * impl_->binding.base_body_id;
@@ -339,7 +329,7 @@ ResultCode MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
   state_.y = static_cast<double>(xpos[1]);
   state_.yaw = normalized_yaw(yaw_from_xmat(xmat));
   last_simulation_time_ = data.time;
-  return ResultCode::Ok;
+  return true;
 }
 
 double MobileBaseComponent::normalized_yaw(double yaw) {
@@ -364,102 +354,93 @@ double MobileBaseComponent::command_angular_z(const MobileBaseCommand& command) 
   return command.angular_z != 0.0 ? command.angular_z : command.angular[2];
 }
 
-ResultCode MobileBaseComponent::write_differential(const mjModel& model, mjData& data,
-                                                   const MobileBaseCommand& command) {
+bool MobileBaseComponent::write_differential(const mjModel& model, mjData& data,
+                                             const MobileBaseCommand& command) {
   const double linear_x = command_linear_x(command);
   const double linear_y = command_linear_y(command);
   const double angular_z = command_angular_z(command);
   if (std::abs(linear_y) > 1e-9) {
-    return ResultCode::CommandRejected;
+    return log_component_error("MobileBaseComponent::write_differential",
+                               "differential drive does not support lateral velocity.");
   }
   if (!impl_->binding.has_differential) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("MobileBaseComponent::write_differential",
+                               "differential drive bindings are missing.");
   }
 
   const double left_velocity =
-      (linear_x - angular_z * config_.track_width * 0.5) / config_.wheel_radius;
+      (linear_x - angular_z * info_.track_width * 0.5) / info_.wheel_radius;
   const double right_velocity =
-      (linear_x + angular_z * config_.track_width * 0.5) / config_.wheel_radius;
+      (linear_x + angular_z * info_.track_width * 0.5) / info_.wheel_radius;
 
-  ResultCode status = write_wheel_velocity_command(
-      model, data, impl_->binding.differential.left_wheel, left_velocity);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!write_wheel_velocity_command(model, data, impl_->binding.differential.left_wheel,
+                                    left_velocity)) {
+    return false;
   }
   return write_wheel_velocity_command(model, data, impl_->binding.differential.right_wheel,
                                       right_velocity);
 }
 
-ResultCode MobileBaseComponent::write_omnidirectional(const mjModel& model, mjData& data,
-                                                      const MobileBaseCommand& command) {
+bool MobileBaseComponent::write_omnidirectional(const mjModel& model, mjData& data,
+                                                const MobileBaseCommand& command) {
   if (!impl_->binding.has_omnidirectional) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("MobileBaseComponent::write_omnidirectional",
+                               "omnidirectional drive bindings are missing.");
   }
 
   const double linear_x = command_linear_x(command);
   const double linear_y = command_linear_y(command);
   const double angular_z = command_angular_z(command);
-  const double base_sum = config_.wheel_base + config_.track_width;
-  const double fl = (linear_x - linear_y - base_sum * angular_z) / config_.wheel_radius;
-  const double fr = (linear_x + linear_y + base_sum * angular_z) / config_.wheel_radius;
-  const double rl = (linear_x + linear_y - base_sum * angular_z) / config_.wheel_radius;
-  const double rr = (linear_x - linear_y + base_sum * angular_z) / config_.wheel_radius;
+  const double base_sum = info_.wheel_base + info_.track_width;
+  const double fl = (linear_x - linear_y - base_sum * angular_z) / info_.wheel_radius;
+  const double fr = (linear_x + linear_y + base_sum * angular_z) / info_.wheel_radius;
+  const double rl = (linear_x + linear_y - base_sum * angular_z) / info_.wheel_radius;
+  const double rr = (linear_x - linear_y + base_sum * angular_z) / info_.wheel_radius;
 
   const OmnidirectionalBinding& wheels = impl_->binding.omnidirectional;
-  ResultCode status = write_wheel_velocity_command(model, data, wheels.front_left, fl);
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  status = write_wheel_velocity_command(model, data, wheels.front_right, fr);
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  status = write_wheel_velocity_command(model, data, wheels.rear_left, rl);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!write_wheel_velocity_command(model, data, wheels.front_left, fl) ||
+      !write_wheel_velocity_command(model, data, wheels.front_right, fr) ||
+      !write_wheel_velocity_command(model, data, wheels.rear_left, rl)) {
+    return false;
   }
   return write_wheel_velocity_command(model, data, wheels.rear_right, rr);
 }
 
-ResultCode MobileBaseComponent::read_differential(const mjData& data, MobileBaseState& state) {
+bool MobileBaseComponent::read_differential(const mjData& data, MobileBaseState& state) {
   if (!impl_->binding.has_differential) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("MobileBaseComponent::read_differential",
+                               "differential drive bindings are missing.");
   }
 
   double left_velocity = 0.0;
   double right_velocity = 0.0;
-  ResultCode status =
-      read_wheel_velocity(data, impl_->binding.differential.left_wheel, left_velocity);
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  status = read_wheel_velocity(data, impl_->binding.differential.right_wheel, right_velocity);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!read_wheel_velocity(data, impl_->binding.differential.left_wheel, left_velocity) ||
+      !read_wheel_velocity(data, impl_->binding.differential.right_wheel, right_velocity)) {
+    return false;
   }
 
   state_.wheel_velocities = {left_velocity, right_velocity};
-  state_.linear_x = config_.wheel_radius * (left_velocity + right_velocity) * 0.5;
+  state_.linear_x = info_.wheel_radius * (left_velocity + right_velocity) * 0.5;
   state_.linear_y = 0.0;
-  state_.angular_z = config_.wheel_radius * (right_velocity - left_velocity) / config_.track_width;
+  state_.angular_z = info_.wheel_radius * (right_velocity - left_velocity) / info_.track_width;
 
-  if (config_.odometry_source == OdometrySource::WheelIntegration) {
+  if (info_.odometry_source == OdometrySource::WheelIntegration) {
     integrate_wheel_odometry(data.time);
   } else {
-    status = update_ground_truth_pose(data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!update_ground_truth_pose(data)) {
+      return false;
     }
   }
 
   update_state_fields(data);
   state = state_;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode MobileBaseComponent::read_omnidirectional(const mjData& data, MobileBaseState& state) {
+bool MobileBaseComponent::read_omnidirectional(const mjData& data, MobileBaseState& state) {
   if (!impl_->binding.has_omnidirectional) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("MobileBaseComponent::read_omnidirectional",
+                               "omnidirectional drive bindings are missing.");
   }
 
   double fl = 0.0;
@@ -467,42 +448,31 @@ ResultCode MobileBaseComponent::read_omnidirectional(const mjData& data, MobileB
   double rl = 0.0;
   double rr = 0.0;
   const OmnidirectionalBinding& wheels = impl_->binding.omnidirectional;
-  ResultCode status = read_wheel_velocity(data, wheels.front_left, fl);
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  status = read_wheel_velocity(data, wheels.front_right, fr);
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  status = read_wheel_velocity(data, wheels.rear_left, rl);
-  if (status != ResultCode::Ok) {
-    return status;
-  }
-  status = read_wheel_velocity(data, wheels.rear_right, rr);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!read_wheel_velocity(data, wheels.front_left, fl) ||
+      !read_wheel_velocity(data, wheels.front_right, fr) ||
+      !read_wheel_velocity(data, wheels.rear_left, rl) ||
+      !read_wheel_velocity(data, wheels.rear_right, rr)) {
+    return false;
   }
 
   state_.wheel_velocities = {fl, fr, rl, rr};
-  const double base_sum = config_.wheel_base + config_.track_width;
+  const double base_sum = info_.wheel_base + info_.track_width;
 
-  state_.linear_x = config_.wheel_radius * (fl + fr + rl + rr) * 0.25;
-  state_.linear_y = config_.wheel_radius * (-fl + fr + rl - rr) * 0.25;
-  state_.angular_z = config_.wheel_radius * (-fl + fr - rl + rr) / (4.0 * base_sum);
+  state_.linear_x = info_.wheel_radius * (fl + fr + rl + rr) * 0.25;
+  state_.linear_y = info_.wheel_radius * (-fl + fr + rl - rr) * 0.25;
+  state_.angular_z = info_.wheel_radius * (-fl + fr - rl + rr) / (4.0 * base_sum);
 
-  if (config_.odometry_source == OdometrySource::WheelIntegration) {
+  if (info_.odometry_source == OdometrySource::WheelIntegration) {
     integrate_wheel_odometry(data.time);
   } else {
-    status = update_ground_truth_pose(data);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!update_ground_truth_pose(data)) {
+      return false;
     }
   }
 
   update_state_fields(data);
   state = state_;
-  return ResultCode::Ok;
+  return true;
 }
 
 std::size_t MobileBaseComponent::wheel_count() const {

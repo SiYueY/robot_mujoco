@@ -8,36 +8,36 @@ namespace {
 
 class FakeComponent final : public SimulationComponent {
  public:
-  ResultCode configure_periodic(double update_rate, double physics_rate) {
+  bool configure_periodic(double update_rate, double physics_rate) {
     return set_update_rate(update_rate, physics_rate);
   }
 
   void configure_stepwise() { set_update_every_step(); }
 
   std::string name() const noexcept override { return "fake"; }
-  ResultCode bind(const mjModel& model) override {
+  bool bind(const mjModel& model) override {
     (void)model;
-    return ResultCode::Ok;
+    return true;
   }
-  ResultCode reset(const mjModel& model, mjData& data) override {
+  bool reset(const mjModel& model, mjData& data) override {
     (void)model;
     (void)data;
-    return ResultCode::Ok;
+    return true;
   }
-  ResultCode update(const UpdateContext& context) override {
+  bool update(const UpdateContext& context) override {
     (void)context;
-    return ResultCode::Ok;
+    return true;
   }
 };
 
 TEST(SimulationComponentTest, RejectsUpdateRateAbovePhysicsRate) {
   FakeComponent component;
-  EXPECT_EQ(component.configure_periodic(2000.0, 1000.0), ResultCode::InvalidArgument);
+  EXPECT_FALSE(component.configure_periodic(2000.0, 1000.0));
 }
 
 TEST(SimulationComponentTest, UpdatesOnStableCadenceAcrossSteps) {
   FakeComponent component;
-  ASSERT_EQ(component.configure_periodic(200.0, 1000.0), ResultCode::Ok);
+  ASSERT_TRUE(component.configure_periodic(200.0, 1000.0));
 
   EXPECT_TRUE(component.should_update(0.0));
   EXPECT_FALSE(component.should_update(0.004));
@@ -48,7 +48,7 @@ TEST(SimulationComponentTest, UpdatesOnStableCadenceAcrossSteps) {
 
 TEST(SimulationComponentTest, ResetMakesComponentsImmediatelyDueAgain) {
   FakeComponent component;
-  ASSERT_EQ(component.configure_periodic(10.0, 1000.0), ResultCode::Ok);
+  ASSERT_TRUE(component.configure_periodic(10.0, 1000.0));
   EXPECT_TRUE(component.should_update(0.0));
   EXPECT_FALSE(component.should_update(0.05));
 
@@ -58,7 +58,7 @@ TEST(SimulationComponentTest, ResetMakesComponentsImmediatelyDueAgain) {
 
 TEST(SimulationComponentTest, TracksMissedUpdatesWhenUpdatingFallsBehind) {
   FakeComponent component;
-  ASSERT_EQ(component.configure_periodic(20.0, 1000.0), ResultCode::Ok);
+  ASSERT_TRUE(component.configure_periodic(20.0, 1000.0));
 
   EXPECT_TRUE(component.should_update(0.0));
   EXPECT_EQ(component.missed_updates(), 0U);

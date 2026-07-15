@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "mujoco_simulation/component/logging.hpp"
 #include "mujoco_simulation/component/update_context.hpp"
 
 namespace mujoco_simulation {
@@ -19,71 +20,71 @@ bool copy_sensor_vector(const mjData& data, int address, double* dest, int count
 
 }  // namespace
 
-ImuComponent::ImuComponent(ImuConfig info) : info_(std::move(info)) {}
+ImuComponent::ImuComponent(ImuInfo info) : info_(std::move(info)) {}
 
 std::string ImuComponent::name() const noexcept { return info_.common.name; }
 
-ResultCode ImuComponent::validate_sensor_binding(const mjModel& model, std::string component_name,
-                                                 std::string sensor_name, int expected_type,
-                                                 int expected_dim, int* sensor_id,
-                                                 int* sensor_address) {
+bool ImuComponent::validate_sensor_binding(const mjModel& model, std::string component_name,
+                                           std::string sensor_name, int expected_type,
+                                           int expected_dim, int* sensor_id, int* sensor_address) {
   (void)component_name;
   if (sensor_id == nullptr || sensor_address == nullptr) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ImuComponent::validate_sensor_binding",
+                               "sensor output pointers must not be null.");
   }
   if (sensor_name.empty()) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ImuComponent::validate_sensor_binding",
+                               "sensor name must not be empty.");
   }
 
   const int id = mj_name2id(&model, mjOBJ_SENSOR, std::string(sensor_name).c_str());
   if (id < 0) {
-    return ResultCode::BindingFailed;
+    return log_component_error("ImuComponent::validate_sensor_binding",
+                               "sensor was not found in model.");
   }
   if (model.sensor_type[id] != expected_type) {
-    return ResultCode::ModelValidationFailed;
+    return log_component_error("ImuComponent::validate_sensor_binding",
+                               "sensor type does not match expected type.");
   }
   if (model.sensor_dim[id] != expected_dim) {
-    return ResultCode::ModelValidationFailed;
+    return log_component_error("ImuComponent::validate_sensor_binding",
+                               "sensor dimension does not match expected dimension.");
   }
 
   const int address = model.sensor_adr[id];
   if (address < 0 || address + expected_dim > model.nsensordata) {
-    return ResultCode::ModelValidationFailed;
+    return log_component_error("ImuComponent::validate_sensor_binding",
+                               "sensor address is out of range.");
   }
 
   *sensor_id = id;
   *sensor_address = address;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ImuComponent::bind(const mjModel& model) {
+bool ImuComponent::bind(const mjModel& model) {
   if (info_.common.name.empty()) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ImuComponent::bind", "imu component name must not be empty.");
   }
   if (model.opt.timestep <= 0.0) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ImuComponent::bind", "model timestep must be positive.");
   }
 
-  ResultCode status =
-      validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
-                              mjSENS_FRAMEQUAT, 4, &framequat_sensor_id_, &framequat_address_);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
+                               mjSENS_FRAMEQUAT, 4, &framequat_sensor_id_, &framequat_address_)) {
+    return false;
   }
-  status = validate_sensor_binding(model, info_.common.name, info_.gyro_sensor_name, mjSENS_GYRO, 3,
-                                   &gyro_sensor_id_, &gyro_address_);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!validate_sensor_binding(model, info_.common.name, info_.gyro_sensor_name, mjSENS_GYRO, 3,
+                               &gyro_sensor_id_, &gyro_address_)) {
+    return false;
   }
-  status = validate_sensor_binding(model, info_.common.name, info_.accelerometer_sensor_name,
-                                   mjSENS_ACCELEROMETER, 3, &accelerometer_sensor_id_,
-                                   &accelerometer_address_);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!validate_sensor_binding(model, info_.common.name, info_.accelerometer_sensor_name,
+                               mjSENS_ACCELEROMETER, 3, &accelerometer_sensor_id_,
+                               &accelerometer_address_)) {
+    return false;
   }
-  status = set_update_rate(info_.common.update_rate, 1.0 / model.opt.timestep);
-  if (status != ResultCode::Ok) {
-    return status;
+  if (!set_update_rate(info_.common.update_rate, 1.0 / model.opt.timestep)) {
+    return false;
   }
 
   sample_sequence_ = 0;
@@ -93,10 +94,10 @@ ResultCode ImuComponent::bind(const mjModel& model) {
   state_.orientation_covariance = info_.orientation_covariance;
   state_.angular_velocity_covariance = info_.angular_velocity_covariance;
   state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ImuComponent::reset(const mjModel& model, mjData& data) {
+bool ImuComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
   (void)data;
   sample_sequence_ = 0;
@@ -106,14 +107,14 @@ ResultCode ImuComponent::reset(const mjModel& model, mjData& data) {
   state_.orientation_covariance = info_.orientation_covariance;
   state_.angular_velocity_covariance = info_.angular_velocity_covariance;
   state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ImuComponent::update(const UpdateContext& context) {
+bool ImuComponent::update(const UpdateContext& context) {
   (void)context.model;
   (void)context.step_count;
   if (framequat_address_ < 0 || gyro_address_ < 0 || accelerometer_address_ < 0) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("ImuComponent::update", "imu sensors must be bound before update.");
   }
 
   state_.sequence = ++sample_sequence_;
@@ -132,14 +133,14 @@ ResultCode ImuComponent::update(const UpdateContext& context) {
   if (!copy_sensor_vector(context.data, gyro_address_, state_.angular_velocity.data(), 3) ||
       !copy_sensor_vector(context.data, accelerometer_address_, state_.linear_acceleration.data(),
                           3)) {
-    return ResultCode::Internal;
+    return log_component_error("ImuComponent::update", "failed to copy imu sensor data.");
   }
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ImuComponent::read(ImuState& state) const {
+bool ImuComponent::read(ImuState& state) const {
   state = state_;
-  return ResultCode::Ok;
+  return true;
 }
 
 }  // namespace mujoco_simulation

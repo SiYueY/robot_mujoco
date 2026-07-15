@@ -6,58 +6,49 @@
 namespace mujoco_simulation {
 
 enum class JointType {
-  Unknown,
-  Hinge,
-  Slide,
-  Ball,
-  Free,
+  Revolute,
+  Prismatic,
 };
 
-enum class ActuatorType {
-  Unknown,
-  Passive,
-  Motor,
-  Position,
-  Velocity,
-  Custom,
-};
-
-enum class CommandInterfaceType {
-  None,
+enum class ControlMode {
   Position,
   Velocity,
   Effort,
+  Hybrid,
 };
 
-enum class JointControllerType {
-  MuJoCoActuator,
-  SoftwarePd,
+struct Limit {
+  double min{-std::numeric_limits<double>::infinity()};
+  double max{std::numeric_limits<double>::infinity()};
 };
 
-struct JointConfig {
-  std::string name;
-  std::string actuator_name;
-  CommandInterfaceType command_mode{CommandInterfaceType::None};
-  JointControllerType controller_type{JointControllerType::MuJoCoActuator};
-  double position_kp{0.0};
-  double velocity_kd{0.0};
-  double command_min{-std::numeric_limits<double>::infinity()};
-  double command_max{std::numeric_limits<double>::infinity()};
+struct JointInfo {
+  std::string joint;
+  std::string actuator;
+  double position_stiffness{0.0};
+  double position_damping{0.0};
+  double velocity_damping{0.0};
+  Limit position_limits;
+  Limit velocity_limits;
+  Limit effort_limits;
 };
 
 struct JointState {
-  std::string name;
+  std::string joint;
+  ControlMode mode{ControlMode::Effort};
   double position{0.0};
   double velocity{0.0};
   double effort{0.0};
 };
 
 struct JointCommand {
-  std::string name;
+  std::string joint;
+  ControlMode mode{ControlMode::Effort};
   double position{0.0};
   double velocity{0.0};
-  double acceleration{0.0};
   double effort{0.0};
+  double stiffness{0.0};
+  double damping{0.0};
 };
 
 }  // namespace mujoco_simulation

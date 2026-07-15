@@ -19,33 +19,31 @@ namespace mujoco_simulation {
 
 class ComponentManager {
  public:
-  ResultCode build(const mjModel& model, const ComponentConfigList& components);
+  bool build(const mjModel& model, const ComponentConfigList& components);
   void clear();
 
-  ResultCode reconfigure_component(const mjModel& model, const ComponentConfig& config);
+  bool reconfigure_component(const mjModel& model, const ComponentConfig& config);
 
-  CommandInterfaceType joint_command_mode(std::string name) const;
-
-  ResultCode reset_all(const mjModel& model, mjData& data);
-  ResultCode update_components(const mjModel& model, const mjData& data, double simulation_time,
-                               std::uint64_t step_count, CameraRenderer* camera_renderer,
-                               CameraBuffer* camera_buffer);
-  ResultCode write_commands(const mjModel& model, mjData& data, const CommandSnapshot& snapshot);
-  ResultCode build_state_snapshot(const mjData& data, StateSnapshot& snapshot) const;
-  ResultCode read_joint_states(const mjData& data,
-                               std::unordered_map<std::string, JointState>& states) const;
-  ResultCode read_imu_states(std::unordered_map<std::string, ImuState>& states) const;
-  ResultCode read_lidar_states(std::unordered_map<std::string, LidarState>& states) const;
-  ResultCode read_mobile_base_states(
-      const mjData& data, std::unordered_map<std::string, MobileBaseState>& states) const;
+  bool reset_all(const mjModel& model, mjData& data);
+  bool update_components(const mjModel& model, const mjData& data, double simulation_time,
+                         std::uint64_t step_count, CameraRenderer* camera_renderer,
+                         CameraBuffer* camera_buffer);
+  bool write_commands(const mjModel& model, mjData& data, const CommandSnapshot& snapshot);
+  bool build_state_snapshot(const mjData& data, StateSnapshot& snapshot) const;
+  bool read_joint_states(const mjData& data,
+                         std::unordered_map<std::string, JointState>& states) const;
+  bool read_imu_states(std::unordered_map<std::string, ImuState>& states) const;
+  bool read_lidar_states(std::unordered_map<std::string, LidarState>& states) const;
+  bool read_mobile_base_states(const mjData& data,
+                               std::unordered_map<std::string, MobileBaseState>& states) const;
 
  private:
-  ResultCode register_joint(const mjModel& model, std::unique_ptr<JointComponent> joint);
-  ResultCode register_camera(const mjModel& model, std::unique_ptr<CameraComponent> camera);
-  ResultCode register_imu(const mjModel& model, std::unique_ptr<ImuComponent> imu);
-  ResultCode register_lidar(const mjModel& model, std::unique_ptr<LidarComponent> lidar);
-  ResultCode register_mobile_base(const mjModel& model, const MobileBaseConfig& config);
-  ResultCode reconfigure_joint(const mjModel& model, const JointConfig& config);
+  bool register_joint(const mjModel& model, std::unique_ptr<JointComponent> joint);
+  bool register_camera(const mjModel& model, std::unique_ptr<CameraComponent> camera);
+  bool register_imu(const mjModel& model, std::unique_ptr<ImuComponent> imu);
+  bool register_lidar(const mjModel& model, std::unique_ptr<LidarComponent> lidar);
+  bool register_mobile_base(const mjModel& model, const MobileBaseInfo& info);
+  bool reconfigure_joint(const mjModel& model, const JointInfo& info);
 
   ComponentRegistry registry_;
 };

@@ -13,15 +13,16 @@
 
 namespace mujoco_simulation {
 
-using ComponentConfig =
-    std::variant<JointConfig, ImuConfig, CameraConfig, LidarConfig, MobileBaseConfig>;
+using ComponentConfig = std::variant<JointInfo, ImuInfo, CameraConfig, LidarInfo, MobileBaseInfo>;
 using ComponentConfigList = std::vector<ComponentConfig>;
 
 inline std::string component_config_name(const ComponentConfig& component) {
   return std::visit(
       [](const auto& value) -> std::string {
         using T = std::decay_t<decltype(value)>;
-        if constexpr (std::is_same_v<T, JointConfig> || std::is_same_v<T, MobileBaseConfig>) {
+        if constexpr (std::is_same_v<T, JointInfo>) {
+          return value.joint;
+        } else if constexpr (std::is_same_v<T, MobileBaseInfo>) {
           return value.name;
         } else {
           return value.common.name;
@@ -43,7 +44,7 @@ inline bool replace_component_config(ComponentConfigList& components,
   return false;
 }
 
-inline bool replace_joint_config(ComponentConfigList& components, const JointConfig& updated) {
+inline bool replace_joint_info(ComponentConfigList& components, const JointInfo& updated) {
   return replace_component_config(components, ComponentConfig{updated});
 }
 

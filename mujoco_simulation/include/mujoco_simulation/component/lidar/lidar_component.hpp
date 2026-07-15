@@ -11,7 +11,7 @@ namespace mujoco_simulation {
 
 class LidarComponent : public SimulationComponent {
  public:
-  explicit LidarComponent(LidarConfig info);
+  explicit LidarComponent(LidarInfo info);
   ~LidarComponent();
 
   LidarComponent(const LidarComponent&) = delete;
@@ -20,19 +20,19 @@ class LidarComponent : public SimulationComponent {
   LidarComponent& operator=(LidarComponent&&) noexcept;
 
   std::string name() const noexcept override;
-  ResultCode bind(const mjModel& model) override;
-  ResultCode reset(const mjModel& model, mjData& data) override;
-  ResultCode update(const UpdateContext& context) override;
+  bool bind(const mjModel& model) override;
+  bool reset(const mjModel& model, mjData& data) override;
+  bool update(const UpdateContext& context) override;
 
-  const LidarConfig& info() const noexcept { return info_; }
-  ResultCode read(LidarState& state) const;
+  const LidarInfo& info() const noexcept { return info_; }
+  bool read(LidarState& state) const;
 
  private:
-  ResultCode set_defaults();
+  bool set_defaults();
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
-  LidarConfig info_;
+  LidarInfo info_;
   LidarState state_{};
   std::uint64_t sample_sequence_{0};
 };

@@ -6,6 +6,7 @@
 #include <limits>
 #include <utility>
 
+#include "mujoco_simulation/component/logging.hpp"
 #include "mujoco_simulation/component/update_context.hpp"
 
 namespace mujoco_simulation {
@@ -42,7 +43,7 @@ struct LidarComponent::Impl {
   LidarBinding binding;
 };
 
-LidarComponent::LidarComponent(LidarConfig info)
+LidarComponent::LidarComponent(LidarInfo info)
     : impl_(std::make_unique<Impl>()), info_(std::move(info)) {}
 
 LidarComponent::~LidarComponent() = default;
@@ -53,27 +54,27 @@ LidarComponent& LidarComponent::operator=(LidarComponent&&) noexcept = default;
 
 std::string LidarComponent::name() const noexcept { return info_.common.name; }
 
-ResultCode LidarComponent::bind(const mjModel& model) {
+bool LidarComponent::bind(const mjModel& model) {
   if (info_.common.name.empty()) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("LidarComponent::bind", "lidar component name must not be empty.");
   }
   if (model.opt.timestep <= 0.0) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("LidarComponent::bind", "model timestep must be positive.");
   }
   if (info_.sensor_prefix.empty()) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("LidarComponent::bind", "sensor prefix must not be empty.");
   }
   if (info_.angle_increment <= 0.0 || info_.angle_max < info_.angle_min) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("LidarComponent::bind", "lidar angles are invalid.");
   }
   if (info_.range_max < info_.range_min) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("LidarComponent::bind", "lidar ranges are invalid.");
   }
 
   const double span = (info_.angle_max - info_.angle_min) / info_.angle_increment;
   const int beam_count = static_cast<int>(std::llround(span)) + 1;
   if (beam_count <= 0) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("LidarComponent::bind", "computed beam count must be positive.");
   }
 
   impl_->binding.beams.assign(static_cast<std::size_t>(beam_count), {});
@@ -104,12 +105,12 @@ ResultCode LidarComponent::bind(const mjModel& model) {
 
     LidarBeamBinding& beam = impl_->binding.beams[static_cast<std::size_t>(beam_index)];
     if (beam.sensor_id >= 0) {
-      return ResultCode::ModelValidationFailed;
+      return log_component_error("LidarComponent::bind", "duplicate lidar beam sensor binding.");
     }
 
     const int address = model.sensor_adr[sensor_id];
     if (address < 0 || address >= model.nsensordata) {
-      return ResultCode::ModelValidationFailed;
+      return log_component_error("LidarComponent::bind", "lidar sensor address is out of range.");
     }
     beam.sensor_id = sensor_id;
     beam.sensor_address = address;
@@ -117,31 +118,29 @@ ResultCode LidarComponent::bind(const mjModel& model) {
 
   for (const LidarBeamBinding& beam : impl_->binding.beams) {
     if (beam.sensor_id < 0 || beam.sensor_address < 0) {
-      return ResultCode::ModelValidationFailed;
+      return log_component_error("LidarComponent::bind", "missing lidar beam sensor binding.");
     }
   }
 
-  const ResultCode schedule_status =
-      set_update_rate(info_.common.update_rate, 1.0 / model.opt.timestep);
-  if (schedule_status != ResultCode::Ok) {
-    return schedule_status;
+  if (!set_update_rate(info_.common.update_rate, 1.0 / model.opt.timestep)) {
+    return false;
   }
 
   return set_defaults();
 }
 
-ResultCode LidarComponent::reset(const mjModel& model, mjData& data) {
+bool LidarComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
   (void)data;
   sample_sequence_ = 0;
   return set_defaults();
 }
 
-ResultCode LidarComponent::update(const UpdateContext& context) {
+bool LidarComponent::update(const UpdateContext& context) {
   (void)context.model;
   (void)context.step_count;
   if (impl_->binding.beams.empty()) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("LidarComponent::update", "lidar must be bound before update.");
   }
 
   state_.sequence = ++sample_sequence_;
@@ -161,15 +160,15 @@ ResultCode LidarComponent::update(const UpdateContext& context) {
     state_.intensities[beam.beam_index] = 0.0;
   }
 
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode LidarComponent::read(LidarState& state) const {
+bool LidarComponent::read(LidarState& state) const {
   state = state_;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode LidarComponent::set_defaults() {
+bool LidarComponent::set_defaults() {
   state_ = {};
   state_.frame_id = info_.common.frame_id;
   state_.angle_min = info_.angle_min;
@@ -181,7 +180,7 @@ ResultCode LidarComponent::set_defaults() {
   state_.scan_time = 0.0;
   state_.ranges.assign(impl_->binding.beams.size(), std::numeric_limits<double>::infinity());
   state_.intensities.assign(impl_->binding.beams.size(), 0.0);
-  return ResultCode::Ok;
+  return true;
 }
 
 }  // namespace mujoco_simulation

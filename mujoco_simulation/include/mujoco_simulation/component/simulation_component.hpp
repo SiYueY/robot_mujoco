@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <string>
 
-#include "mujoco_simulation/result_code.hpp"
-
 namespace mujoco_simulation {
 
 struct UpdateContext;
@@ -19,15 +17,15 @@ class SimulationComponent {
   void reset_update_schedule();
   std::uint64_t missed_updates() const noexcept;
 
-  virtual ResultCode update(const UpdateContext& context) = 0;
+  virtual bool update(const UpdateContext& context) = 0;
   virtual std::string name() const noexcept = 0;
-  virtual ResultCode bind(const mjModel& model) = 0;
-  virtual ResultCode reset(const mjModel& model, mjData& data) = 0;
+  virtual bool bind(const mjModel& model) = 0;
+  virtual bool reset(const mjModel& model, mjData& data) = 0;
 
  protected:
   SimulationComponent() = default;
 
-  ResultCode set_update_rate(double update_rate, double physics_rate);
+  bool set_update_rate(double update_rate, double physics_rate);
   void set_update_every_step() noexcept;
 
  private:

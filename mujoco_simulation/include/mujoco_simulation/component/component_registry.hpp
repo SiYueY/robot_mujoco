@@ -15,8 +15,8 @@ namespace mujoco_simulation {
 
 class ComponentRegistry {
  public:
-  ResultCode add(std::unique_ptr<SimulationComponent> component);
-  ResultCode remove(std::string name);
+  bool add(std::unique_ptr<SimulationComponent> component);
+  bool remove(std::string name);
   void clear();
 
   bool has_joint(std::string name) const;

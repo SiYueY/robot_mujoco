@@ -19,7 +19,7 @@ enum class OdometrySource {
   GroundTruthBodyPose,
 };
 
-struct MobileBaseConfig {
+struct MobileBaseInfo {
   std::string name;
   MobileBaseType type{MobileBaseType::None};
   std::string base_frame_id{"base_link"};

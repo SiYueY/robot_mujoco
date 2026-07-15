@@ -7,7 +7,7 @@
     <default class="fr3">
       <!-- Overwritten in joints 5, 6, and 7. -->
       <joint damping="0.21" armature="0.195" frictionloss="1.137"/>
-      <position inheritrange="1"/>
+      <motor ctrllimited="true" ctrlrange="-87 87" forcelimited="true" forcerange="-87 87"/>
       <default class="visual">
         <geom type="mesh" group="2" contype="0" conaffinity="0"/>
       </default>
@@ -149,13 +149,13 @@
   </worldbody>
 
   <actuator>
-    <position class="fr3" name="fr3_joint1" joint="fr3_joint1" kp="4500" kv="450"/>
-    <position class="fr3" name="fr3_joint2" joint="fr3_joint2" kp="4500" kv="450"/>
-    <position class="fr3" name="fr3_joint3" joint="fr3_joint3" kp="3500" kv="350"/>
-    <position class="fr3" name="fr3_joint4" joint="fr3_joint4" kp="3500" kv="350"/>
-    <position class="fr3" name="fr3_joint5" joint="fr3_joint5" kp="2000" kv="200"/>
-    <position class="fr3" name="fr3_joint6" joint="fr3_joint6" kp="2000" kv="200"/>
-    <position class="fr3" name="fr3_joint7" joint="fr3_joint7" kp="2000" kv="200"/>
+    <motor class="fr3" name="fr3_joint1" joint="fr3_joint1"/>
+    <motor class="fr3" name="fr3_joint2" joint="fr3_joint2"/>
+    <motor class="fr3" name="fr3_joint3" joint="fr3_joint3"/>
+    <motor class="fr3" name="fr3_joint4" joint="fr3_joint4"/>
+    <motor class="fr3" name="fr3_joint5" joint="fr3_joint5" forcerange="-12 12" ctrlrange="-12 12"/>
+    <motor class="fr3" name="fr3_joint6" joint="fr3_joint6" forcerange="-12 12" ctrlrange="-12 12"/>
+    <motor class="fr3" name="fr3_joint7" joint="fr3_joint7" forcerange="-12 12" ctrlrange="-12 12"/>
   </actuator>
 
   <contact>

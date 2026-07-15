@@ -68,7 +68,8 @@ hardware_interface::HardwareInfo parse_sensor_hardware_info(const std::string& m
       <command_interface name="velocity"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
-      <param name="actuator_name">hinge_vel</param>
+      <param name="motor_name">hinge_vel</param>
+      <param name="velocity_damping">5.0</param>
     </joint>
     <sensor name="imu">
       <state_interface name="orientation.x"/>
@@ -178,7 +179,7 @@ int run_main(int argc, char** argv) {
     <camera name="cam" pos="1 0 0" xyaxes="0 1 0 0 0 1" fovy="45"/>
   </worldbody>
   <actuator>
-    <velocity name="hinge_vel" joint="hinge"/>
+    <motor name="hinge_vel" joint="hinge"/>
   </actuator>
   <sensor>
     <framequat name="imu_quat" objtype="site" objname="imu_site"/>

@@ -88,6 +88,8 @@ Simulation
 
 主入口类是 [`Simulation`](./include/mujoco_simulation/simulation.hpp)。
 
+配置文件加载入口是 [`SimulationConfigParser`](./include/mujoco_simulation/simulation_config.hpp)。
+
 它对外暴露的能力主要有：
 
 - 初始化仿真
@@ -139,6 +141,14 @@ Simulation
 
 对下游调用者的建议是：把 `ResultCode` 当作稳定分支条件，不再依赖动态错误字符串。
 
+`SimulationConfigParser::load_file(...)` 当前遵循如下返回约定：
+
+- 返回 `bool`
+- 成功时写入 `SimulationConfig`
+- 失败时返回 `false`，当前不对外暴露解析诊断
+- 当前只负责把 `robot_mujoco.xml` 映射成 `SimulationConfig`
+- 不直接替代 ROS 侧的 URDF / `HardwareInfo` 解析链路
+
 ## 运行配置
 
 `SimulationConfig` 现在已经按重构文档收敛为嵌套配置：
@@ -157,6 +167,21 @@ Simulation
   - `headless` 或 `viewer`
 - `viewer_startup_timeout`
   - viewer 启动等待超时
+
+此外，当前提供了一条内聚到 `simulation_config.hpp` 的 `robot_mujoco.xml -> SimulationConfig` 解析路径：
+
+- 入口：`SimulationConfigParser parser; parser.load_file(path, &config)`
+- 当前 v1 只解析：
+  - `<mujoco><mjcf>`
+  - `<robot><joint>`
+  - joint 的 `position` / `velocity` / `limit` 子配置
+- `<mjcf>` 相对路径相对 `robot_mujoco.xml` 所在目录解析
+- 当前不解析：
+  - `initial_keyframe`
+  - `render_mode`
+  - `viewer_update_rate`
+  - imu / camera / lidar / mobile base
+- ROS 2 适配层当前仍然使用 `robot_mujoco_ros2` 中现有的 URDF / `HardwareInfo` 装配逻辑
 
 当前 `render_mode` 的含义：
 

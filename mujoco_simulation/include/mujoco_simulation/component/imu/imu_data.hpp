@@ -8,7 +8,7 @@
 
 namespace mujoco_simulation {
 
-struct ImuConfig {
+struct ImuInfo {
   SensorCommonConfig common{.update_rate = 200.0};
 
   std::string framequat_sensor_name;

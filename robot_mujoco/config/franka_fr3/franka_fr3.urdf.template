@@ -296,50 +296,68 @@
     </hardware>
 
     <joint name="fr3_joint1">
-      <param name="actuator_name">fr3_joint1</param>
+      <param name="motor_name">fr3_joint1</param>
+      <param name="position_stiffness">4500</param>
+      <param name="position_damping">450</param>
       <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
+      <command_interface name="stiffness"/>
+      <command_interface name="damping"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="fr3_joint2">
-      <param name="actuator_name">fr3_joint2</param>
-      <command_interface name="position"/>
+      <param name="motor_name">fr3_joint2</param>
+      <param name="position_stiffness">4500</param>
+      <param name="position_damping">450</param>
+      <command_interface name="position"/><command_interface name="velocity"/><command_interface name="effort"/><command_interface name="stiffness"/><command_interface name="damping"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="fr3_joint3">
-      <param name="actuator_name">fr3_joint3</param>
-      <command_interface name="position"/>
+      <param name="motor_name">fr3_joint3</param>
+      <param name="position_stiffness">3500</param>
+      <param name="position_damping">350</param>
+      <command_interface name="position"/><command_interface name="velocity"/><command_interface name="effort"/><command_interface name="stiffness"/><command_interface name="damping"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="fr3_joint4">
-      <param name="actuator_name">fr3_joint4</param>
-      <command_interface name="position"/>
+      <param name="motor_name">fr3_joint4</param>
+      <param name="position_stiffness">3500</param>
+      <param name="position_damping">350</param>
+      <command_interface name="position"/><command_interface name="velocity"/><command_interface name="effort"/><command_interface name="stiffness"/><command_interface name="damping"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="fr3_joint5">
-      <param name="actuator_name">fr3_joint5</param>
-      <command_interface name="position"/>
+      <param name="motor_name">fr3_joint5</param>
+      <param name="position_stiffness">2000</param>
+      <param name="position_damping">200</param>
+      <command_interface name="position"/><command_interface name="velocity"/><command_interface name="effort"/><command_interface name="stiffness"/><command_interface name="damping"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="fr3_joint6">
-      <param name="actuator_name">fr3_joint6</param>
-      <command_interface name="position"/>
+      <param name="motor_name">fr3_joint6</param>
+      <param name="position_stiffness">2000</param>
+      <param name="position_damping">200</param>
+      <command_interface name="position"/><command_interface name="velocity"/><command_interface name="effort"/><command_interface name="stiffness"/><command_interface name="damping"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
     <joint name="fr3_joint7">
-      <param name="actuator_name">fr3_joint7</param>
-      <command_interface name="position"/>
+      <param name="motor_name">fr3_joint7</param>
+      <param name="position_stiffness">2000</param>
+      <param name="position_damping">200</param>
+      <command_interface name="position"/><command_interface name="velocity"/><command_interface name="effort"/><command_interface name="stiffness"/><command_interface name="damping"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>

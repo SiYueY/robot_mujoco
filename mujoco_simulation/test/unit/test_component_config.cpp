@@ -6,38 +6,34 @@ namespace mujoco_simulation {
 namespace {
 
 TEST(ComponentConfigTest, ReplaceJointConfigUpdatesMatchingEntryOnly) {
-  JointConfig first{
-      .name = "joint_a",
-      .actuator_name = "joint_a_act",
-      .command_mode = CommandInterfaceType::Position,
+  JointInfo first{
+      .joint = "joint_a",
+      .actuator = "joint_a_motor",
   };
-  JointConfig second{
-      .name = "joint_b",
-      .actuator_name = "joint_b_act",
-      .command_mode = CommandInterfaceType::Velocity,
+  JointInfo second{
+      .joint = "joint_b",
+      .actuator = "joint_b_motor",
   };
 
   ComponentConfigList components{first, second};
-  JointConfig updated = second;
-  updated.command_mode = CommandInterfaceType::Effort;
+  JointInfo updated = second;
+  updated.effort_limits.max = 42.0;
 
-  EXPECT_TRUE(replace_joint_config(components, updated));
-  ASSERT_EQ(std::get<JointConfig>(components[0]).command_mode, CommandInterfaceType::Position);
-  ASSERT_EQ(std::get<JointConfig>(components[1]).command_mode, CommandInterfaceType::Effort);
+  EXPECT_TRUE(replace_joint_info(components, updated));
+  ASSERT_EQ(std::get<JointInfo>(components[0]).actuator, "joint_a_motor");
+  ASSERT_EQ(std::get<JointInfo>(components[1]).effort_limits.max, 42.0);
 }
 
 TEST(ComponentConfigTest, ReplaceJointConfigReturnsFalseWhenMissing) {
-  ComponentConfigList components{JointConfig{
-      .name = "joint_a",
-      .actuator_name = "joint_a_act",
-      .command_mode = CommandInterfaceType::Position,
+  ComponentConfigList components{JointInfo{
+      .joint = "joint_a",
+      .actuator = "joint_a_motor",
   }};
 
-  EXPECT_FALSE(replace_joint_config(components, JointConfig{
-                                                    .name = "joint_missing",
-                                                    .actuator_name = "joint_missing_act",
-                                                    .command_mode = CommandInterfaceType::Velocity,
-                                                }));
+  EXPECT_FALSE(replace_joint_info(components, JointInfo{
+                                                  .joint = "joint_missing",
+                                                  .actuator = "joint_missing_motor",
+                                              }));
 }
 
 TEST(ComponentConfigTest, ReplaceComponentConfigMatchesByTypeAndSemanticName) {
@@ -46,10 +42,10 @@ TEST(ComponentConfigTest, ReplaceComponentConfigMatchesByTypeAndSemanticName) {
                    .camera_name = "cam_front",
                    .height = 480,
                    .width = 640},
-      ImuConfig{.common = {.name = "imu", .update_rate = 200.0},
-                .framequat_sensor_name = "imu_quat",
-                .gyro_sensor_name = "imu_gyro",
-                .accelerometer_sensor_name = "imu_acc"},
+      ImuInfo{.common = {.name = "imu", .update_rate = 200.0},
+              .framequat_sensor_name = "imu_quat",
+              .gyro_sensor_name = "imu_gyro",
+              .accelerometer_sensor_name = "imu_acc"},
   };
 
   ComponentConfig updated_camera =
@@ -65,7 +61,7 @@ TEST(ComponentConfigTest, ReplaceComponentConfigMatchesByTypeAndSemanticName) {
   EXPECT_EQ(camera->width, 320);
   EXPECT_EQ(camera->height, 240);
 
-  const auto* imu = std::get_if<ImuConfig>(&components.back());
+  const auto* imu = std::get_if<ImuInfo>(&components.back());
   ASSERT_NE(imu, nullptr);
   EXPECT_EQ(imu->common.update_rate, 200.0);
 }
@@ -78,10 +74,10 @@ TEST(ComponentConfigTest, ReplaceComponentConfigRejectsDifferentTypeWithSameName
                    .width = 640}};
 
   EXPECT_FALSE(replace_component_config(
-      components, ComponentConfig{ImuConfig{.common = {.name = "shared_name", .update_rate = 200.0},
-                                            .framequat_sensor_name = "imu_quat",
-                                            .gyro_sensor_name = "imu_gyro",
-                                            .accelerometer_sensor_name = "imu_acc"}}));
+      components, ComponentConfig{ImuInfo{.common = {.name = "shared_name", .update_rate = 200.0},
+                                          .framequat_sensor_name = "imu_quat",
+                                          .gyro_sensor_name = "imu_gyro",
+                                          .accelerometer_sensor_name = "imu_acc"}}));
 }
 
 }  // namespace

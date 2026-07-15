@@ -1,34 +1,36 @@
 #include "mujoco_simulation/component/component_registry.hpp"
 
+#include "mujoco_simulation/component/logging.hpp"
+
 namespace mujoco_simulation {
 
-ResultCode ComponentRegistry::add(std::unique_ptr<SimulationComponent> component) {
+bool ComponentRegistry::add(std::unique_ptr<SimulationComponent> component) {
   if (component == nullptr) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ComponentRegistry::add", "component must not be null.");
   }
 
   const std::string component_name(component->name());
   if (component_name.empty()) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("ComponentRegistry::add", "component name must not be empty.");
   }
   if (components_.find(component_name) != components_.end()) {
-    return ResultCode::AlreadyExists;
+    return log_component_error("ComponentRegistry::add", "component name already exists.");
   }
 
   index_component(*component, component_name);
   components_.emplace(component_name, std::move(component));
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode ComponentRegistry::remove(std::string name) {
+bool ComponentRegistry::remove(std::string name) {
   const auto it = components_.find(std::string(name));
   if (it == components_.end()) {
-    return ResultCode::NotFound;
+    return log_component_error("ComponentRegistry::remove", "component name was not found.");
   }
 
   unindex_component(*it->second, name);
   components_.erase(it);
-  return ResultCode::Ok;
+  return true;
 }
 
 void ComponentRegistry::clear() {

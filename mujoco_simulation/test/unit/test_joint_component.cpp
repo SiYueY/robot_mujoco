@@ -3,7 +3,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <string>
 
 #include "mujoco_simulation/component/joint/joint_component.hpp"
 
@@ -13,34 +12,21 @@ namespace {
 class JointComponentTest : public ::testing::Test {
  protected:
   void TearDown() override {
-    if (data_ != nullptr) {
-      mj_deleteData(data_);
-      data_ = nullptr;
-    }
-    if (model_ != nullptr) {
-      mj_deleteModel(model_);
-      model_ = nullptr;
-    }
-    if (!model_path_.empty()) {
-      std::error_code error;
-      std::filesystem::remove(model_path_, error);
-    }
+    if (data_ != nullptr) mj_deleteData(data_);
+    if (model_ != nullptr) mj_deleteModel(model_);
+    std::error_code error;
+    std::filesystem::remove(model_path_, error);
   }
 
-  void load_model(const std::string& xml_contents) {
-    const auto temp_dir = std::filesystem::temp_directory_path();
-    model_path_ = temp_dir / std::filesystem::path("joint_component_test_" +
-                                                   std::to_string(::getpid()) + ".xml");
-
+  void load(const std::string& xml) {
+    model_path_ = std::filesystem::temp_directory_path() /
+                  ("joint_component_" + std::to_string(::getpid()) + ".xml");
     std::ofstream output(model_path_);
-    ASSERT_TRUE(output.is_open());
-    output << xml_contents;
+    output << xml;
     output.close();
-
-    char error[1024] = {0};
+    char error[1024] = {};
     model_ = mj_loadXML(model_path_.c_str(), nullptr, error, sizeof(error));
     ASSERT_NE(model_, nullptr) << error;
-
     data_ = mj_makeData(model_);
     ASSERT_NE(data_, nullptr);
     mj_forward(model_, data_);
@@ -51,125 +37,58 @@ class JointComponentTest : public ::testing::Test {
   std::filesystem::path model_path_;
 };
 
-TEST_F(JointComponentTest, DirectPositionActuatorWritesControl) {
-  load_model(R"(
-<mujoco model="joint_component">
-  <worldbody>
-    <body>
-      <joint name="hinge" type="hinge"/>
-      <geom type="capsule" size="0.05 0.2"/>
-    </body>
-  </worldbody>
-  <actuator>
-    <position name="hinge_pos" joint="hinge" ctrlrange="-1 1"/>
-  </actuator>
-</mujoco>)");
-
-  JointComponent joint({.name = "hinge",
-                        .actuator_name = "hinge_pos",
-                        .command_mode = CommandInterfaceType::Position});
-  ASSERT_EQ(joint.bind(*model_), ResultCode::Ok);
-
-  ASSERT_EQ(joint.write(*model_, *data_, {"hinge", 0.4, 0.0, 0.0, 0.0}), ResultCode::Ok);
-  const int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, "hinge_pos");
-  ASSERT_GE(actuator_id, 0);
-  EXPECT_DOUBLE_EQ(data_->ctrl[actuator_id], 0.4);
+TEST_F(JointComponentTest, AllModesWriteEffortToMotor) {
+  load(
+      R"(<mujoco><worldbody><body><joint name="hinge" type="hinge"/><geom type="sphere" size=".1"/></body></worldbody><actuator><motor name="motor" joint="hinge" ctrlrange="-20 20"/></actuator></mujoco>)");
+  JointComponent joint({.joint = "hinge",
+                        .actuator = "motor",
+                        .position_stiffness = 10.0,
+                        .position_damping = 2.0,
+                        .velocity_damping = 4.0});
+  ASSERT_TRUE(joint.bind(*model_));
+  ASSERT_TRUE(joint.write(*model_, *data_,
+                          {.joint = "hinge", .mode = ControlMode::Position, .position = 1.0}));
+  EXPECT_DOUBLE_EQ(data_->ctrl[joint.motor_id()], 10.0);
+  ASSERT_TRUE(joint.write(*model_, *data_,
+                          {.joint = "hinge", .mode = ControlMode::Velocity, .velocity = 2.0}));
+  EXPECT_DOUBLE_EQ(data_->ctrl[joint.motor_id()], 8.0);
+  ASSERT_TRUE(
+      joint.write(*model_, *data_, {.joint = "hinge", .mode = ControlMode::Effort, .effort = 3.0}));
+  EXPECT_DOUBLE_EQ(data_->ctrl[joint.motor_id()], 3.0);
+  ASSERT_TRUE(joint.write(*model_, *data_,
+                          {.joint = "hinge",
+                           .mode = ControlMode::Hybrid,
+                           .position = 1.0,
+                           .velocity = 2.0,
+                           .effort = 3.0,
+                           .stiffness = 5.0,
+                           .damping = 2.0}));
+  EXPECT_DOUBLE_EQ(data_->ctrl[joint.motor_id()], 12.0);
 }
 
-TEST_F(JointComponentTest, InvalidActuatorModeFailsBinding) {
-  load_model(R"(
-<mujoco model="joint_component">
-  <worldbody>
-    <body>
-      <joint name="hinge" type="hinge"/>
-      <geom type="capsule" size="0.05 0.2"/>
-    </body>
-  </worldbody>
-  <actuator>
-    <position name="hinge_pos" joint="hinge"/>
-  </actuator>
-</mujoco>)");
-
-  JointComponent joint({.name = "hinge",
-                        .actuator_name = "hinge_pos",
-                        .command_mode = CommandInterfaceType::Velocity});
-  const ResultCode status = joint.bind(*model_);
-  EXPECT_EQ(status, ResultCode::ModelValidationFailed);
+TEST_F(JointComponentTest, PrismaticJointAndSafetyLimitsAreSupported) {
+  load(
+      R"(<mujoco><worldbody><body><joint name="slide" type="slide"/><geom type="sphere" size=".1"/></body></worldbody><actuator><motor name="motor" joint="slide" ctrlrange="-10 10"/></actuator></mujoco>)");
+  JointComponent joint({.joint = "slide",
+                        .actuator = "motor",
+                        .velocity_damping = 4.0,
+                        .velocity_limits = {.min = -1.0, .max = 1.0},
+                        .effort_limits = {.min = -2.0, .max = 2.0}});
+  ASSERT_TRUE(joint.bind(*model_));
+  EXPECT_EQ(joint.joint_type(), JointType::Prismatic);
+  ASSERT_TRUE(joint.write(*model_, *data_,
+                          {.joint = "slide", .mode = ControlMode::Velocity, .velocity = 3.0}));
+  EXPECT_DOUBLE_EQ(data_->ctrl[joint.motor_id()], 2.0);
+  ASSERT_TRUE(
+      joint.write(*model_, *data_, {.joint = "slide", .mode = ControlMode::Effort, .effort = 8.0}));
+  EXPECT_DOUBLE_EQ(data_->ctrl[joint.motor_id()], 2.0);
 }
 
-TEST_F(JointComponentTest, MissingActuatorFailsWithBindingError) {
-  load_model(R"(
-<mujoco model="joint_component">
-  <worldbody>
-    <body>
-      <joint name="hinge" type="hinge"/>
-      <geom type="capsule" size="0.05 0.2"/>
-    </body>
-  </worldbody>
-</mujoco>)");
-
-  JointComponent joint({.name = "hinge",
-                        .actuator_name = "missing_actuator",
-                        .command_mode = CommandInterfaceType::Velocity});
-  const ResultCode status = joint.bind(*model_);
-  EXPECT_EQ(status, ResultCode::BindingFailed);
-}
-
-TEST_F(JointComponentTest, SoftwarePdOnPassiveJointWritesAppliedForceAndResetClearsIt) {
-  load_model(R"(
-<mujoco model="joint_component">
-  <worldbody>
-    <body>
-      <joint name="hinge" type="hinge"/>
-      <geom type="capsule" size="0.05 0.2"/>
-    </body>
-  </worldbody>
-</mujoco>)");
-
-  JointComponent joint({.name = "hinge",
-                        .command_mode = CommandInterfaceType::Position,
-                        .controller_type = JointControllerType::SoftwarePd,
-                        .position_kp = 10.0,
-                        .velocity_kd = 1.0,
-                        .command_min = -5.0,
-                        .command_max = 5.0});
-  ASSERT_EQ(joint.bind(*model_), ResultCode::Ok);
-
-  ASSERT_EQ(joint.write(*model_, *data_, {"hinge", 1.0, 0.0, 0.0, 0.0}), ResultCode::Ok);
-  EXPECT_DOUBLE_EQ(data_->qfrc_applied[model_->jnt_dofadr[0]], 5.0);
-
-  ASSERT_EQ(joint.reset(*model_, *data_), ResultCode::Ok);
-  EXPECT_DOUBLE_EQ(data_->qfrc_applied[model_->jnt_dofadr[0]], 0.0);
-}
-
-TEST_F(JointComponentTest, SoftwarePdOnMotorActuatorClampsToActuatorLimits) {
-  load_model(R"(
-<mujoco model="joint_component">
-  <worldbody>
-    <body>
-      <joint name="hinge" type="hinge"/>
-      <geom type="capsule" size="0.05 0.2"/>
-    </body>
-  </worldbody>
-  <actuator>
-    <motor name="hinge_motor" joint="hinge" gear="1" ctrlrange="-2 2" forcerange="-1.5 1.5"/>
-  </actuator>
-</mujoco>)");
-
-  JointComponent joint({.name = "hinge",
-                        .actuator_name = "hinge_motor",
-                        .command_mode = CommandInterfaceType::Velocity,
-                        .controller_type = JointControllerType::SoftwarePd,
-                        .velocity_kd = 10.0});
-  ASSERT_EQ(joint.bind(*model_), ResultCode::Ok);
-
-  ASSERT_EQ(joint.write(*model_, *data_, {"hinge", 0.0, 1.0, 0.0, 0.0}), ResultCode::Ok);
-  const int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, "hinge_motor");
-  ASSERT_GE(actuator_id, 0);
-  EXPECT_DOUBLE_EQ(data_->ctrl[actuator_id], 1.5);
-
-  ASSERT_EQ(joint.reset(*model_, *data_), ResultCode::Ok);
-  EXPECT_DOUBLE_EQ(data_->ctrl[actuator_id], 0.0);
+TEST_F(JointComponentTest, RejectsNonMotorActuators) {
+  load(
+      R"(<mujoco><worldbody><body><joint name="hinge" type="hinge"/><geom type="sphere" size=".1"/></body></worldbody><actuator><position name="position" joint="hinge"/></actuator></mujoco>)");
+  JointComponent joint({.joint = "hinge", .actuator = "position"});
+  EXPECT_FALSE(joint.bind(*model_));
 }
 
 }  // namespace

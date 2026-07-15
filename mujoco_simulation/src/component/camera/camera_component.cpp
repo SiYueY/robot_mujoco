@@ -4,6 +4,7 @@
 #include <cstring>
 #include <utility>
 
+#include "mujoco_simulation/component/logging.hpp"
 #include "mujoco_simulation/component/update_context.hpp"
 
 namespace mujoco_simulation {
@@ -83,68 +84,67 @@ CameraComponent::CameraComponent(CameraConfig config) : config_(std::move(config
 
 std::string CameraComponent::name() const noexcept { return config_.common.name; }
 
-ResultCode CameraComponent::bind(const mjModel& model) {
+bool CameraComponent::bind(const mjModel& model) {
   if (config_.common.name.empty()) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("CameraComponent::bind", "camera component name must not be empty.");
   }
   if (model.opt.timestep <= 0.0) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("CameraComponent::bind", "model timestep must be positive.");
   }
   if (config_.camera_name.empty()) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("CameraComponent::bind", "camera name must not be empty.");
   }
   if (config_.width <= 0 || config_.height <= 0) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("CameraComponent::bind",
+                               "camera width and height must be positive.");
   }
   if (config_.common.update_rate <= 0.0) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("CameraComponent::bind", "camera update_rate must be positive.");
   }
   if (!config_.enable_rgb && !config_.enable_depth) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("CameraComponent::bind", "camera must enable rgb or depth output.");
   }
 
   camera_id_ = mj_name2id(&model, mjOBJ_CAMERA, config_.camera_name.c_str());
   if (camera_id_ < 0) {
-    return ResultCode::BindingFailed;
+    return log_component_error("CameraComponent::bind", "camera was not found in model.");
   }
   fovy_degrees_ = static_cast<double>(model.cam_fovy[camera_id_]);
-  const ResultCode schedule_status =
-      set_update_rate(config_.common.update_rate, 1.0 / model.opt.timestep);
-  if (schedule_status != ResultCode::Ok) {
-    return schedule_status;
+  if (!set_update_rate(config_.common.update_rate, 1.0 / model.opt.timestep)) {
+    return false;
   }
 
   sample_sequence_ = 0;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode CameraComponent::reset(const mjModel& model, mjData& data) {
+bool CameraComponent::reset(const mjModel& model, mjData& data) {
   (void)model;
   (void)data;
   sample_sequence_ = 0;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode CameraComponent::update(const UpdateContext& context) {
+bool CameraComponent::update(const UpdateContext& context) {
   (void)context.step_count;
   if (camera_id_ < 0) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("CameraComponent::update", "camera must be bound before update.");
   }
   if (context.camera_renderer == nullptr || context.camera_buffer == nullptr) {
-    return ResultCode::FailedPrecondition;
+    return log_component_error("CameraComponent::update",
+                               "camera_renderer and camera_buffer must not be null.");
   }
 
   const std::uint64_t timestamp_ns =
       context.simulation_time <= 0.0 ? 0
                                      : static_cast<std::uint64_t>(context.simulation_time * 1.0e9);
   std::shared_ptr<const CameraRenderState> rendered;
-  const ResultCode render_status = context.camera_renderer->render(
-      context.model, config_, ++sample_sequence_, timestamp_ns, &rendered);
-  if (render_status != ResultCode::Ok) {
-    return render_status;
+  if (!context.camera_renderer->render(context.model, config_, ++sample_sequence_, timestamp_ns,
+                                       &rendered)) {
+    return log_component_error("CameraComponent::update", "camera render failed.");
   }
   context.camera_buffer->write(config_.common.name, camera_state_from_render_state(*rendered));
-  return ResultCode::Ok;
+  return true;
 }
 
 }  // namespace mujoco_simulation

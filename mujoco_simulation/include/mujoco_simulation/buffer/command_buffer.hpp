@@ -1,7 +1,6 @@
 #pragma once
 
 #include <chrono>
-#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -29,8 +28,6 @@ struct CommandTimeoutConfig {
 class CommandBuffer {
  public:
   using Clock = std::chrono::steady_clock;
-  using JointModeResolver = std::function<CommandInterfaceType(std::string)>;
-
   ResultCode write_joint_command(std::string component_name, const JointCommand& command);
 
   ResultCode write_mobile_base_command(std::string component_name,
@@ -38,8 +35,7 @@ class CommandBuffer {
 
   CommandSnapshot read() const;
 
-  CommandSnapshot read(const Clock::time_point now,
-                       const JointModeResolver& joint_mode_resolver) const;
+  CommandSnapshot read(const Clock::time_point now) const;
 
   void clear();
 
@@ -59,7 +55,6 @@ class CommandBuffer {
   bool timed_out(const Clock::time_point submission_time, const Clock::time_point now) const;
 
   JointCommand effective_joint_command(std::string name, const TimedJointCommand& timed_command,
-                                       CommandInterfaceType mode,
                                        const Clock::time_point now) const;
 
   MobileBaseCommand effective_mobile_base_command(const TimedMobileBaseCommand& timed_command,

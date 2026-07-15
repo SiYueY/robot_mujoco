@@ -195,7 +195,7 @@ TEST_F(CameraRenderingTest, CameraInitializationReportsRenderFailedWhenNoBackend
                                    .enable_rgb = true,
                                    .enable_depth = false}}};
   const ResultCode status = simulation.initialize(config);
-  EXPECT_EQ(status, ResultCode::RenderFailed);
+  EXPECT_EQ(status, ResultCode::Internal);
 }
 
 #undef ASSERT_OK_STATUS

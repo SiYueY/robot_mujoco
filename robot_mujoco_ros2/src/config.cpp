@@ -1,4 +1,5 @@
 #include <exception>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 
@@ -117,11 +118,14 @@ bool is_sensor_type(const hardware_interface::ComponentInfo& sensor, const std::
 bool is_joint_command_interface(const std::string& interface_name) {
   return interface_name == hardware_interface::HW_IF_POSITION ||
          interface_name == hardware_interface::HW_IF_VELOCITY ||
-         interface_name == hardware_interface::HW_IF_EFFORT;
+         interface_name == hardware_interface::HW_IF_EFFORT || interface_name == "stiffness" ||
+         interface_name == "damping";
 }
 
 bool is_joint_state_interface(const std::string& interface_name) {
-  return is_joint_command_interface(interface_name);
+  return interface_name == hardware_interface::HW_IF_POSITION ||
+         interface_name == hardware_interface::HW_IF_VELOCITY ||
+         interface_name == hardware_interface::HW_IF_EFFORT;
 }
 
 bool is_imu_state_interface(const std::string& interface_name) {
@@ -130,19 +134,6 @@ bool is_imu_state_interface(const std::string& interface_name) {
          interface_name == "angular_velocity.x" || interface_name == "angular_velocity.y" ||
          interface_name == "angular_velocity.z" || interface_name == "linear_acceleration.x" ||
          interface_name == "linear_acceleration.y" || interface_name == "linear_acceleration.z";
-}
-
-mujoco_simulation::CommandInterfaceType to_joint_control_mode(const std::string& interface_name) {
-  if (interface_name == hardware_interface::HW_IF_POSITION) {
-    return mujoco_simulation::CommandInterfaceType::Position;
-  }
-  if (interface_name == hardware_interface::HW_IF_VELOCITY) {
-    return mujoco_simulation::CommandInterfaceType::Velocity;
-  }
-  if (interface_name == hardware_interface::HW_IF_EFFORT) {
-    return mujoco_simulation::CommandInterfaceType::Effort;
-  }
-  return mujoco_simulation::CommandInterfaceType::None;
 }
 
 bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info,
@@ -181,11 +172,36 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
   for (const auto& joint : hardware_info.joints) {
     JointData joint_data;
     joint_data.name = joint.name;
-    joint_data.config.name = joint.name;
-    joint_data.config.actuator_name = parameter_or(joint.parameters, "actuator_name");
-    joint_data.config.command_mode = mujoco_simulation::CommandInterfaceType::None;
-    joint_data.command.name = joint.name;
-    joint_data.state.name = joint.name;
+    joint_data.config.joint = joint.name;
+    joint_data.config.actuator = parameter_or(joint.parameters, "motor_name");
+    if (!parse_double_parameter(joint.parameters, "position_stiffness", 0.0,
+                                &joint_data.config.position_stiffness, error_message) ||
+        !parse_double_parameter(joint.parameters, "position_damping", 0.0,
+                                &joint_data.config.position_damping, error_message) ||
+        !parse_double_parameter(joint.parameters, "velocity_damping", 0.0,
+                                &joint_data.config.velocity_damping, error_message) ||
+        !parse_double_parameter(joint.parameters, "position_min",
+                                -std::numeric_limits<double>::infinity(),
+                                &joint_data.config.position_limits.min, error_message) ||
+        !parse_double_parameter(joint.parameters, "position_max",
+                                std::numeric_limits<double>::infinity(),
+                                &joint_data.config.position_limits.max, error_message) ||
+        !parse_double_parameter(joint.parameters, "velocity_min",
+                                -std::numeric_limits<double>::infinity(),
+                                &joint_data.config.velocity_limits.min, error_message) ||
+        !parse_double_parameter(joint.parameters, "velocity_max",
+                                std::numeric_limits<double>::infinity(),
+                                &joint_data.config.velocity_limits.max, error_message) ||
+        !parse_double_parameter(joint.parameters, "effort_min",
+                                -std::numeric_limits<double>::infinity(),
+                                &joint_data.config.effort_limits.min, error_message) ||
+        !parse_double_parameter(joint.parameters, "effort_max",
+                                std::numeric_limits<double>::infinity(),
+                                &joint_data.config.effort_limits.max, error_message)) {
+      return false;
+    }
+    joint_data.command.joint = joint.name;
+    joint_data.state.joint = joint.name;
 
     for (const auto& command_interface : joint.command_interfaces) {
       if (!is_joint_command_interface(command_interface.name)) {

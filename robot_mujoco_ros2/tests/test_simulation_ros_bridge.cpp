@@ -478,7 +478,8 @@ TEST(ConfigBuilderTest, BuildsRuntimeRosAndMappingOutputs) {
     <joint name="joint1">
       <command_interface name="velocity"/>
       <state_interface name="position"/>
-      <param name="actuator_name">joint1_vel</param>
+      <param name="motor_name">joint1_vel</param>
+      <param name="velocity_damping">5.0</param>
     </joint>
     <sensor name="imu">
       <state_interface name="orientation.x"/>

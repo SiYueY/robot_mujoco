@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "mujoco_simulation/component/logging.hpp"
+
 namespace mujoco_simulation {
 namespace {
 
@@ -38,19 +40,21 @@ void SimulationComponent::reset_update_schedule() {
 
 std::uint64_t SimulationComponent::missed_updates() const noexcept { return missed_updates_; }
 
-ResultCode SimulationComponent::set_update_rate(double update_rate, double physics_rate) {
+bool SimulationComponent::set_update_rate(double update_rate, double physics_rate) {
   if (!std::isfinite(update_rate) || !std::isfinite(physics_rate) || update_rate <= 0.0 ||
       physics_rate <= 0.0) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("SimulationComponent::set_update_rate",
+                               "update_rate and physics_rate must be finite positive values.");
   }
   if (update_rate - physics_rate > kScheduleEpsilon) {
-    return ResultCode::InvalidArgument;
+    return log_component_error("SimulationComponent::set_update_rate",
+                               "update_rate must not exceed physics_rate.");
   }
 
   update_rate_ = update_rate;
   period_ = 1.0 / update_rate_;
   reset_update_schedule();
-  return ResultCode::Ok;
+  return true;
 }
 
 void SimulationComponent::set_update_every_step() noexcept {

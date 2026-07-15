@@ -233,9 +233,8 @@ ResultCode Simulation::reconfigure_component(const ComponentConfig& updated_comp
     if (model_ == nullptr) {
       return ResultCode::InvalidState;
     }
-    const ResultCode status = component_manager_.reconfigure_component(*model_, updated_component);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!component_manager_.reconfigure_component(*model_, updated_component)) {
+      return ResultCode::Internal;
     }
     const ResultCode apply_status =
         apply_component_reconfiguration_locked(updated_component, &published_snapshot);
@@ -256,7 +255,7 @@ ResultCode Simulation::set_joint_command(const JointCommand& command) {
   if (command_buffer == nullptr) {
     return ResultCode::InvalidState;
   }
-  return command_buffer->write_joint_command(command.name, command);
+  return command_buffer->write_joint_command(command.joint, command);
 }
 
 bool Simulation::joint_state(std::string joint_name, JointState* out) const {
@@ -406,12 +405,11 @@ ResultCode Simulation::initialize_components() {
     if (model_ == nullptr) {
       return ResultCode::InvalidState;
     }
-    ResultCode status = component_manager_.build(*model_, config_.components);
-    if (status != ResultCode::Ok) {
-      return status;
+    if (!component_manager_.build(*model_, config_.components)) {
+      return ResultCode::Internal;
     }
     const double simulation_time = model_runtime_->simulation_time();
-    status = update_components_for_step_locked(0, simulation_time);
+    const ResultCode status = update_components_for_step_locked(0, simulation_time);
     if (status != ResultCode::Ok) {
       return status;
     }
@@ -464,10 +462,9 @@ ResultCode Simulation::scheduler_write_commands() {
     return ResultCode::FailedPrecondition;
   }
 
-  const CommandSnapshot snapshot = command_buffer_->read(
-      CommandBuffer::Clock::now(),
-      [this](std::string name) { return component_manager_.joint_command_mode(name); });
-  return component_manager_.write_commands(*model_, *data_, snapshot);
+  const CommandSnapshot snapshot = command_buffer_->read(CommandBuffer::Clock::now());
+  return component_manager_.write_commands(*model_, *data_, snapshot) ? ResultCode::Ok
+                                                                      : ResultCode::Internal;
 }
 
 ResultCode Simulation::scheduler_update_components() {
@@ -489,7 +486,9 @@ ResultCode Simulation::update_components_for_step_locked(std::uint64_t step_coun
     return ResultCode::FailedPrecondition;
   }
   return component_manager_.update_components(*model_, *data_, simulation_time, step_count,
-                                              camera_renderer_.get(), camera_buffer_.get());
+                                              camera_renderer_.get(), camera_buffer_.get())
+             ? ResultCode::Ok
+             : ResultCode::Internal;
 }
 
 ResultCode Simulation::write_state_snapshot(bool increment_step_count) {
@@ -571,9 +570,8 @@ ResultCode Simulation::scheduler_reset(const ResetRequest& request) {
     }
 
     if (request.options.reset_components && model_ != nullptr && data_ != nullptr) {
-      status = component_manager_.reset_all(*model_, *data_);
-      if (status != ResultCode::Ok) {
-        return status;
+      if (!component_manager_.reset_all(*model_, *data_)) {
+        return ResultCode::Internal;
       }
     }
     if (request.options.clear_commands && command_buffer_ != nullptr) {
@@ -717,7 +715,8 @@ ResultCode Simulation::build_state_snapshot(StateSnapshot* snapshot) const {
   if (snapshot == nullptr || data_ == nullptr) {
     return ResultCode::InvalidArgument;
   }
-  return component_manager_.build_state_snapshot(*data_, *snapshot);
+  return component_manager_.build_state_snapshot(*data_, *snapshot) ? ResultCode::Ok
+                                                                    : ResultCode::Internal;
 }
 
 RenderMode parse_render_mode(const std::string& value) {

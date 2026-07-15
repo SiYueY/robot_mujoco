@@ -73,11 +73,11 @@ TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
   config.model.model_path = model_path;
   config.components = {
       ComponentConfig{
-          ImuConfig{.common = {.name = "imu", .frame_id = "imu_link", .update_rate = 200.0},
-                    .framequat_sensor_name = "imu_quat",
-                    .gyro_sensor_name = "imu_gyro",
-                    .accelerometer_sensor_name = "imu_acc"}},
-      ComponentConfig{LidarConfig{
+          ImuInfo{.common = {.name = "imu", .frame_id = "imu_link", .update_rate = 200.0},
+                  .framequat_sensor_name = "imu_quat",
+                  .gyro_sensor_name = "imu_gyro",
+                  .accelerometer_sensor_name = "imu_acc"}},
+      ComponentConfig{LidarInfo{
           .common = {.name = "front_lidar", .frame_id = "front_lidar_link", .update_rate = 10.0},
           .sensor_prefix = "front_lidar",
           .angle_min = -0.2,
@@ -149,7 +149,7 @@ TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
 
   SimulationConfig config;
   config.model.model_path = model_path;
-  config.components = {ComponentConfig{LidarConfig{
+  config.components = {ComponentConfig{LidarInfo{
       .common = {.name = "front_lidar", .frame_id = "front_lidar_link", .update_rate = 10.0},
       .sensor_prefix = "front_lidar",
       .angle_min = 0.0,
@@ -191,10 +191,10 @@ TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
   SimulationConfig bad_type_config;
   bad_type_config.model.model_path = model_path;
   bad_type_config.components = {
-      ComponentConfig{ImuConfig{.common = {.name = "bad_type", .update_rate = 200.0},
-                                .framequat_sensor_name = "imu_gyro",
-                                .gyro_sensor_name = "imu_gyro",
-                                .accelerometer_sensor_name = "imu_acc"}}};
+      ComponentConfig{ImuInfo{.common = {.name = "bad_type", .update_rate = 200.0},
+                              .framequat_sensor_name = "imu_gyro",
+                              .gyro_sensor_name = "imu_gyro",
+                              .accelerometer_sensor_name = "imu_acc"}}};
   const ResultCode bad_type_status = bad_type_simulation.initialize(bad_type_config);
   EXPECT_NE(bad_type_status, ResultCode::Ok);
 
@@ -202,10 +202,10 @@ TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
   SimulationConfig too_fast_config;
   too_fast_config.model.model_path = model_path;
   too_fast_config.components = {
-      ComponentConfig{ImuConfig{.common = {.name = "too_fast", .update_rate = 2000.0},
-                                .framequat_sensor_name = "imu_quat",
-                                .gyro_sensor_name = "imu_gyro",
-                                .accelerometer_sensor_name = "imu_acc"}}};
+      ComponentConfig{ImuInfo{.common = {.name = "too_fast", .update_rate = 2000.0},
+                              .framequat_sensor_name = "imu_quat",
+                              .gyro_sensor_name = "imu_gyro",
+                              .accelerometer_sensor_name = "imu_acc"}}};
   const ResultCode too_fast_status = too_fast_simulation.initialize(too_fast_config);
   EXPECT_NE(too_fast_status, ResultCode::Ok);
 }

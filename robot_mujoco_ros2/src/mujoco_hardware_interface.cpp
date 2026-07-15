@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <optional>
+#include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -42,6 +44,27 @@ bool split_interface_key(const std::string& interface_key, std::string* joint_na
   *joint_name = interface_key.substr(0, separator);
   *interface_name = interface_key.substr(separator + 1);
   return true;
+}
+
+using JointInterfaceSet = std::set<std::string>;
+
+std::optional<mujoco_simulation::ControlMode> control_mode_for(
+    const JointInterfaceSet& interfaces) {
+  if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_POSITION}) {
+    return mujoco_simulation::ControlMode::Position;
+  }
+  if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_VELOCITY}) {
+    return mujoco_simulation::ControlMode::Velocity;
+  }
+  if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_EFFORT}) {
+    return mujoco_simulation::ControlMode::Effort;
+  }
+  if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_POSITION,
+                                      hardware_interface::HW_IF_VELOCITY,
+                                      hardware_interface::HW_IF_EFFORT, "stiffness", "damping"}) {
+    return mujoco_simulation::ControlMode::Hybrid;
+  }
+  return std::nullopt;
 }
 
 const char* result_code_name(mujoco_simulation::ResultCode code) {
@@ -138,17 +161,23 @@ const JointData* MuJoCoHardwareInterface::find_joint(const std::string& joint_na
 
 void MuJoCoHardwareInterface::initialize_command_buffers() {
   for (auto& joint : config_.joints) {
-    const auto it = active_joint_modes_.find(joint.name);
-    const auto mode = it == active_joint_modes_.end()
-                          ? mujoco_simulation::CommandInterfaceType::None
-                          : it->second;
-    if (mode == mujoco_simulation::CommandInterfaceType::Position) {
+    const auto it = active_joint_interfaces_.find(joint.name);
+    const auto mode =
+        it == active_joint_interfaces_.end() ? std::nullopt : control_mode_for(it->second);
+    if (mode == mujoco_simulation::ControlMode::Position ||
+        mode == mujoco_simulation::ControlMode::Hybrid) {
       joint.command.position = joint.state.position;
-    } else if (mode == mujoco_simulation::CommandInterfaceType::Velocity) {
+    }
+    if (mode == mujoco_simulation::ControlMode::Velocity ||
+        mode == mujoco_simulation::ControlMode::Hybrid) {
       joint.command.velocity = 0.0;
-    } else if (mode == mujoco_simulation::CommandInterfaceType::Effort) {
+    }
+    if (mode == mujoco_simulation::ControlMode::Effort ||
+        mode == mujoco_simulation::ControlMode::Hybrid) {
       joint.command.effort = 0.0;
     }
+    joint.command.stiffness = joint.config.position_stiffness;
+    joint.command.damping = joint.config.position_damping;
   }
 }
 
@@ -410,12 +439,12 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_init(
         }
       });
 
-  active_joint_modes_.clear();
-  pending_mode_switch_.next_modes.clear();
+  active_joint_interfaces_.clear();
+  pending_mode_switch_.next_interfaces.clear();
   pending_mode_switch_.valid = false;
-  for (const auto& joint : config_.joints) {
-    active_joint_modes_[joint.name] = mujoco_simulation::CommandInterfaceType::None;
-    pending_mode_switch_.next_modes[joint.name] = mujoco_simulation::CommandInterfaceType::None;
+  for (auto& joint : config_.joints) {
+    active_joint_interfaces_[joint.name] = {};
+    pending_mode_switch_.next_interfaces[joint.name] = {};
   }
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -474,6 +503,10 @@ MuJoCoHardwareInterface::export_command_interfaces() {
         command_interfaces.emplace_back(joint.name, interface_name, &joint.command.velocity);
       } else if (interface_name == hardware_interface::HW_IF_EFFORT) {
         command_interfaces.emplace_back(joint.name, interface_name, &joint.command.effort);
+      } else if (interface_name == "stiffness") {
+        command_interfaces.emplace_back(joint.name, interface_name, &joint.command.stiffness);
+      } else if (interface_name == "damping") {
+        command_interfaces.emplace_back(joint.name, interface_name, &joint.command.damping);
       }
     }
   }
@@ -483,13 +516,8 @@ MuJoCoHardwareInterface::export_command_interfaces() {
 hardware_interface::return_type MuJoCoHardwareInterface::prepare_command_mode_switch(
     const std::vector<std::string>& start_interfaces,
     const std::vector<std::string>& stop_interfaces) {
-  pending_mode_switch_.next_modes = active_joint_modes_;
+  pending_mode_switch_.next_interfaces = active_joint_interfaces_;
   pending_mode_switch_.valid = false;
-
-  std::unordered_map<std::string, mujoco_simulation::CommandInterfaceType> start_modes_by_joint;
-  std::unordered_map<std::string, mujoco_simulation::CommandInterfaceType> stop_modes_by_joint;
-  std::map<mujoco_simulation::CommandInterfaceType, std::size_t> start_counts;
-  std::map<mujoco_simulation::CommandInterfaceType, std::size_t> stop_counts;
   std::string joint_name;
   std::string interface_name;
 
@@ -505,9 +533,7 @@ hardware_interface::return_type MuJoCoHardwareInterface::prepare_command_mode_sw
                   interface_name) == joint->command_interfaces.end()) {
       return hardware_interface::return_type::ERROR;
     }
-    const auto mode = to_joint_control_mode(interface_name);
-    stop_modes_by_joint[joint_name] = mode;
-    ++stop_counts[mode];
+    pending_mode_switch_.next_interfaces[joint_name].erase(interface_name);
   }
 
   for (const auto& start_interface : start_interfaces) {
@@ -522,36 +548,12 @@ hardware_interface::return_type MuJoCoHardwareInterface::prepare_command_mode_sw
                   interface_name) == joint->command_interfaces.end()) {
       return hardware_interface::return_type::ERROR;
     }
-    const auto mode = to_joint_control_mode(interface_name);
-    const auto [it, inserted] = start_modes_by_joint.emplace(joint_name, mode);
-    if (!inserted && it->second != mode) {
+    pending_mode_switch_.next_interfaces[joint_name].insert(interface_name);
+  }
+  for (const auto& [name, interfaces] : pending_mode_switch_.next_interfaces) {
+    if (!interfaces.empty() && !control_mode_for(interfaces).has_value()) {
       return hardware_interface::return_type::ERROR;
     }
-    ++start_counts[mode];
-  }
-
-  const auto joint_count = config_.joints.size();
-  for (const auto& [mode, count] : start_counts) {
-    if (mode != mujoco_simulation::CommandInterfaceType::None && count != joint_count) {
-      return hardware_interface::return_type::ERROR;
-    }
-  }
-  for (const auto& [mode, count] : stop_counts) {
-    if (mode != mujoco_simulation::CommandInterfaceType::None && count != joint_count) {
-      return hardware_interface::return_type::ERROR;
-    }
-  }
-  if (start_counts.size() > 1U) {
-    return hardware_interface::return_type::ERROR;
-  }
-
-  for (const auto& joint : config_.joints) {
-    if (stop_modes_by_joint.find(joint.name) != stop_modes_by_joint.end()) {
-      pending_mode_switch_.next_modes[joint.name] = mujoco_simulation::CommandInterfaceType::None;
-    }
-  }
-  for (const auto& [name, mode] : start_modes_by_joint) {
-    pending_mode_switch_.next_modes[name] = mode;
   }
 
   pending_mode_switch_.valid = true;
@@ -565,22 +567,7 @@ hardware_interface::return_type MuJoCoHardwareInterface::perform_command_mode_sw
     return hardware_interface::return_type::ERROR;
   }
 
-  for (const auto& [joint_name, mode] : pending_mode_switch_.next_modes) {
-    JointData* joint = find_joint(joint_name);
-    if (joint == nullptr) {
-      return hardware_interface::return_type::ERROR;
-    }
-    const auto previous_config = joint->config;
-    joint->config.command_mode = mode;
-    const mujoco_simulation::ResultCode status =
-        simulation_->reconfigure_component(mujoco_simulation::ComponentConfig{joint->config});
-    if (status != ResultCode::Ok) {
-      joint->config = previous_config;
-      RCLCPP_ERROR(hardware_logger(), "reconfigure component failed: %s", result_code_name(status));
-      return hardware_interface::return_type::ERROR;
-    }
-  }
-  active_joint_modes_ = pending_mode_switch_.next_modes;
+  active_joint_interfaces_ = pending_mode_switch_.next_interfaces;
   initialize_command_buffers();
   pending_mode_switch_.valid = false;
   return hardware_interface::return_type::OK;
@@ -598,14 +585,14 @@ hardware_interface::return_type MuJoCoHardwareInterface::read(const rclcpp::Time
 
 hardware_interface::return_type MuJoCoHardwareInterface::write(const rclcpp::Time&,
                                                                const rclcpp::Duration&) {
-  for (const auto& joint : config_.joints) {
-    const auto it = active_joint_modes_.find(joint.name);
-    const auto mode = it == active_joint_modes_.end()
-                          ? mujoco_simulation::CommandInterfaceType::None
-                          : it->second;
-    if (mode == mujoco_simulation::CommandInterfaceType::None) {
+  for (auto& joint : config_.joints) {
+    const auto it = active_joint_interfaces_.find(joint.name);
+    const auto mode =
+        it == active_joint_interfaces_.end() ? std::nullopt : control_mode_for(it->second);
+    if (!mode.has_value()) {
       continue;
     }
+    joint.command.mode = *mode;
     const mujoco_simulation::ResultCode status = simulation_->set_joint_command(joint.command);
     if (status != ResultCode::Ok) {
       RCLCPP_ERROR(hardware_logger(), "set_joint_command failed: %s", result_code_name(status));
@@ -687,9 +674,9 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_deactivate(
     RCLCPP_ERROR(hardware_logger(), "stop failed: %s", result_code_name(stop_status));
     return hardware_interface::CallbackReturn::ERROR;
   }
-  for (auto& [joint_name, mode] : active_joint_modes_) {
-    mode = mujoco_simulation::CommandInterfaceType::None;
-    pending_mode_switch_.next_modes[joint_name] = mujoco_simulation::CommandInterfaceType::None;
+  for (auto& [joint_name, interfaces] : active_joint_interfaces_) {
+    interfaces.clear();
+    pending_mode_switch_.next_interfaces[joint_name].clear();
   }
   pending_mode_switch_.valid = false;
   system_state_ = SystemState::kInactive;

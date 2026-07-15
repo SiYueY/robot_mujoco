@@ -17,7 +17,7 @@
     <!-- Wheel motor -->
     <default class="wheel">
       <joint limited="false" frictionloss="0.1" armature="0.01"/>
-      <velocity kv="5.0" ctrlrange="-7.88 7.88" ctrllimited="true"/>
+      <motor ctrlrange="-7.88 7.88" ctrllimited="true"/>
       <default class="wheel_left">
         <joint axis="0 0 1"/>
       </default>
@@ -90,8 +90,8 @@
   </worldbody>
 
   <actuator>
-    <velocity class="wheel_left" name="wheel_left" joint="wheel_left"/>
-    <velocity class="wheel_right" name="wheel_right" joint="wheel_right"/>
+    <motor class="wheel_left" name="wheel_left" joint="wheel_left"/>
+    <motor class="wheel_right" name="wheel_right" joint="wheel_right"/>
   </actuator>
 
   <sensor>

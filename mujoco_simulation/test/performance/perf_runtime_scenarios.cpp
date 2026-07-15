@@ -70,7 +70,7 @@ int run_scheduler_1khz(std::uint64_t target_steps) {
     </body>
   </worldbody>
   <actuator>
-    <velocity name="hinge_vel" joint="hinge"/>
+    <motor name="hinge_vel" joint="hinge"/>
   </actuator>
 </mujoco>)");
 

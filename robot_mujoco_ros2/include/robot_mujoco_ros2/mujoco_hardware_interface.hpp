@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -50,7 +51,7 @@ class MuJoCoHardwareInterface : public hardware_interface::SystemInterface {
 
  private:
   struct PendingModeSwitch {
-    std::map<std::string, mujoco_simulation::CommandInterfaceType> next_modes;
+    std::map<std::string, std::set<std::string>> next_interfaces;
     bool valid{false};
   };
 
@@ -91,7 +92,7 @@ class MuJoCoHardwareInterface : public hardware_interface::SystemInterface {
   std::vector<mujoco_simulation::LidarState> publish_lidar_states_;
   std::vector<mujoco_simulation::CameraState> publish_camera_states_;
   PublishBundle publish_bundle_;
-  std::map<std::string, mujoco_simulation::CommandInterfaceType> active_joint_modes_;
+  std::map<std::string, std::set<std::string>> active_joint_interfaces_;
   PendingModeSwitch pending_mode_switch_;
   std::mutex simulation_control_mutex_;
   bool simulation_started_{false};

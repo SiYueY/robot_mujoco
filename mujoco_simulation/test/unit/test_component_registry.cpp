@@ -10,22 +10,22 @@ namespace {
 TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAddAndRemove) {
   ComponentRegistry registry;
 
-  auto joint = std::make_unique<JointComponent>(JointConfig{.name = "joint"});
+  auto joint = std::make_unique<JointComponent>(JointInfo{.joint = "joint"});
   auto imu =
-      std::make_unique<ImuComponent>(ImuConfig{.common = {.name = "imu", .update_rate = 200.0}});
+      std::make_unique<ImuComponent>(ImuInfo{.common = {.name = "imu", .update_rate = 200.0}});
   auto camera = std::make_unique<CameraComponent>(
       CameraConfig{.common = {.name = "camera", .update_rate = 30.0}});
-  auto lidar = std::make_unique<LidarComponent>(
-      LidarConfig{.common = {.name = "lidar", .update_rate = 10.0}});
+  auto lidar =
+      std::make_unique<LidarComponent>(LidarInfo{.common = {.name = "lidar", .update_rate = 10.0}});
 
   auto mobile_base = std::make_unique<MobileBaseComponent>(
-      MobileBaseConfig{.name = "base", .type = MobileBaseType::Differential});
+      MobileBaseInfo{.name = "base", .type = MobileBaseType::Differential});
 
-  ASSERT_EQ(registry.add(std::move(joint)), ResultCode::Ok);
-  ASSERT_EQ(registry.add(std::move(imu)), ResultCode::Ok);
-  ASSERT_EQ(registry.add(std::move(camera)), ResultCode::Ok);
-  ASSERT_EQ(registry.add(std::move(lidar)), ResultCode::Ok);
-  ASSERT_EQ(registry.add(std::move(mobile_base)), ResultCode::Ok);
+  ASSERT_TRUE(registry.add(std::move(joint)));
+  ASSERT_TRUE(registry.add(std::move(imu)));
+  ASSERT_TRUE(registry.add(std::move(camera)));
+  ASSERT_TRUE(registry.add(std::move(lidar)));
+  ASSERT_TRUE(registry.add(std::move(mobile_base)));
 
   EXPECT_TRUE(registry.has_joint("joint"));
   EXPECT_TRUE(registry.has_imu("imu"));
@@ -43,7 +43,7 @@ TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAddAndRemove) {
   EXPECT_EQ(registry.lidars().size(), 1u);
   EXPECT_EQ(registry.mobile_bases().size(), 1u);
 
-  ASSERT_EQ(registry.remove("imu"), ResultCode::Ok);
+  ASSERT_TRUE(registry.remove("imu"));
   EXPECT_FALSE(registry.has_imu("imu"));
   EXPECT_EQ(registry.imu("imu"), nullptr);
   EXPECT_TRUE(registry.has_joint("joint"));

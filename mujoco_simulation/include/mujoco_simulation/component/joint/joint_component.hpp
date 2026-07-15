@@ -11,48 +11,40 @@ namespace mujoco_simulation {
 
 class JointComponent : public SimulationComponent {
  public:
-  explicit JointComponent(JointConfig config);
+  explicit JointComponent(JointInfo info);
 
   std::string name() const noexcept override;
-  ResultCode bind(const mjModel& model) override;
-  ResultCode reset(const mjModel& model, mjData& data) override;
-  ResultCode update(const UpdateContext& context) override;
+  bool bind(const mjModel& model) override;
+  bool reset(const mjModel& model, mjData& data) override;
+  bool update(const UpdateContext& context) override;
 
-  ResultCode write(const mjModel& model, mjData& data, const JointCommand& command);
-  ResultCode read(const mjData& data, JointState& state) const;
+  bool write(const mjModel& model, mjData& data, const JointCommand& command);
+  bool read(const mjData& data, JointState& state) const;
 
-  const JointConfig& config() const noexcept { return config_; }
+  const JointInfo& info() const noexcept { return info_; }
   int joint_id() const noexcept { return joint_id_; }
   int dof_address() const noexcept { return dof_address_; }
-  int actuator_id() const noexcept { return actuator_id_; }
-  bool has_actuator() const noexcept { return has_actuator_; }
+  int motor_id() const noexcept { return motor_id_; }
   JointType joint_type() const noexcept;
-  ActuatorType actuator_type() const noexcept;
 
  private:
-  ResultCode validate_binding() const;
-  ResultCode validate_command_configuration() const;
-  ResultCode write_direct_command(const mjModel& model, mjData& data, const JointCommand& command);
-  ResultCode write_software_pd_command(const mjModel& model, mjData& data,
-                                       const JointCommand& command);
-  ResultCode write_effort_output(const mjModel& model, mjData& data, double effort) const;
+  bool validate_binding() const;
+  bool calculate_effort(const mjData& data, const JointCommand& command, double* effort) const;
+  bool write_effort_output(const mjModel& model, mjData& data, double effort) const;
 
-  double clamp_command_limits(double value) const;
-  double clamp_actuator_control_limits(const mjModel& model, double value) const;
-  double clamp_actuator_force_limits(const mjModel& model, double value) const;
+  static double clamp_limits(const Limit& limits, double value);
+  double clamp_motor_control_limits(const mjModel& model, double value) const;
+  double clamp_motor_force_limits(const mjModel& model, double value) const;
   static bool finite(double value);
-  int find_actuator_id(const mjModel& model) const;
+  int find_motor_id(const mjModel& model) const;
   static JointType parse_joint_type(int mujoco_joint_type);
-  static ActuatorType parse_actuator_type(const mjModel& model, int actuator_id);
 
-  JointConfig config_;
+  JointInfo info_;
   int joint_id_{-1};
   int qpos_address_{-1};
   int dof_address_{-1};
   int joint_type_{-1};
-  int actuator_id_{-1};
-  int actuator_type_{-1};
-  bool has_actuator_{false};
+  int motor_id_{-1};
   JointCommand last_command_{};
   JointState state_{};
 };

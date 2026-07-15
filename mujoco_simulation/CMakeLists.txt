@@ -36,6 +36,14 @@ target_include_directories(lodepng PRIVATE
 )
 set_target_properties(lodepng PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+add_library(mujoco_simulation_tinyxml2 STATIC
+  src/tinyxml2/tinyxml2.cpp
+)
+target_include_directories(mujoco_simulation_tinyxml2 PUBLIC
+  src/tinyxml2
+)
+set_target_properties(mujoco_simulation_tinyxml2 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(mujoco_platform_ui_adapter OBJECT
   src/viewer/simulate/glfw_adapter.cc
   src/viewer/simulate/glfw_dispatch.cc
@@ -144,6 +152,7 @@ target_link_libraries(mujoco_simulation_viewer_support PRIVATE
 set_target_properties(mujoco_simulation_viewer_support PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(${PROJECT_NAME} SHARED
+  src/robot_mujoco_config.cpp
   src/simulation.cpp
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC
@@ -152,6 +161,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
   Threads::Threads
+  mujoco_simulation_tinyxml2
   mujoco_simulation_buffer
   mujoco_simulation_components
   mujoco_simulation_runtime
@@ -222,6 +232,13 @@ if(BUILD_TESTING)
   )
   if(TARGET test_component_config)
     target_link_libraries(test_component_config ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_robot_mujoco_config
+    test/unit/test_robot_mujoco_config.cpp
+  )
+  if(TARGET test_robot_mujoco_config)
+    target_link_libraries(test_robot_mujoco_config ${PROJECT_NAME})
   endif()
 
   ament_add_gtest(test_mobile_base

@@ -8,7 +8,7 @@
 
 namespace mujoco_simulation {
 
-struct LidarConfig {
+struct LidarInfo {
   SensorCommonConfig common{.update_rate = 10.0};
   std::string sensor_prefix;
   double angle_min{0.0};
