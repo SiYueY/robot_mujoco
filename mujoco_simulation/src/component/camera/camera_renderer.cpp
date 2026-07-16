@@ -10,7 +10,7 @@
 #include <mutex>
 #include <utility>
 
-#include "mujoco_simulation/component/logging.hpp"
+#include "mujoco_simulation/common/logging.hpp"
 
 namespace mujoco_simulation {
 namespace {

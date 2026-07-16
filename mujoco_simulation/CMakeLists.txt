@@ -44,6 +44,17 @@ target_include_directories(mujoco_simulation_tinyxml2 PUBLIC
 )
 set_target_properties(mujoco_simulation_tinyxml2 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+add_library(mujoco_simulation_easyloggingpp STATIC
+  src/easyloggingpp/easylogging++.cc
+)
+target_include_directories(mujoco_simulation_easyloggingpp PRIVATE
+  src/easyloggingpp
+)
+target_compile_definitions(mujoco_simulation_easyloggingpp PRIVATE
+  AUTO_INITIALIZE_EASYLOGGINGPP
+)
+set_target_properties(mujoco_simulation_easyloggingpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(mujoco_platform_ui_adapter OBJECT
   src/viewer/simulate/glfw_adapter.cc
   src/viewer/simulate/glfw_dispatch.cc
@@ -78,6 +89,7 @@ set_target_properties(mujoco_official_simulate PROPERTIES POSITION_INDEPENDENT_C
 
 set(MUJOCO_SIMULATION_PUBLIC_INCLUDE_DIRS
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/easyloggingpp>
   $<INSTALL_INTERFACE:include>
   ${MUJOCO_INCLUDE_DIR}
 )
@@ -109,6 +121,7 @@ add_library(mujoco_simulation_components STATIC
 )
 target_link_libraries(mujoco_simulation_components PUBLIC
   mujoco_simulation_headers
+  mujoco_simulation_easyloggingpp
 )
 set_target_properties(mujoco_simulation_components PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -126,6 +139,7 @@ add_library(mujoco_simulation_camera STATIC
 )
 target_link_libraries(mujoco_simulation_camera PUBLIC
   mujoco_simulation_headers
+  mujoco_simulation_easyloggingpp
 )
 target_link_libraries(mujoco_simulation_camera PRIVATE
   ${MUJOCO_LIB}
@@ -161,6 +175,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE
   Threads::Threads
+  mujoco_simulation_easyloggingpp
   mujoco_simulation_tinyxml2
   mujoco_simulation_buffer
   mujoco_simulation_components
@@ -204,6 +219,16 @@ if(BUILD_TESTING)
   )
   if(TARGET test_status)
     target_link_libraries(test_status mujoco_simulation_headers)
+  endif()
+
+  ament_add_gtest(test_logging
+    test/unit/test_logging.cpp
+  )
+  if(TARGET test_logging)
+    target_link_libraries(test_logging
+      mujoco_simulation_headers
+      mujoco_simulation_easyloggingpp
+    )
   endif()
 
   ament_add_gtest(test_simulation_scheduler

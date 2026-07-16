@@ -2,7 +2,7 @@
 
 #include <utility>
 
-#include "mujoco_simulation/component/logging.hpp"
+#include "mujoco_simulation/common/logging.hpp"
 #include "mujoco_simulation/component/update_context.hpp"
 
 namespace mujoco_simulation {
