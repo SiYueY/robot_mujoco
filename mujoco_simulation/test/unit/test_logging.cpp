@@ -6,7 +6,7 @@ namespace mujoco_simulation {
 namespace {
 
 TEST(Logging, EasyloggingMacrosAreLinked) {
-  LOG(INFO) << "easylogging++ integration check";
+  LOG_INFO << "easylogging++ integration check";
   SUCCEED();
 }
 

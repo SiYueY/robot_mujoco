@@ -53,12 +53,16 @@ bool validate_wheel_binding(const std::string& mobile_base_name,
                             const MobileBaseWheelBinding& wheel) {
   (void)mobile_base_name;
   if (wheel.joint_name.empty()) {
-    return log_component_error("MobileBaseComponent::validate_wheel_binding",
-                               "wheel joint name must not be empty.");
+    LOG_ERROR << "MobileBaseComponent::validate_wheel_binding"
+              << ": "
+              << "wheel joint name must not be empty.";
+    return false;
   }
   if (wheel.drive.joint_id < 0 || wheel.drive.dof_address < 0) {
-    return log_component_error("MobileBaseComponent::validate_wheel_binding",
-                               "wheel drive handle is not bound.");
+    LOG_ERROR << "MobileBaseComponent::validate_wheel_binding"
+              << ": "
+              << "wheel drive handle is not bound.";
+    return false;
   }
   return true;
 }
@@ -89,8 +93,10 @@ bool write_wheel_velocity_command(const mjModel& model, mjData& data,
                                   const MobileBaseWheelBinding& wheel, double velocity) {
   if (wheel.drive.motor_id < 0 || wheel.drive.dof_address < 0 ||
       wheel.drive.velocity_damping <= 0.0) {
-    return log_component_error("MobileBaseComponent::write_wheel_velocity_command",
-                               "wheel drive handle is incomplete.");
+    LOG_ERROR << "MobileBaseComponent::write_wheel_velocity_command"
+              << ": "
+              << "wheel drive handle is incomplete.";
+    return false;
   }
   const double effort =
       wheel.drive.velocity_damping * (velocity - data.qvel[wheel.drive.dof_address]);
@@ -101,8 +107,10 @@ bool write_wheel_velocity_command(const mjModel& model, mjData& data,
 bool read_wheel_velocity(const mjData& data, const MobileBaseWheelBinding& wheel,
                          double& velocity) {
   if (wheel.drive.dof_address < 0) {
-    return log_component_error("MobileBaseComponent::read_wheel_velocity",
-                               "wheel drive handle is incomplete.");
+    LOG_ERROR << "MobileBaseComponent::read_wheel_velocity"
+              << ": "
+              << "wheel drive handle is incomplete.";
+    return false;
   }
   velocity = data.qvel[wheel.drive.dof_address];
   return true;
@@ -195,7 +203,10 @@ bool MobileBaseComponent::write(const mjModel& model, mjData& data,
   if (info_.type == MobileBaseType::Omnidirectional) {
     return write_omnidirectional(model, data, command);
   }
-  return log_component_error("MobileBaseComponent::write", "unsupported mobile base type.");
+  LOG_ERROR << "MobileBaseComponent::write"
+            << ": "
+            << "unsupported mobile base type.";
+  return false;
 }
 
 bool MobileBaseComponent::read(const mjData& data, MobileBaseState& state) {
@@ -205,40 +216,57 @@ bool MobileBaseComponent::read(const mjData& data, MobileBaseState& state) {
   if (info_.type == MobileBaseType::Omnidirectional) {
     return read_omnidirectional(data, state);
   }
-  return log_component_error("MobileBaseComponent::read", "unsupported mobile base type.");
+  LOG_ERROR << "MobileBaseComponent::read"
+            << ": "
+            << "unsupported mobile base type.";
+  return false;
 }
 
 bool MobileBaseComponent::validate(const mjModel& model) const {
   if (info_.name.empty()) {
-    return log_component_error("MobileBaseComponent::validate",
-                               "mobile base name must not be empty.");
+    LOG_ERROR << "MobileBaseComponent::validate"
+              << ": "
+              << "mobile base name must not be empty.";
+    return false;
   }
   if (info_.type != MobileBaseType::Differential && info_.type != MobileBaseType::Omnidirectional) {
-    return log_component_error("MobileBaseComponent::validate", "mobile base type is invalid.");
+    LOG_ERROR << "MobileBaseComponent::validate"
+              << ": "
+              << "mobile base type is invalid.";
+    return false;
   }
   if (info_.wheel_radius <= 0.0) {
-    return log_component_error("MobileBaseComponent::validate", "wheel_radius must be positive.");
+    LOG_ERROR << "MobileBaseComponent::validate"
+              << ": "
+              << "wheel_radius must be positive.";
+    return false;
   }
 
   if (info_.type == MobileBaseType::Differential) {
     if (!impl_->binding.has_differential) {
-      return log_component_error("MobileBaseComponent::validate",
-                                 "differential drive bindings are missing.");
+      LOG_ERROR << "MobileBaseComponent::validate"
+                << ": "
+                << "differential drive bindings are missing.";
+      return false;
     }
     if (!validate_wheel_binding(info_.name, impl_->binding.differential.left_wheel) ||
         !validate_wheel_binding(info_.name, impl_->binding.differential.right_wheel)) {
       return false;
     }
     if (info_.track_width <= 0.0) {
-      return log_component_error("MobileBaseComponent::validate",
-                                 "track_width must be positive for differential drive.");
+      LOG_ERROR << "MobileBaseComponent::validate"
+                << ": "
+                << "track_width must be positive for differential drive.";
+      return false;
     }
   }
 
   if (info_.type == MobileBaseType::Omnidirectional) {
     if (!impl_->binding.has_omnidirectional) {
-      return log_component_error("MobileBaseComponent::validate",
-                                 "omnidirectional drive bindings are missing.");
+      LOG_ERROR << "MobileBaseComponent::validate"
+                << ": "
+                << "omnidirectional drive bindings are missing.";
+      return false;
     }
     const OmnidirectionalBinding& wheels = impl_->binding.omnidirectional;
     if (!validate_wheel_binding(info_.name, wheels.front_left) ||
@@ -248,15 +276,19 @@ bool MobileBaseComponent::validate(const mjModel& model) const {
       return false;
     }
     if (info_.track_width <= 0.0 || info_.wheel_base <= 0.0) {
-      return log_component_error("MobileBaseComponent::validate",
-                                 "track_width and wheel_base must be positive for omni drive.");
+      LOG_ERROR << "MobileBaseComponent::validate"
+                << ": "
+                << "track_width and wheel_base must be positive for omni drive.";
+      return false;
     }
   }
 
   if (info_.odometry_source == OdometrySource::GroundTruthBodyPose &&
       info_.base_body_name.empty()) {
-    return log_component_error("MobileBaseComponent::validate",
-                               "base_body_name is required for ground-truth odometry.");
+    LOG_ERROR << "MobileBaseComponent::validate"
+              << ": "
+              << "base_body_name is required for ground-truth odometry.";
+    return false;
   }
 
   (void)model;
@@ -269,8 +301,10 @@ bool MobileBaseComponent::initialize_bindings(const mjModel& model) {
   if (info_.odometry_source == OdometrySource::GroundTruthBodyPose) {
     impl_->binding.base_body_id = mj_name2id(&model, mjOBJ_BODY, info_.base_body_name.c_str());
     if (impl_->binding.base_body_id < 0) {
-      return log_component_error("MobileBaseComponent::initialize_bindings",
-                                 "base body was not found in model.");
+      LOG_ERROR << "MobileBaseComponent::initialize_bindings"
+                << ": "
+                << "base body was not found in model.";
+      return false;
     }
   }
 
@@ -319,8 +353,10 @@ void MobileBaseComponent::integrate_wheel_odometry(double simulation_time) {
 
 bool MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
   if (impl_->binding.base_body_id < 0) {
-    return log_component_error("MobileBaseComponent::update_ground_truth_pose",
-                               "base body binding is missing.");
+    LOG_ERROR << "MobileBaseComponent::update_ground_truth_pose"
+              << ": "
+              << "base body binding is missing.";
+    return false;
   }
 
   const mjtNum* xpos = data.xpos + 3 * impl_->binding.base_body_id;
@@ -360,12 +396,16 @@ bool MobileBaseComponent::write_differential(const mjModel& model, mjData& data,
   const double linear_y = command_linear_y(command);
   const double angular_z = command_angular_z(command);
   if (std::abs(linear_y) > 1e-9) {
-    return log_component_error("MobileBaseComponent::write_differential",
-                               "differential drive does not support lateral velocity.");
+    LOG_ERROR << "MobileBaseComponent::write_differential"
+              << ": "
+              << "differential drive does not support lateral velocity.";
+    return false;
   }
   if (!impl_->binding.has_differential) {
-    return log_component_error("MobileBaseComponent::write_differential",
-                               "differential drive bindings are missing.");
+    LOG_ERROR << "MobileBaseComponent::write_differential"
+              << ": "
+              << "differential drive bindings are missing.";
+    return false;
   }
 
   const double left_velocity =
@@ -384,8 +424,10 @@ bool MobileBaseComponent::write_differential(const mjModel& model, mjData& data,
 bool MobileBaseComponent::write_omnidirectional(const mjModel& model, mjData& data,
                                                 const MobileBaseCommand& command) {
   if (!impl_->binding.has_omnidirectional) {
-    return log_component_error("MobileBaseComponent::write_omnidirectional",
-                               "omnidirectional drive bindings are missing.");
+    LOG_ERROR << "MobileBaseComponent::write_omnidirectional"
+              << ": "
+              << "omnidirectional drive bindings are missing.";
+    return false;
   }
 
   const double linear_x = command_linear_x(command);
@@ -408,8 +450,10 @@ bool MobileBaseComponent::write_omnidirectional(const mjModel& model, mjData& da
 
 bool MobileBaseComponent::read_differential(const mjData& data, MobileBaseState& state) {
   if (!impl_->binding.has_differential) {
-    return log_component_error("MobileBaseComponent::read_differential",
-                               "differential drive bindings are missing.");
+    LOG_ERROR << "MobileBaseComponent::read_differential"
+              << ": "
+              << "differential drive bindings are missing.";
+    return false;
   }
 
   double left_velocity = 0.0;
@@ -439,8 +483,10 @@ bool MobileBaseComponent::read_differential(const mjData& data, MobileBaseState&
 
 bool MobileBaseComponent::read_omnidirectional(const mjData& data, MobileBaseState& state) {
   if (!impl_->binding.has_omnidirectional) {
-    return log_component_error("MobileBaseComponent::read_omnidirectional",
-                               "omnidirectional drive bindings are missing.");
+    LOG_ERROR << "MobileBaseComponent::read_omnidirectional"
+              << ": "
+              << "omnidirectional drive bindings are missing.";
+    return false;
   }
 
   double fl = 0.0;

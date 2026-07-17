@@ -29,32 +29,44 @@ bool ImuComponent::validate_sensor_binding(const mjModel& model, std::string com
                                            int expected_dim, int* sensor_id, int* sensor_address) {
   (void)component_name;
   if (sensor_id == nullptr || sensor_address == nullptr) {
-    return log_component_error("ImuComponent::validate_sensor_binding",
-                               "sensor output pointers must not be null.");
+    LOG_ERROR << "ImuComponent::validate_sensor_binding"
+              << ": "
+              << "sensor output pointers must not be null.";
+    return false;
   }
   if (sensor_name.empty()) {
-    return log_component_error("ImuComponent::validate_sensor_binding",
-                               "sensor name must not be empty.");
+    LOG_ERROR << "ImuComponent::validate_sensor_binding"
+              << ": "
+              << "sensor name must not be empty.";
+    return false;
   }
 
   const int id = mj_name2id(&model, mjOBJ_SENSOR, std::string(sensor_name).c_str());
   if (id < 0) {
-    return log_component_error("ImuComponent::validate_sensor_binding",
-                               "sensor was not found in model.");
+    LOG_ERROR << "ImuComponent::validate_sensor_binding"
+              << ": "
+              << "sensor was not found in model.";
+    return false;
   }
   if (model.sensor_type[id] != expected_type) {
-    return log_component_error("ImuComponent::validate_sensor_binding",
-                               "sensor type does not match expected type.");
+    LOG_ERROR << "ImuComponent::validate_sensor_binding"
+              << ": "
+              << "sensor type does not match expected type.";
+    return false;
   }
   if (model.sensor_dim[id] != expected_dim) {
-    return log_component_error("ImuComponent::validate_sensor_binding",
-                               "sensor dimension does not match expected dimension.");
+    LOG_ERROR << "ImuComponent::validate_sensor_binding"
+              << ": "
+              << "sensor dimension does not match expected dimension.";
+    return false;
   }
 
   const int address = model.sensor_adr[id];
   if (address < 0 || address + expected_dim > model.nsensordata) {
-    return log_component_error("ImuComponent::validate_sensor_binding",
-                               "sensor address is out of range.");
+    LOG_ERROR << "ImuComponent::validate_sensor_binding"
+              << ": "
+              << "sensor address is out of range.";
+    return false;
   }
 
   *sensor_id = id;
@@ -64,10 +76,16 @@ bool ImuComponent::validate_sensor_binding(const mjModel& model, std::string com
 
 bool ImuComponent::bind(const mjModel& model) {
   if (info_.common.name.empty()) {
-    return log_component_error("ImuComponent::bind", "imu component name must not be empty.");
+    LOG_ERROR << "ImuComponent::bind"
+              << ": "
+              << "imu component name must not be empty.";
+    return false;
   }
   if (model.opt.timestep <= 0.0) {
-    return log_component_error("ImuComponent::bind", "model timestep must be positive.");
+    LOG_ERROR << "ImuComponent::bind"
+              << ": "
+              << "model timestep must be positive.";
+    return false;
   }
 
   if (!validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
@@ -114,7 +132,10 @@ bool ImuComponent::update(const UpdateContext& context) {
   (void)context.model;
   (void)context.step_count;
   if (framequat_address_ < 0 || gyro_address_ < 0 || accelerometer_address_ < 0) {
-    return log_component_error("ImuComponent::update", "imu sensors must be bound before update.");
+    LOG_ERROR << "ImuComponent::update"
+              << ": "
+              << "imu sensors must be bound before update.";
+    return false;
   }
 
   state_.sequence = ++sample_sequence_;
@@ -133,7 +154,10 @@ bool ImuComponent::update(const UpdateContext& context) {
   if (!copy_sensor_vector(context.data, gyro_address_, state_.angular_velocity.data(), 3) ||
       !copy_sensor_vector(context.data, accelerometer_address_, state_.linear_acceleration.data(),
                           3)) {
-    return log_component_error("ImuComponent::update", "failed to copy imu sensor data.");
+    LOG_ERROR << "ImuComponent::update"
+              << ": "
+              << "failed to copy imu sensor data.";
+    return false;
   }
   return true;
 }

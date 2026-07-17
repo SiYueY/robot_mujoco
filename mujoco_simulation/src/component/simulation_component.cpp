@@ -43,12 +43,16 @@ std::uint64_t SimulationComponent::missed_updates() const noexcept { return miss
 bool SimulationComponent::set_update_rate(double update_rate, double physics_rate) {
   if (!std::isfinite(update_rate) || !std::isfinite(physics_rate) || update_rate <= 0.0 ||
       physics_rate <= 0.0) {
-    return log_component_error("SimulationComponent::set_update_rate",
-                               "update_rate and physics_rate must be finite positive values.");
+    LOG_ERROR << "SimulationComponent::set_update_rate"
+              << ": "
+              << "update_rate and physics_rate must be finite positive values.";
+    return false;
   }
   if (update_rate - physics_rate > kScheduleEpsilon) {
-    return log_component_error("SimulationComponent::set_update_rate",
-                               "update_rate must not exceed physics_rate.");
+    LOG_ERROR << "SimulationComponent::set_update_rate"
+              << ": "
+              << "update_rate must not exceed physics_rate.";
+    return false;
   }
 
   update_rate_ = update_rate;

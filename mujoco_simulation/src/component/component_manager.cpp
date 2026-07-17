@@ -23,8 +23,10 @@ std::vector<std::string> traction_joint_names(const MobileBaseInfo& info) {
 
 bool validate_mobile_base_joint_binding(const JointComponent& joint_component) {
   if (joint_component.joint_id() < 0 || joint_component.dof_address() < 0) {
-    return log_component_error("ComponentManager::validate_mobile_base_joint_binding",
-                               "wheel joint is not bound.");
+    LOG_ERROR << "ComponentManager::validate_mobile_base_joint_binding"
+              << ": "
+              << "wheel joint is not bound.";
+    return false;
   }
   return true;
 }
@@ -94,7 +96,10 @@ void ComponentManager::clear() { registry_.clear(); }
 
 bool ComponentManager::register_joint(const mjModel& model, std::unique_ptr<JointComponent> joint) {
   if (joint == nullptr) {
-    return log_component_error("ComponentManager::register_joint", "joint must not be null.");
+    LOG_ERROR << "ComponentManager::register_joint"
+              << ": "
+              << "joint must not be null.";
+    return false;
   }
   if (!joint->bind(model)) {
     return false;
@@ -105,7 +110,10 @@ bool ComponentManager::register_joint(const mjModel& model, std::unique_ptr<Join
 bool ComponentManager::register_camera(const mjModel& model,
                                        std::unique_ptr<CameraComponent> camera) {
   if (camera == nullptr) {
-    return log_component_error("ComponentManager::register_camera", "camera must not be null.");
+    LOG_ERROR << "ComponentManager::register_camera"
+              << ": "
+              << "camera must not be null.";
+    return false;
   }
   if (!camera->bind(model)) {
     return false;
@@ -115,7 +123,10 @@ bool ComponentManager::register_camera(const mjModel& model,
 
 bool ComponentManager::register_imu(const mjModel& model, std::unique_ptr<ImuComponent> imu) {
   if (imu == nullptr) {
-    return log_component_error("ComponentManager::register_imu", "imu must not be null.");
+    LOG_ERROR << "ComponentManager::register_imu"
+              << ": "
+              << "imu must not be null.";
+    return false;
   }
   if (!imu->bind(model)) {
     return false;
@@ -125,7 +136,10 @@ bool ComponentManager::register_imu(const mjModel& model, std::unique_ptr<ImuCom
 
 bool ComponentManager::register_lidar(const mjModel& model, std::unique_ptr<LidarComponent> lidar) {
   if (lidar == nullptr) {
-    return log_component_error("ComponentManager::register_lidar", "lidar must not be null.");
+    LOG_ERROR << "ComponentManager::register_lidar"
+              << ": "
+              << "lidar must not be null.";
+    return false;
   }
   if (!lidar->bind(model)) {
     return false;
@@ -135,12 +149,16 @@ bool ComponentManager::register_lidar(const mjModel& model, std::unique_ptr<Lida
 
 bool ComponentManager::register_mobile_base(const mjModel& model, const MobileBaseInfo& info) {
   if (info.name.empty()) {
-    return log_component_error("ComponentManager::register_mobile_base",
-                               "mobile base name must not be empty.");
+    LOG_ERROR << "ComponentManager::register_mobile_base"
+              << ": "
+              << "mobile base name must not be empty.";
+    return false;
   }
   if (registry_.has_mobile_base(info.name)) {
-    return log_component_error("ComponentManager::register_mobile_base",
-                               "mobile base name already exists.");
+    LOG_ERROR << "ComponentManager::register_mobile_base"
+              << ": "
+              << "mobile base name already exists.";
+    return false;
   }
 
   const std::vector<std::string> joint_names = traction_joint_names(info);
@@ -148,13 +166,17 @@ bool ComponentManager::register_mobile_base(const mjModel& model, const MobileBa
   wheel_components.reserve(joint_names.size());
   for (const std::string& joint_name : joint_names) {
     if (joint_name.empty()) {
-      return log_component_error("ComponentManager::register_mobile_base",
-                                 "traction joint name must not be empty.");
+      LOG_ERROR << "ComponentManager::register_mobile_base"
+                << ": "
+                << "traction joint name must not be empty.";
+      return false;
     }
     JointComponent* joint_component = joint(registry_, joint_name);
     if (joint_component == nullptr) {
-      return log_component_error("ComponentManager::register_mobile_base",
-                                 "traction joint was not found.");
+      LOG_ERROR << "ComponentManager::register_mobile_base"
+                << ": "
+                << "traction joint was not found.";
+      return false;
     }
     if (!validate_mobile_base_joint_binding(*joint_component)) {
       return false;
@@ -165,16 +187,20 @@ bool ComponentManager::register_mobile_base(const mjModel& model, const MobileBa
   auto mobile_base = std::make_unique<MobileBaseComponent>(info);
   if (info.type == MobileBaseType::Differential) {
     if (wheel_components.size() != 2U) {
-      return log_component_error("ComponentManager::register_mobile_base",
-                                 "differential drive requires two wheel components.");
+      LOG_ERROR << "ComponentManager::register_mobile_base"
+                << ": "
+                << "differential drive requires two wheel components.";
+      return false;
     }
     if (!mobile_base->configure_differential_drive(*wheel_components[0], *wheel_components[1])) {
       return false;
     }
   } else if (info.type == MobileBaseType::Omnidirectional) {
     if (wheel_components.size() != 4U) {
-      return log_component_error("ComponentManager::register_mobile_base",
-                                 "omnidirectional drive requires four wheel components.");
+      LOG_ERROR << "ComponentManager::register_mobile_base"
+                << ": "
+                << "omnidirectional drive requires four wheel components.";
+      return false;
     }
     if (!mobile_base->configure_omnidirectional_drive(*wheel_components[0], *wheel_components[1],
                                                       *wheel_components[2], *wheel_components[3])) {
@@ -189,13 +215,18 @@ bool ComponentManager::register_mobile_base(const mjModel& model, const MobileBa
 
 bool ComponentManager::reconfigure_joint(const mjModel& model, const JointInfo& info) {
   if (info.joint.empty()) {
-    return log_component_error("ComponentManager::reconfigure_joint",
-                               "joint name must not be empty.");
+    LOG_ERROR << "ComponentManager::reconfigure_joint"
+              << ": "
+              << "joint name must not be empty.";
+    return false;
   }
 
   const JointComponent* existing = joint(registry_, info.joint);
   if (existing == nullptr) {
-    return log_component_error("ComponentManager::reconfigure_joint", "joint was not found.");
+    LOG_ERROR << "ComponentManager::reconfigure_joint"
+              << ": "
+              << "joint was not found.";
+    return false;
   }
 
   const JointInfo previous_info = existing->info();
@@ -215,24 +246,31 @@ bool ComponentManager::reconfigure_joint(const mjModel& model, const JointInfo& 
   auto restore = std::make_unique<JointComponent>(previous_info);
   if (restore->bind(model)) {
     if (registry_.add(std::move(restore))) {
-      return log_component_error(
-          "ComponentManager::reconfigure_joint",
-          "failed to add replacement joint; restored previous configuration.");
+      LOG_ERROR << "ComponentManager::reconfigure_joint"
+                << ": "
+                << "failed to add replacement joint; restored previous configuration.";
+      return false;
     }
-    return log_component_error("ComponentManager::reconfigure_joint",
-                               "failed to restore previous joint after replacement add failure.");
+    LOG_ERROR << "ComponentManager::reconfigure_joint"
+              << ": "
+              << "failed to restore previous joint after replacement add failure.";
+    return false;
   }
 
-  return log_component_error("ComponentManager::reconfigure_joint",
-                             "failed to restore previous joint after replacement add failure.");
+  LOG_ERROR << "ComponentManager::reconfigure_joint"
+            << ": "
+            << "failed to restore previous joint after replacement add failure.";
+  return false;
 }
 
 bool ComponentManager::reconfigure_component(const mjModel& model, const ComponentConfig& config) {
   if (const auto* joint_info = std::get_if<JointInfo>(&config)) {
     return reconfigure_joint(model, *joint_info);
   }
-  return log_component_error("ComponentManager::reconfigure_component",
-                             "only joint reconfiguration is supported.");
+  LOG_ERROR << "ComponentManager::reconfigure_component"
+            << ": "
+            << "only joint reconfiguration is supported.";
+  return false;
 }
 
 bool ComponentManager::reset_all(const mjModel& model, mjData& data) {
@@ -338,12 +376,16 @@ bool ComponentManager::update_components(const mjModel& model, const mjData& dat
 
   if (!due_cameras.empty()) {
     if (camera_renderer == nullptr || camera_buffer == nullptr) {
-      return log_component_error("ComponentManager::update_components",
-                                 "camera update requires camera_renderer and camera_buffer.");
+      LOG_ERROR << "ComponentManager::update_components"
+                << ": "
+                << "camera update requires camera_renderer and camera_buffer.";
+      return false;
     }
     if (!camera_renderer->copy_simulation_data(model, data)) {
-      return log_component_error("ComponentManager::update_components",
-                                 "failed to copy simulation data for camera rendering.");
+      LOG_ERROR << "ComponentManager::update_components"
+                << ": "
+                << "failed to copy simulation data for camera rendering.";
+      return false;
     }
   }
 
@@ -383,8 +425,10 @@ bool ComponentManager::write_commands(const mjModel& model, mjData& data,
   for (const auto& [joint_name, command] : snapshot.joint_commands) {
     JointComponent* joint_component = joint(registry_, joint_name);
     if (joint_component == nullptr) {
-      return log_component_error("ComponentManager::write_commands",
-                                 "joint command target was not found.");
+      LOG_ERROR << "ComponentManager::write_commands"
+                << ": "
+                << "joint command target was not found.";
+      return false;
     }
     if (!joint_component->write(model, data, command)) {
       return false;
@@ -393,8 +437,10 @@ bool ComponentManager::write_commands(const mjModel& model, mjData& data,
   for (const auto& [mobile_base_name, command] : snapshot.mobile_base_commands) {
     MobileBaseComponent* mobile_base_component = mobile_base(registry_, mobile_base_name);
     if (mobile_base_component == nullptr) {
-      return log_component_error("ComponentManager::write_commands",
-                                 "mobile base command target was not found.");
+      LOG_ERROR << "ComponentManager::write_commands"
+                << ": "
+                << "mobile base command target was not found.";
+      return false;
     }
     if (!mobile_base_component->write(model, data, command)) {
       return false;

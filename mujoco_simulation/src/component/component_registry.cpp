@@ -6,15 +6,24 @@ namespace mujoco_simulation {
 
 bool ComponentRegistry::add(std::unique_ptr<SimulationComponent> component) {
   if (component == nullptr) {
-    return log_component_error("ComponentRegistry::add", "component must not be null.");
+    LOG_ERROR << "ComponentRegistry::add"
+              << ": "
+              << "component must not be null.";
+    return false;
   }
 
   const std::string component_name(component->name());
   if (component_name.empty()) {
-    return log_component_error("ComponentRegistry::add", "component name must not be empty.");
+    LOG_ERROR << "ComponentRegistry::add"
+              << ": "
+              << "component name must not be empty.";
+    return false;
   }
   if (components_.find(component_name) != components_.end()) {
-    return log_component_error("ComponentRegistry::add", "component name already exists.");
+    LOG_ERROR << "ComponentRegistry::add"
+              << ": "
+              << "component name already exists.";
+    return false;
   }
 
   index_component(*component, component_name);
@@ -25,7 +34,10 @@ bool ComponentRegistry::add(std::unique_ptr<SimulationComponent> component) {
 bool ComponentRegistry::remove(std::string name) {
   const auto it = components_.find(std::string(name));
   if (it == components_.end()) {
-    return log_component_error("ComponentRegistry::remove", "component name was not found.");
+    LOG_ERROR << "ComponentRegistry::remove"
+              << ": "
+              << "component name was not found.";
+    return false;
   }
 
   unindex_component(*it->second, name);

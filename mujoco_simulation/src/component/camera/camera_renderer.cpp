@@ -50,7 +50,10 @@ bool CameraRenderer::initialize(const mjModel& model) {
   render_data_ = mj_makeData(&model);
   if (render_data_ == nullptr) {
     release_current_context();
-    return log_component_error("CameraRenderer::initialize", "failed to allocate render data.");
+    LOG_ERROR << "CameraRenderer::initialize"
+              << ": "
+              << "failed to allocate render data.";
+    return false;
   }
 
   mjv_defaultScene(&scene_);
@@ -128,14 +131,18 @@ bool CameraRenderer::copy_simulation_data(const mjModel& model, const mjData& so
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return log_component_error("CameraRenderer::copy_simulation_data",
-                                 "failed to make EGL context current.");
+      LOG_ERROR << "CameraRenderer::copy_simulation_data"
+                << ": "
+                << "failed to make EGL context current.";
+      return false;
     }
   }
   if (mj_copyData(render_data_, &model, &source) == nullptr) {
     release_current_context();
-    return log_component_error("CameraRenderer::copy_simulation_data",
-                               "failed to copy MuJoCo simulation data.");
+    LOG_ERROR << "CameraRenderer::copy_simulation_data"
+              << ": "
+              << "failed to copy MuJoCo simulation data.";
+    return false;
   }
   release_current_context();
   return true;
@@ -145,7 +152,10 @@ bool CameraRenderer::render(const mjModel& model, const CameraConfig& spec, std:
                             std::uint64_t timestamp_ns,
                             std::shared_ptr<const CameraRenderState>* out) {
   if (out == nullptr) {
-    return log_component_error("CameraRenderer::render", "output render state pointer is null.");
+    LOG_ERROR << "CameraRenderer::render"
+              << ": "
+              << "output render state pointer is null.";
+    return false;
   }
   if (!initialize(model)) {
     return false;
@@ -167,7 +177,10 @@ bool CameraRenderer::render(const mjModel& model, const CameraConfig& spec, std:
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return log_component_error("CameraRenderer::render", "failed to make EGL context current.");
+      LOG_ERROR << "CameraRenderer::render"
+                << ": "
+                << "failed to make EGL context current.";
+      return false;
     }
   }
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
@@ -238,8 +251,10 @@ bool CameraRenderer::ensure_gl_context() {
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return log_component_error("CameraRenderer::ensure_gl_context",
-                                 "failed to restore EGL context.");
+      LOG_ERROR << "CameraRenderer::ensure_gl_context"
+                << ": "
+                << "failed to restore EGL context.";
+      return false;
     }
     return true;
   }
@@ -256,16 +271,20 @@ bool CameraRenderer::ensure_gl_context() {
   }
 
   if (!config_.allow_egl_backend) {
-    return log_component_error("CameraRenderer::ensure_gl_context",
-                               "no offscreen rendering backend is allowed.");
+    LOG_ERROR << "CameraRenderer::ensure_gl_context"
+              << ": "
+              << "no offscreen rendering backend is allowed.";
+    return false;
   }
   return initialize_egl_context();
 }
 
 bool CameraRenderer::ensure_offscreen_capacity(int width, int height) {
   if (width <= 0 || height <= 0) {
-    return log_component_error("CameraRenderer::ensure_offscreen_capacity",
-                               "offscreen width and height must be positive.");
+    LOG_ERROR << "CameraRenderer::ensure_offscreen_capacity"
+              << ": "
+              << "offscreen width and height must be positive.";
+    return false;
   }
   if (width <= offscreen_width_ && height <= offscreen_height_) {
     return true;
@@ -278,8 +297,10 @@ bool CameraRenderer::ensure_offscreen_capacity(int width, int height) {
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLSurface>(gl_context_.egl_surface),
                         static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return log_component_error("CameraRenderer::ensure_offscreen_capacity",
-                                 "failed to make EGL context current.");
+      LOG_ERROR << "CameraRenderer::ensure_offscreen_capacity"
+                << ": "
+                << "failed to make EGL context current.";
+      return false;
     }
   }
   offscreen_width_ = std::max(offscreen_width_, width);
@@ -293,30 +314,42 @@ bool CameraRenderer::ensure_offscreen_capacity(int width, int height) {
 bool CameraRenderer::ensure_camera_binding(const mjModel& model, const CameraConfig& spec,
                                            int* camera_id, double* fovy_degrees) {
   if (camera_id == nullptr || fovy_degrees == nullptr) {
-    return log_component_error("CameraRenderer::ensure_camera_binding",
-                               "camera binding outputs must not be null.");
+    LOG_ERROR << "CameraRenderer::ensure_camera_binding"
+              << ": "
+              << "camera binding outputs must not be null.";
+    return false;
   }
   if (spec.common.name.empty()) {
-    return log_component_error("CameraRenderer::ensure_camera_binding",
-                               "camera component name must not be empty.");
+    LOG_ERROR << "CameraRenderer::ensure_camera_binding"
+              << ": "
+              << "camera component name must not be empty.";
+    return false;
   }
   if (spec.camera_name.empty()) {
-    return log_component_error("CameraRenderer::ensure_camera_binding",
-                               "camera name must not be empty.");
+    LOG_ERROR << "CameraRenderer::ensure_camera_binding"
+              << ": "
+              << "camera name must not be empty.";
+    return false;
   }
   if (spec.width <= 0 || spec.height <= 0) {
-    return log_component_error("CameraRenderer::ensure_camera_binding",
-                               "camera width and height must be positive.");
+    LOG_ERROR << "CameraRenderer::ensure_camera_binding"
+              << ": "
+              << "camera width and height must be positive.";
+    return false;
   }
   if (!spec.enable_rgb && !spec.enable_depth) {
-    return log_component_error("CameraRenderer::ensure_camera_binding",
-                               "camera must enable rgb or depth output.");
+    LOG_ERROR << "CameraRenderer::ensure_camera_binding"
+              << ": "
+              << "camera must enable rgb or depth output.";
+    return false;
   }
 
   const int id = mj_name2id(&model, mjOBJ_CAMERA, spec.camera_name.c_str());
   if (id < 0) {
-    return log_component_error("CameraRenderer::ensure_camera_binding",
-                               "camera was not found in model.");
+    LOG_ERROR << "CameraRenderer::ensure_camera_binding"
+              << ": "
+              << "camera was not found in model.";
+    return false;
   }
 
   *camera_id = id;
@@ -386,16 +419,20 @@ bool CameraRenderer::initialize_egl_context() {
     gl_context_.egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
   }
   if (gl_context_.egl_display == EGL_NO_DISPLAY) {
-    return log_component_error("CameraRenderer::initialize_egl_context",
-                               "failed to acquire EGL display.");
+    LOG_ERROR << "CameraRenderer::initialize_egl_context"
+              << ": "
+              << "failed to acquire EGL display.";
+    return false;
   }
 
   EGLint major = 0;
   EGLint minor = 0;
   if (!eglInitialize(static_cast<::EGLDisplay>(gl_context_.egl_display), &major, &minor)) {
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return log_component_error("CameraRenderer::initialize_egl_context",
-                               "failed to initialize EGL.");
+    LOG_ERROR << "CameraRenderer::initialize_egl_context"
+              << ": "
+              << "failed to initialize EGL.";
+    return false;
   }
 
   const EGLint config_attribs[] = {EGL_SURFACE_TYPE,
@@ -420,15 +457,19 @@ bool CameraRenderer::initialize_egl_context() {
       num_configs == 0) {
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return log_component_error("CameraRenderer::initialize_egl_context",
-                               "failed to choose EGL config.");
+    LOG_ERROR << "CameraRenderer::initialize_egl_context"
+              << ": "
+              << "failed to choose EGL config.";
+    return false;
   }
 
   if (!eglBindAPI(EGL_OPENGL_API)) {
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return log_component_error("CameraRenderer::initialize_egl_context",
-                               "failed to bind EGL OpenGL API.");
+    LOG_ERROR << "CameraRenderer::initialize_egl_context"
+              << ": "
+              << "failed to bind EGL OpenGL API.";
+    return false;
   }
 
   gl_context_.egl_context = eglCreateContext(static_cast<::EGLDisplay>(gl_context_.egl_display),
@@ -436,8 +477,10 @@ bool CameraRenderer::initialize_egl_context() {
   if (gl_context_.egl_context == EGL_NO_CONTEXT) {
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return log_component_error("CameraRenderer::initialize_egl_context",
-                               "failed to create EGL context.");
+    LOG_ERROR << "CameraRenderer::initialize_egl_context"
+              << ": "
+              << "failed to create EGL context.";
+    return false;
   }
 
   const EGLint pbuffer_attribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
@@ -449,8 +492,10 @@ bool CameraRenderer::initialize_egl_context() {
     gl_context_.egl_context = EGL_NO_CONTEXT;
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return log_component_error("CameraRenderer::initialize_egl_context",
-                               "failed to create EGL pbuffer surface.");
+    LOG_ERROR << "CameraRenderer::initialize_egl_context"
+              << ": "
+              << "failed to create EGL pbuffer surface.";
+    return false;
   }
 
   if (!eglMakeCurrent(static_cast<::EGLDisplay>(gl_context_.egl_display),
@@ -465,8 +510,10 @@ bool CameraRenderer::initialize_egl_context() {
     gl_context_.egl_context = EGL_NO_CONTEXT;
     eglTerminate(static_cast<::EGLDisplay>(gl_context_.egl_display));
     gl_context_.egl_display = EGL_NO_DISPLAY;
-    return log_component_error("CameraRenderer::initialize_egl_context",
-                               "failed to activate EGL context.");
+    LOG_ERROR << "CameraRenderer::initialize_egl_context"
+              << ": "
+              << "failed to activate EGL context.";
+    return false;
   }
 
   gl_context_.backend = OffscreenGlBackend::Egl;
