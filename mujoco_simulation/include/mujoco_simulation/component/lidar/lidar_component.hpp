@@ -1,8 +1,9 @@
 #pragma once
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "mujoco_simulation/component/lidar/lidar_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
@@ -12,29 +13,27 @@ namespace mujoco_simulation {
 class LidarComponent : public SimulationComponent {
  public:
   explicit LidarComponent(LidarInfo info);
-  ~LidarComponent();
 
-  LidarComponent(const LidarComponent&) = delete;
-  LidarComponent& operator=(const LidarComponent&) = delete;
-  LidarComponent(LidarComponent&&) noexcept;
-  LidarComponent& operator=(LidarComponent&&) noexcept;
+  bool init(const mjContext& context) override;
+  bool reset(const mjContext& context) override;
+  bool update(const mjContext& context) override;
 
-  std::string name() const noexcept override;
-  bool bind(const mjModel& model) override;
-  bool reset(const mjModel& model, mjData& data) override;
-  bool update(const UpdateContext& context) override;
+  bool read(const mjContext& context, LidarState& state) const;
 
   const LidarInfo& info() const noexcept { return info_; }
-  bool read(LidarState& state) const;
+  bool is_initialized() const noexcept { return initialized_; }
+
+ public:
+  using SharedPtr = std::shared_ptr<LidarComponent>;
+  using UniquePtr = std::unique_ptr<LidarComponent>;
+  using WeakPtr = std::weak_ptr<LidarComponent>;
 
  private:
-  bool set_defaults();
-
-  struct Impl;
-  std::unique_ptr<Impl> impl_;
   LidarInfo info_;
+  std::vector<int> beam_addresses_;
   LidarState state_{};
-  std::uint64_t sample_sequence_{0};
+  std::uint64_t sequence_{0};
+  bool initialized_{false};
 };
 
 }  // namespace mujoco_simulation

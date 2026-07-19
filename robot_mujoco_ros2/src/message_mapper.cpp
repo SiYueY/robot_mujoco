@@ -1,13 +1,25 @@
 #include "robot_mujoco_ros2/message_mapper.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace robot_mujoco_ros2::message_mapper {
 
 rclcpp::Time select_stamp(const rclcpp::Time& fallback, std::uint64_t timestamp_ns) {
   return timestamp_ns == 0 ? fallback
                            : rclcpp::Time(static_cast<int64_t>(timestamp_ns), RCL_ROS_TIME);
+}
+
+rclcpp::Time select_simulation_stamp(const rclcpp::Time& fallback, double time_seconds) {
+  constexpr double kNanosecondsPerSecond = 1.0e9;
+  constexpr double kMaxSeconds =
+      static_cast<double>(std::numeric_limits<int64_t>::max()) / kNanosecondsPerSecond;
+  if (!(time_seconds > 0.0) || !std::isfinite(time_seconds) || time_seconds >= kMaxSeconds) {
+    return fallback;
+  }
+  return rclcpp::Time(static_cast<int64_t>(time_seconds * kNanosecondsPerSecond), RCL_ROS_TIME);
 }
 
 rosgraph_msgs::msg::Clock make_clock_message(const rclcpp::Time& sim_time) {
@@ -20,7 +32,7 @@ sensor_msgs::msg::Imu make_imu_message(const ImuPublisherConfig& config,
                                        const mujoco_simulation::ImuState& state,
                                        const rclcpp::Time& fallback_stamp) {
   sensor_msgs::msg::Imu message;
-  message.header.stamp = select_stamp(fallback_stamp, state.timestamp_ns);
+  message.header.stamp = select_simulation_stamp(fallback_stamp, state.timestamp);
   message.header.frame_id = config.frame_id;
   message.orientation.x = state.orientation[0];
   message.orientation.y = state.orientation[1];
@@ -42,7 +54,7 @@ sensor_msgs::msg::LaserScan make_lidar_message(const LidarPublisherConfig& confi
                                                const mujoco_simulation::LidarState& state,
                                                const rclcpp::Time& fallback_stamp) {
   sensor_msgs::msg::LaserScan message;
-  message.header.stamp = select_stamp(fallback_stamp, state.timestamp_ns);
+  message.header.stamp = select_simulation_stamp(fallback_stamp, state.timestamp);
   message.header.frame_id = config.frame_id;
   message.angle_min = static_cast<float>(state.angle_min);
   message.angle_max = static_cast<float>(state.angle_max);

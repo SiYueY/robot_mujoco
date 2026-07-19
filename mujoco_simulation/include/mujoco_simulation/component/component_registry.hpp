@@ -16,7 +16,6 @@ namespace mujoco_simulation {
 class ComponentRegistry {
  public:
   bool add(std::unique_ptr<SimulationComponent> component);
-  bool remove(std::string name);
   void clear();
 
   bool has_joint(std::string name) const;
@@ -47,7 +46,6 @@ class ComponentRegistry {
 
  private:
   void index_component(SimulationComponent& component, const std::string& component_name);
-  void unindex_component(const SimulationComponent& component, std::string component_name);
 
  private:
   std::unordered_map<std::string, std::unique_ptr<SimulationComponent>> components_;

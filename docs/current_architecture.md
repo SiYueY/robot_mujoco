@@ -98,7 +98,7 @@ MuJoCoHardwareInterface::read()
 
 其中：
 
-- `reset()` / `request_reset()` 统一通过 `ResetOptions` 表达 keyframe 与缓存清理策略
+- `reset()` / `request_reset()` 固定重置模型、组件、命令和缓存；keyframe 仅由对应 reset 入口选择
 - `reconfigure_component()` 是唯一公开运行时组件重配置入口；`robot_mujoco_ros2` 的 joint mode switch 已通过更新后的 `JointConfig` 走该入口
 
 ## 6. 当前验证状态

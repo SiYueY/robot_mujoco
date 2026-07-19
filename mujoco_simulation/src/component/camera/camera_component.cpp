@@ -5,13 +5,12 @@
 #include <utility>
 
 #include "mujoco_simulation/common/logging.hpp"
-#include "mujoco_simulation/component/update_context.hpp"
+#include "mujoco_simulation/common/macro.hpp"
 
 namespace mujoco_simulation {
-namespace {
 
-CameraRenderIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t width,
-                                          std::uint32_t height) {
+CameraRenderIntrinsics CameraComponent::compute_intrinsics(double fovy_degrees, std::uint32_t width,
+                                                           std::uint32_t height) {
   CameraRenderIntrinsics intrinsics;
   if (width == 0U || height == 0U) {
     return intrinsics;
@@ -30,8 +29,6 @@ CameraRenderIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t wid
                   intrinsics.cy, 0.0, 0.0,           0.0, 1.0, 0.0};
   return intrinsics;
 }
-
-}  // namespace
 
 CameraInfo camera_info_from_intrinsics(const CameraRenderIntrinsics& intrinsics,
                                        std::uint32_t width, std::uint32_t height) {
@@ -80,98 +77,77 @@ CameraState camera_state_from_render_state(const CameraRenderState& render_state
   return state;
 }
 
-CameraComponent::CameraComponent(CameraConfig config) : config_(std::move(config)) {}
+CameraComponent::CameraComponent(CameraConfig config)
+    : SimulationComponent(config.name, config.update_rate), config_(std::move(config)) {}
 
-std::string CameraComponent::name() const noexcept { return config_.common.name; }
-
-bool CameraComponent::bind(const mjModel& model) {
-  if (config_.common.name.empty()) {
-    LOG_ERROR << "CameraComponent::bind"
-              << ": "
-              << "camera component name must not be empty.";
+bool CameraComponent::init(const mjContext& context) {
+  if (!configure(context)) {
     return false;
   }
+
+  const mjModel& model = *context.model;
   if (model.opt.timestep <= 0.0) {
-    LOG_ERROR << "CameraComponent::bind"
-              << ": "
-              << "model timestep must be positive.";
+    LOG_ERROR << "model timestep must be positive.";
     return false;
   }
   if (config_.camera_name.empty()) {
-    LOG_ERROR << "CameraComponent::bind"
-              << ": "
-              << "camera name must not be empty.";
+    LOG_ERROR << "camera name must not be empty.";
     return false;
   }
   if (config_.width <= 0 || config_.height <= 0) {
-    LOG_ERROR << "CameraComponent::bind"
-              << ": "
-              << "camera width and height must be positive.";
-    return false;
-  }
-  if (config_.common.update_rate <= 0.0) {
-    LOG_ERROR << "CameraComponent::bind"
-              << ": "
-              << "camera update_rate must be positive.";
+    LOG_ERROR << "camera width and height must be positive.";
     return false;
   }
   if (!config_.enable_rgb && !config_.enable_depth) {
-    LOG_ERROR << "CameraComponent::bind"
-              << ": "
-              << "camera must enable rgb or depth output.";
+    LOG_ERROR << "camera must enable rgb or depth output.";
     return false;
   }
 
   camera_id_ = mj_name2id(&model, mjOBJ_CAMERA, config_.camera_name.c_str());
   if (camera_id_ < 0) {
-    LOG_ERROR << "CameraComponent::bind"
-              << ": "
-              << "camera was not found in model.";
+    LOG_ERROR << "camera was not found in model.";
     return false;
   }
   fovy_degrees_ = static_cast<double>(model.cam_fovy[camera_id_]);
-  if (!set_update_rate(config_.common.update_rate, 1.0 / model.opt.timestep)) {
+  sample_sequence_ = 0;
+  return true;
+}
+
+bool CameraComponent::reset(const mjContext& context) {
+  UNUSED(context);
+  sample_sequence_ = 0;
+  return true;
+}
+
+bool CameraComponent::configure_rendering(CameraRenderer* renderer, CameraBuffer* buffer) {
+  if (renderer == nullptr || buffer == nullptr) {
+    LOG_ERROR << "renderer and buffer must not be null.";
     return false;
   }
-
-  sample_sequence_ = 0;
+  camera_renderer_ = renderer;
+  camera_buffer_ = buffer;
   return true;
 }
 
-bool CameraComponent::reset(const mjModel& model, mjData& data) {
-  (void)model;
-  (void)data;
-  sample_sequence_ = 0;
-  return true;
-}
-
-bool CameraComponent::update(const UpdateContext& context) {
-  (void)context.step_count;
+bool CameraComponent::update(const mjContext& context) {
   if (camera_id_ < 0) {
-    LOG_ERROR << "CameraComponent::update"
-              << ": "
-              << "camera must be bound before update.";
+    LOG_ERROR << "camera must be bound before update.";
     return false;
   }
-  if (context.camera_renderer == nullptr || context.camera_buffer == nullptr) {
-    LOG_ERROR << "CameraComponent::update"
-              << ": "
-              << "camera_renderer and camera_buffer must not be null.";
+  if (camera_renderer_ == nullptr || camera_buffer_ == nullptr) {
+    LOG_ERROR << "rendering must be configured before update.";
     return false;
   }
 
   const std::uint64_t timestamp_ns =
-      context.simulation_time <= 0.0 ? 0
-                                     : static_cast<std::uint64_t>(context.simulation_time * 1.0e9);
+      context.data->time <= 0.0 ? 0 : static_cast<std::uint64_t>(context.data->time * 1.0e9);
   std::shared_ptr<const CameraRenderState> rendered;
-  if (!context.camera_renderer->render(context.model, config_, ++sample_sequence_, timestamp_ns,
-                                       &rendered)) {
-    LOG_ERROR << "CameraComponent::update"
-              << ": "
-              << "camera render failed.";
+  if (!camera_renderer_->render(*context.model, config_, ++sample_sequence_, timestamp_ns,
+                                &rendered)) {
+    LOG_ERROR << "camera render failed.";
     return false;
   }
-  context.camera_buffer->write(config_.common.name, camera_state_from_render_state(*rendered));
+  camera_buffer_->write(config_.name, camera_state_from_render_state(*rendered));
   return true;
 }
 

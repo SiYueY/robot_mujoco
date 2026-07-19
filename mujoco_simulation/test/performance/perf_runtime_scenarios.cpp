@@ -162,13 +162,13 @@ int run_headless_camera(std::uint64_t total_steps) {
   SimulationConfig config;
   config.model.model_path = model.path.string();
   config.render_mode = RenderMode::Headless;
-  config.components = {
-      ComponentConfig{CameraConfig{.common = {.name = "front_camera", .update_rate = 50.0},
-                                   .camera_name = "cam",
-                                   .height = 120,
-                                   .width = 160,
-                                   .enable_rgb = true,
-                                   .enable_depth = true}}};
+  config.components = {ComponentConfig{CameraConfig{.name = "front_camera",
+                                                    .update_rate = 50.0,
+                                                    .camera_name = "cam",
+                                                    .height = 120,
+                                                    .width = 160,
+                                                    .enable_rgb = true,
+                                                    .enable_depth = true}}};
   const ResultCode initialize_status = simulation.initialize(config);
   if (initialize_status != ResultCode::Ok) {
     std::cerr << "initialize failed\n";

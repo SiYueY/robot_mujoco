@@ -21,16 +21,15 @@
 #include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/component/lidar/lidar_data.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
-#include "mujoco_simulation/reset_options.hpp"
+#include "mujoco_simulation/config/simulation_config.hpp"
 #include "mujoco_simulation/result_code.hpp"
 #include "mujoco_simulation/runtime/simulation_scheduler.hpp"
-#include "mujoco_simulation/simulation_config.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
 
 namespace mujoco_simulation {
 
-class MuJoCoViewer;
-class ModelRuntime;
+class SimulationViewer;
+class SimulationRuntime;
 class SimulationScheduler;
 
 class Simulation {
@@ -51,17 +50,14 @@ class Simulation {
   ResultCode pause();
   ResultCode resume();
   ResultCode set_realtime_factor(double realtime_factor);
-  ResultCode request_reset(const ResetOptions &options = {});
-  ResultCode request_reset_to_keyframe_name(std::string_view keyframe_name,
-                                            const ResetOptions &options = {});
-  ResultCode request_reset_to_keyframe_id(int keyframe_id, const ResetOptions &options = {});
-  ResultCode reset(const ResetOptions &options = {});
-  ResultCode reset_to_keyframe_name(std::string_view keyframe_name,
-                                    const ResetOptions &options = {});
-  ResultCode reset_to_keyframe_id(int keyframe_id, const ResetOptions &options = {});
+  ResultCode request_reset();
+  ResultCode request_reset_to_keyframe_name(std::string_view keyframe_name);
+  ResultCode request_reset_to_keyframe_id(int keyframe_id);
+  ResultCode reset();
+  ResultCode reset_to_keyframe_name(std::string_view keyframe_name);
+  ResultCode reset_to_keyframe_id(int keyframe_id);
   ResultCode step(uint32_t steps);
 
-  ResultCode reconfigure_component(const ComponentConfig &updated_component);
   ResultCode set_joint_command(const JointCommand &command);
   bool joint_state(std::string joint_name, JointState *out) const;
 
@@ -79,46 +75,43 @@ class Simulation {
   void set_snapshot_observer(SnapshotObserver observer);
 
  private:
-  ResultCode initialize_scheduler();
-  ResultCode initialize_components();
-  ResultCode load_model(const ModelConfig &model_config);
-  ResultCode request_reset_internal(const ResetRequest &request);
-  ResultCode reset_internal(ResetRequest request);
-  ResultCode apply_component_reconfiguration_locked(
-      const ComponentConfig &updated_component,
-      std::shared_ptr<const StateSnapshot> *published_snapshot);
-  ResultCode write_state_snapshot(bool increment_step_count);
-  ResultCode write_state_snapshot_locked(bool increment_step_count,
-                                         std::shared_ptr<const StateSnapshot> *published_snapshot);
-  ResultCode update_components_for_step_locked(std::uint64_t step_count, double simulation_time);
-  ResultCode build_state_snapshot_locked(std::uint64_t step_count, double simulation_time,
-                                         std::shared_ptr<const StateSnapshot> *published_snapshot);
-  ResultCode scheduler_write_commands();
-  ResultCode scheduler_update_components();
-  ResultCode scheduler_step_physics();
-  ResultCode scheduler_sync_viewer_if_due();
-  ResultCode scheduler_reset(const ResetRequest &request);
+  static constexpr auto kDefaultViewerPeriod = std::chrono::milliseconds(16);
+
+  bool initialize_scheduler();
+  bool initialize_components();
+  bool load_model(const ModelConfig &model_config);
+  bool request_reset_internal(const ResetRequest &request);
+  bool reset_internal(ResetRequest request);
+  bool write_state_snapshot();
+  bool write_state_snapshot_locked(std::shared_ptr<const StateSnapshot> *published_snapshot);
+  bool update_components_for_step_locked(std::uint64_t step_count, double simulation_time);
+  bool build_state_snapshot_locked(std::uint64_t step_count, double simulation_time,
+                                   std::shared_ptr<const StateSnapshot> *published_snapshot);
+  bool scheduler_run_cycle();
+  bool scheduler_write_commands();
+  bool scheduler_update_components();
+  bool scheduler_step_physics();
+  bool scheduler_sync_viewer_if_due();
+  bool scheduler_reset(const ResetRequest &request);
   double scheduler_timestep() const;
-  ResultCode start_viewer();
-  ResultCode stop_viewer();
-  ResultCode build_state_snapshot(StateSnapshot *snapshot) const;
+  bool start_viewer();
+  bool stop_viewer();
+  bool build_state_snapshot(StateSnapshot *snapshot) const;
 
   SimulationConfig config_;
   std::unique_ptr<CameraBuffer> camera_buffer_;
   std::unique_ptr<CameraRenderer> camera_renderer_;
   std::unique_ptr<CommandBuffer> command_buffer_;
-  std::unique_ptr<ModelRuntime> model_runtime_;
+  std::unique_ptr<SimulationRuntime> simulation_runtime_;
   std::unique_ptr<SimulationScheduler> scheduler_;
   std::unique_ptr<StateBuffer> state_buffer_;
-  mjModel *model_ = nullptr;
-  mjData *data_ = nullptr;
 
   ComponentManager component_manager_;
-  std::unique_ptr<MuJoCoViewer> viewer_;
+  std::unique_ptr<SimulationViewer> viewer_;
   std::chrono::steady_clock::time_point next_viewer_sync_time_{};
-  ResultCode runtime_error_{ResultCode::Ok};
+  bool runtime_failed_{false};
+  std::uint64_t step_count_{0};
   std::uint64_t state_snapshot_sequence_{0};
-  std::uint64_t state_snapshot_step_count_{0};
   SnapshotObserver snapshot_observer_;
 
   mutable std::mutex runtime_mutex_;

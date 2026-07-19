@@ -10,7 +10,7 @@
 #include "mujoco_simulation/component/imu/imu_data.hpp"
 #include "mujoco_simulation/component/lidar/lidar_data.hpp"
 #include "mujoco_simulation/result_code.hpp"
-#include "mujoco_simulation/simulation_status.hpp"
+#include "mujoco_simulation/simulation.hpp"
 #include "rclcpp/time.hpp"
 #include "realtime_tools/lock_free_queue.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"

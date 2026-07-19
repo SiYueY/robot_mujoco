@@ -38,7 +38,7 @@ Simulation
   -> SimulationScheduler
   -> CommandBuffer / StateBuffer / CameraBuffer
   -> CameraRenderer
-  -> MuJoCoViewer
+  -> SimulationViewer
     -> mjModel / mjData
 ```
 
@@ -88,7 +88,7 @@ Simulation
 
 主入口类是 [`Simulation`](./include/mujoco_simulation/simulation.hpp)。
 
-配置文件加载入口是 [`SimulationConfigParser`](./include/mujoco_simulation/simulation_config.hpp)。
+配置文件加载入口是 [`SimulationConfigParser`](./include/mujoco_simulation/config/simulation_config.hpp)。
 
 它对外暴露的能力主要有：
 
@@ -101,16 +101,14 @@ Simulation
   - `ResultCode pause()`
   - `ResultCode resume()`
   - `ResultCode set_realtime_factor(double)`
-  - `ResultCode request_reset(const ResetOptions& = {})`
+  - `ResultCode request_reset()`
     - 异步提交 reset 请求，适合 ROS service / callback 线程
-  - `ResultCode reset(const ResetOptions& = {})`
+  - `ResultCode reset()`
     - 同步等待 reset 完成，适合需要明确执行结果的调用路径
   - `ResultCode step(uint32_t)`
 - 组件配置与设备访问
   - `SimulationConfig.components`
     - 唯一组件注册入口
-  - `ResultCode reconfigure_component(const ComponentConfig&)`
-    - 运行时重配置入口；当前保证 `JointConfig` 可用，其他组件类型会显式返回错误
   - `ResultCode set_joint_command(...)`
   - `bool joint_state(..., JointState* out)`
   - `bool imu_state(..., ImuState* out)`
@@ -155,12 +153,12 @@ Simulation
 
 - `model`
   - `model_path` 和 `initial_keyframe`
-  - `initial_keyframe` 在 `Simulation::initialize() -> ModelRuntime::load(...)` 主路径中立即生效；缺失 keyframe 会直接导致初始化失败
+  - `initial_keyframe` 在 `Simulation::initialize() -> SimulationRuntime::init(...)` 主路径中立即生效；缺失 keyframe 会直接导致初始化失败
 - `scheduler`
   - `realtime_factor`、`viewer_update_rate` 等调度参数
 - `components`
-  - 组件配置列表，作为后续 `ComponentManager::build(...)` 的标准输入
-  - IMU / Lidar / Camera 现在统一通过 `SensorCommonConfig common` 暴露 `name`、`frame_id`、`update_rate`
+  - 组件配置列表，作为后续 `ComponentManager::init(...)` 的标准输入
+  - IMU / Lidar / Camera 分别直接暴露 `name`、`frame_id`、`update_rate`
 - `camera_renderer`
   - 离屏渲染资源配置
 - `render_mode`
@@ -168,7 +166,7 @@ Simulation
 - `viewer_startup_timeout`
   - viewer 启动等待超时
 
-此外，当前提供了一条内聚到 `simulation_config.hpp` 的 `robot_mujoco.xml -> SimulationConfig` 解析路径：
+此外，当前提供了一条内聚到 `config/simulation_config.hpp` 的 `robot_mujoco.xml -> SimulationConfig` 解析路径：
 
 - 入口：`SimulationConfigParser parser; parser.load_file(path, &config)`
 - 当前 v1 只解析：
@@ -197,13 +195,7 @@ reset 当前公开接口为：
 - `reset_to_keyframe_name(...)`
 - `reset_to_keyframe_id(...)`
 
-`ResetOptions` 当前只保留行为开关：
-
-- `clear_commands`
-- `reset_components`
-- `clear_state_buffer`
-- `clear_camera_buffer`
-- `reset_statistics`
+复位始终重置 MuJoCo 模型与组件状态，清空命令、状态和相机缓存，并清零调度与快照统计。
 
 ## 设备层能力
 
@@ -215,7 +207,7 @@ reset 当前公开接口为：
 | `Imu` | 组合多个 MuJoCo sensor 输出 IMU 状态 | 只读，依赖 `framequat` / `gyro` / `accelerometer` |
 | `Camera` | 从渲染管线读取 RGB / depth 图像 | 通过统一的 `SimulationComponent` 调度，渲染资源独立于 Viewer |
 | `Lidar` | 由 `rangefinder` 传感器阵列拼装 `LaserScan` | 依赖 `<prefix>-<index>` 命名约定 |
-| `MobileBase` | 底盘运动学封装 | 当前支持 differential / omnidirectional |
+| `MobileBase` | 底盘运动学封装 | 当前支持四轮 mecanum |
 
 ### 设备层的几个关键边界
 
@@ -240,7 +232,7 @@ viewer 相关代码位于 [`src/viewer`](./src/viewer)。
 
 - `Simulation` 持有真正的 `mjModel` / `mjData`
 - 物理步进仍然由 `Simulation` 驱动
-- `MuJoCoViewer` 只负责渲染和状态同步
+- `SimulationViewer` 只负责渲染和状态同步
 
 Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer 的渲染资源。
 
@@ -256,21 +248,19 @@ Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer
 mujoco_simulation/
 ├── include/mujoco_simulation/
 │   ├── simulation.hpp               # 对外主入口
-│   ├── simulation_config.hpp        # RenderMode / ModelConfig / SchedulerConfig / SimulationConfig
-│   ├── reset_options.hpp            # 顶层 reset 选项
-│   ├── simulation_status.hpp        # 仿真生命周期状态
+│   ├── config/                      # SimulationConfig 及配置解析入口
+│   │   └── simulation_config.hpp
 │   ├── result_code.hpp              # 接口返回结果码
-│   ├── runtime/                     # ModelRuntime / SimulationScheduler
+│   ├── runtime/                     # SimulationRuntime / SimulationScheduler
 │   ├── buffer/                      # CommandBuffer / StateBuffer / CameraBuffer
 │   ├── component/                   # 组件抽象与按类型分组的组件实现
-│   │   ├── component_config.hpp     # ComponentConfig / ComponentConfigList
 │   │   ├── joint/ imu/ lidar/       # 统一为 *_data.hpp + *_component.hpp
 │   │   ├── camera/                  # camera_data + component，加独立 renderer 子系统头
 │   │   └── mobile_base/             # 统一为 mobile_base_data.hpp + mobile_base_component.hpp
 │   ├── viewer/                      # viewer 对外接口
 │   └── hardware/                    # 公共基础数据类型
 ├── src/
-│   ├── runtime/                     # ModelRuntime / SimulationScheduler 实现
+│   ├── runtime/                     # SimulationRuntime / SimulationScheduler 实现
 │   ├── buffer/                      # 预留给 buffer 独立实现
 │   ├── component/                   # 组件管理与组件实现
 │   │   ├── joint/ imu/ lidar/       # 新组件实现主路径
@@ -387,7 +377,7 @@ ros2_control
   - 但当前仍以 RGB / depth 采样为主，还没有扩展到 segmentation / object id 等更复杂渲染输出
 - joint 抽象目前偏向 1-DoF 控制接口
 - lidar 依赖传感器命名规则
-- mobile base 只覆盖 differential / omnidirectional
+- mobile base 当前只覆盖四轮 mecanum
 - 这个包本身是底层库，不是开箱即用的完整仿真应用
 
 如果你的目标是“启动一个 ROS 2 机器人仿真”，通常不应直接从这里起步，而应从 `robot_mujoco_ros2` 或 `robot_mujoco/launch` 看整体接入链路。

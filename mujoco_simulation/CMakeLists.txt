@@ -106,6 +106,7 @@ add_library(mujoco_simulation_buffer STATIC
 )
 target_link_libraries(mujoco_simulation_buffer PUBLIC
   mujoco_simulation_headers
+  mujoco_simulation_easyloggingpp
 )
 set_target_properties(mujoco_simulation_buffer PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -126,11 +127,12 @@ target_link_libraries(mujoco_simulation_components PUBLIC
 set_target_properties(mujoco_simulation_components PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(mujoco_simulation_runtime STATIC
-  src/runtime/model_runtime.cpp
+  src/runtime/simulation_runtime.cpp
   src/runtime/simulation_scheduler.cpp
 )
 target_link_libraries(mujoco_simulation_runtime PUBLIC
   mujoco_simulation_headers
+  mujoco_simulation_easyloggingpp
 )
 set_target_properties(mujoco_simulation_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -149,7 +151,7 @@ target_link_libraries(mujoco_simulation_camera PRIVATE
 set_target_properties(mujoco_simulation_camera PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(mujoco_simulation_viewer_support STATIC
-  src/viewer/mujoco_viewer.cpp
+  src/viewer/simulation_viewer.cpp
 )
 target_link_libraries(mujoco_simulation_viewer_support PUBLIC
   mujoco_simulation_headers
@@ -207,11 +209,11 @@ if(BUILD_TESTING)
   )
   target_link_libraries(perf_runtime_scenarios ${PROJECT_NAME})
 
-  ament_add_gtest(test_model_runtime
-    test/unit/test_model_runtime.cpp
+  ament_add_gtest(test_simulation_runtime
+    test/unit/test_simulation_runtime.cpp
   )
-  if(TARGET test_model_runtime)
-    target_link_libraries(test_model_runtime ${PROJECT_NAME})
+  if(TARGET test_simulation_runtime)
+    target_link_libraries(test_simulation_runtime ${PROJECT_NAME})
   endif()
 
   ament_add_gtest(test_status
@@ -229,6 +231,13 @@ if(BUILD_TESTING)
       mujoco_simulation_headers
       mujoco_simulation_easyloggingpp
     )
+  endif()
+
+  ament_add_gtest(test_math
+    test/unit/test_math.cpp
+  )
+  if(TARGET test_math)
+    target_link_libraries(test_math mujoco_simulation_headers)
   endif()
 
   ament_add_gtest(test_simulation_scheduler
@@ -252,13 +261,6 @@ if(BUILD_TESTING)
     target_link_libraries(test_component_registry ${PROJECT_NAME})
   endif()
 
-  ament_add_gtest(test_component_config
-    test/unit/test_component_config.cpp
-  )
-  if(TARGET test_component_config)
-    target_link_libraries(test_component_config ${PROJECT_NAME})
-  endif()
-
   ament_add_gtest(test_robot_mujoco_config
     test/unit/test_robot_mujoco_config.cpp
   )
@@ -271,6 +273,13 @@ if(BUILD_TESTING)
   )
   if(TARGET test_mobile_base)
     target_link_libraries(test_mobile_base ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_mecanum
+    test/unit/test_mecanum.cpp
+  )
+  if(TARGET test_mecanum)
+    target_link_libraries(test_mecanum mujoco_simulation_headers)
   endif()
 
   ament_add_gtest(test_buffered_simulation
@@ -299,6 +308,20 @@ if(BUILD_TESTING)
   )
   if(TARGET test_sensor_sampling)
     target_link_libraries(test_sensor_sampling ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_imu_component
+    test/unit/test_imu_component.cpp
+  )
+  if(TARGET test_imu_component)
+    target_link_libraries(test_imu_component ${PROJECT_NAME})
+  endif()
+
+  ament_add_gtest(test_lidar_component
+    test/unit/test_lidar_component.cpp
+  )
+  if(TARGET test_lidar_component)
+    target_link_libraries(test_lidar_component ${PROJECT_NAME})
   endif()
 
   ament_add_gtest(test_camera_buffer

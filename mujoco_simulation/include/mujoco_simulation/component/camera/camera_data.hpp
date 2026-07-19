@@ -5,12 +5,13 @@
 #include <vector>
 
 #include "mujoco_simulation/common/math.hpp"
-#include "mujoco_simulation/component/sensor_common_config.hpp"
 
 namespace mujoco_simulation {
 
 struct CameraConfig {
-  SensorCommonConfig common{.update_rate = 30.0};
+  std::string name;
+  std::string frame_id;
+  double update_rate{30.0};
   std::string camera_name;
   std::string optical_frame_id;
 

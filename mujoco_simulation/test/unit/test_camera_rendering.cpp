@@ -68,14 +68,15 @@ TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
   SimulationConfig config;
   config.model.model_path = model_path;
   config.render_mode = RenderMode::Headless;
-  config.components = {ComponentConfig{CameraConfig{
-      .common = {.name = "front_camera", .frame_id = "camera_link", .update_rate = 50.0},
-      .camera_name = "cam",
-      .optical_frame_id = "camera_optical_frame",
-      .height = 120,
-      .width = 160,
-      .enable_rgb = true,
-      .enable_depth = true}}};
+  config.components = {ComponentConfig{CameraConfig{.name = "front_camera",
+                                                    .frame_id = "camera_link",
+                                                    .update_rate = 50.0,
+                                                    .camera_name = "cam",
+                                                    .optical_frame_id = "camera_optical_frame",
+                                                    .height = 120,
+                                                    .width = 160,
+                                                    .enable_rgb = true,
+                                                    .enable_depth = true}}};
   ASSERT_OK_STATUS(simulation.initialize(config));
 
   CameraState state;
@@ -138,13 +139,15 @@ TEST_F(CameraRenderingTest, MultipleCamerasUpdateAtIndependentRatesInHeadlessMod
   config.model.model_path = model_path;
   config.render_mode = RenderMode::Headless;
   config.components = {
-      ComponentConfig{CameraConfig{.common = {.name = "fast_camera", .update_rate = 50.0},
+      ComponentConfig{CameraConfig{.name = "fast_camera",
+                                   .update_rate = 50.0,
                                    .camera_name = "cam",
                                    .height = 120,
                                    .width = 160,
                                    .enable_rgb = true,
                                    .enable_depth = false}},
-      ComponentConfig{CameraConfig{.common = {.name = "slow_camera", .update_rate = 20.0},
+      ComponentConfig{CameraConfig{.name = "slow_camera",
+                                   .update_rate = 20.0,
                                    .camera_name = "cam",
                                    .height = 120,
                                    .width = 160,
@@ -187,13 +190,13 @@ TEST_F(CameraRenderingTest, CameraInitializationReportsRenderFailedWhenNoBackend
   config.render_mode = RenderMode::Headless;
   config.camera_renderer.allow_glfw_backend = false;
   config.camera_renderer.allow_egl_backend = false;
-  config.components = {
-      ComponentConfig{CameraConfig{.common = {.name = "front_camera", .update_rate = 50.0},
-                                   .camera_name = "cam",
-                                   .height = 120,
-                                   .width = 160,
-                                   .enable_rgb = true,
-                                   .enable_depth = false}}};
+  config.components = {ComponentConfig{CameraConfig{.name = "front_camera",
+                                                    .update_rate = 50.0,
+                                                    .camera_name = "cam",
+                                                    .height = 120,
+                                                    .width = 160,
+                                                    .enable_rgb = true,
+                                                    .enable_depth = false}}};
   const ResultCode status = simulation.initialize(config);
   EXPECT_EQ(status, ResultCode::Internal);
 }

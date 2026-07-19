@@ -5,206 +5,299 @@
 #include <utility>
 
 #include "mujoco_simulation/common/logging.hpp"
-#include "mujoco_simulation/component/update_context.hpp"
+#include "mujoco_simulation/common/macro.hpp"
+#include "mujoco_simulation/common/math.hpp"
 
 namespace mujoco_simulation {
-namespace {
 
-bool is_limited(unsigned char limit_flag) { return limit_flag != 0; }
+JointComponent::JointComponent(JointInfo info)
+    : SimulationComponent(info.joint_name, info.update_rate), info_(std::move(info)) {}
 
-}  // namespace
-
-JointComponent::JointComponent(JointInfo info) : info_(std::move(info)) { set_update_every_step(); }
-
-std::string JointComponent::name() const noexcept { return info_.joint; }
-
-bool JointComponent::bind(const mjModel& model) {
-  if (info_.joint.empty() || info_.actuator.empty()) {
-    LOG_ERROR << "JointComponent::bind"
-              << ": "
-              << "joint and actuator names must not be empty.";
+bool JointComponent::init(const mjContext& context) {
+  initialized_ = false;
+  if (!configure(context)) {
     return false;
   }
-  joint_id_ = mj_name2id(&model, mjOBJ_JOINT, info_.joint.c_str());
-  if (joint_id_ < 0) {
-    LOG_ERROR << "JointComponent::bind"
-              << ": "
-              << "joint was not found in model.";
+
+  if (info_.actuator_name.empty()) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator name must not be empty.";
     return false;
   }
-  joint_type_ = model.jnt_type[joint_id_];
-  qpos_address_ = model.jnt_qposadr[joint_id_];
-  dof_address_ = model.jnt_dofadr[joint_id_];
-  motor_id_ = find_motor_id(model);
-  if (qpos_address_ < 0 || dof_address_ < 0 || motor_id_ < 0) {
-    LOG_ERROR << "JointComponent::bind"
-              << ": "
-              << "failed to resolve MuJoCo joint or actuator addresses.";
+  if (info_.position_limits.min > info_.position_limits.max) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' position limits have min greater than max.";
     return false;
   }
-  return validate_binding();
+  if (info_.velocity_limits.min > info_.velocity_limits.max) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' velocity limits have min greater than max.";
+    return false;
+  }
+  if (info_.effort_limits.min > info_.effort_limits.max) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' effort limits have min greater than max.";
+    return false;
+  }
+  if (!std::isfinite(info_.position_stiffness) || info_.position_stiffness < 0.0) {
+    LOG_ERROR << "joint '" << info_.joint_name
+              << "' position stiffness must be finite and non-negative.";
+    return false;
+  }
+  if (!std::isfinite(info_.position_damping) || info_.position_damping < 0.0) {
+    LOG_ERROR << "joint '" << info_.joint_name
+              << "' position damping must be finite and non-negative.";
+    return false;
+  }
+  if (!std::isfinite(info_.velocity_damping) || info_.velocity_damping < 0.0) {
+    LOG_ERROR << "joint '" << info_.joint_name
+              << "' velocity damping must be finite and non-negative.";
+    return false;
+  }
+
+  const mjModel& model = *context.model;
+  joint_.joint_id = mj_name2id(&model, mjOBJ_JOINT, info_.joint_name.c_str());
+  if (joint_.joint_id < 0) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' was not found in the model.";
+    return false;
+  }
+  joint_.actuator_id = mj_name2id(&model, mjOBJ_ACTUATOR, info_.actuator_name.c_str());
+  if (joint_.actuator_id < 0) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' was not found in the model.";
+    return false;
+  }
+  const int mujoco_joint_type = model.jnt_type[joint_.joint_id];
+  if (mujoco_joint_type == mjJNT_HINGE) {
+    info_.joint_type = JointType::Revolute;
+  } else if (mujoco_joint_type == mjJNT_SLIDE) {
+    info_.joint_type = JointType::Prismatic;
+  } else {
+    LOG_ERROR << "joint '" << info_.joint_name << "' has MuJoCo type " << mujoco_joint_type
+              << "; only hinge and slide joints are supported.";
+    return false;
+  }
+  joint_.qpos_address = model.jnt_qposadr[joint_.joint_id];
+  if (joint_.qpos_address < 0) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' has an invalid qpos address.";
+    return false;
+  }
+  joint_.dof_address = model.jnt_dofadr[joint_.joint_id];
+  if (joint_.dof_address < 0) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' has an invalid dof address.";
+    return false;
+  }
+  if (model.actuator_trntype[joint_.actuator_id] != mjTRN_JOINT) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' has transmission type " << model.actuator_trntype[joint_.actuator_id]
+              << ", expected joint transmission.";
+    return false;
+  }
+  if (model.actuator_trnid[2 * joint_.actuator_id] != joint_.joint_id) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' is bound to joint id " << model.actuator_trnid[2 * joint_.actuator_id]
+              << ", expected id " << joint_.joint_id << ".";
+    return false;
+  }
+  if (model.actuator_dyntype[joint_.actuator_id] != mjDYN_NONE) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' has dynamics type " << model.actuator_dyntype[joint_.actuator_id]
+              << ", expected no dynamics.";
+    return false;
+  }
+  if (model.actuator_gaintype[joint_.actuator_id] != mjGAIN_FIXED) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' has gain type " << model.actuator_gaintype[joint_.actuator_id]
+              << ", expected fixed gain.";
+    return false;
+  }
+  const mjtNum* gain = model.actuator_gainprm + joint_.actuator_id * mjNGAIN;
+  if (!equal(static_cast<double>(gain[0]), 1.0)) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' has gain " << gain[0] << ", expected 1.";
+    return false;
+  }
+  if (model.actuator_biastype[joint_.actuator_id] != mjBIAS_NONE) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' has bias type " << model.actuator_biastype[joint_.actuator_id]
+              << ", expected no bias.";
+    return false;
+  }
+  const mjtNum* gear = model.actuator_gear + joint_.actuator_id * 6;
+  if (!equal(static_cast<double>(gear[0]), 1.0)) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+              << "' has gear " << gear[0] << ", expected 1.";
+    return false;
+  }
+  initialized_ = true;
+  return true;
 }
 
-bool JointComponent::reset(const mjModel&, mjData& data) {
-  if (joint_id_ < 0 || motor_id_ < 0) {
-    LOG_ERROR << "JointComponent::reset"
-              << ": "
-              << "joint must be bound before reset.";
+bool JointComponent::reset(const mjContext& context) {
+  mjData& data = *context.data;
+  if (!is_initialized()) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
     return false;
   }
-  data.ctrl[motor_id_] = 0.0;
-  last_command_ = {};
+  data.ctrl[joint_.actuator_id] = 0.0;
+  command_ = {};
   state_ = {};
-  state_.joint = info_.joint;
   return true;
 }
 
-bool JointComponent::update(const UpdateContext& context) { return read(context.data, state_); }
+bool JointComponent::update(const mjContext& context) {
+  if (!is_initialized()) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
+    return false;
+  }
 
-bool JointComponent::write(const mjModel& model, mjData& data, const JointCommand& command) {
-  if (joint_id_ < 0 || motor_id_ < 0 || command.joint != info_.joint) {
-    LOG_ERROR << "JointComponent::write"
-              << ": "
-              << "joint is not bound or command target does not match.";
-    return false;
-  }
-  double effort = 0.0;
-  if (!calculate_effort(data, command, &effort)) {
-    return false;
-  }
-  if (write_effort_output(model, data, effort)) {
-    last_command_ = command;
-    state_.mode = command.mode;
-    return true;
-  }
-  return false;
-}
-
-bool JointComponent::read(const mjData& data, JointState& state) const {
-  if (joint_id_ < 0 || qpos_address_ < 0 || dof_address_ < 0) {
-    LOG_ERROR << "JointComponent::read"
-              << ": "
-              << "joint must be bound before read.";
-    return false;
-  }
-  state.joint = info_.joint;
-  state.mode = state_.mode;
-  state.position = data.qpos[qpos_address_];
-  state.velocity = data.qvel[dof_address_];
-  state.effort = data.qfrc_actuator[dof_address_];
+  state_.joint_name = info_.joint_name;
+  state_.timestamp = context.data->time;
+  state_.position = context.data->qpos[joint_.qpos_address];
+  state_.velocity = context.data->qvel[joint_.dof_address];
+  state_.effort = context.data->qfrc_actuator[joint_.dof_address];
   return true;
 }
 
-JointType JointComponent::joint_type() const noexcept { return parse_joint_type(joint_type_); }
+bool JointComponent::write(const mjContext& context, const JointCommand& command) {
+  if (!is_initialized()) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
+    return false;
+  }
 
-bool JointComponent::validate_binding() const {
-  if (joint_type_ != mjJNT_HINGE && joint_type_ != mjJNT_SLIDE) {
-    LOG_ERROR << "JointComponent::validate_binding"
-              << ": "
-              << "only hinge and slide joints are supported.";
+  if (command.joint_name != info_.joint_name) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' received a command for joint '"
+              << command.joint_name << "'.";
     return false;
   }
-  if (info_.position_limits.min > info_.position_limits.max ||
-      info_.velocity_limits.min > info_.velocity_limits.max ||
-      info_.effort_limits.min > info_.effort_limits.max || !finite(info_.position_stiffness) ||
-      !finite(info_.position_damping) || !finite(info_.velocity_damping) ||
-      info_.position_stiffness < 0.0 || info_.position_damping < 0.0 ||
-      info_.velocity_damping < 0.0) {
-    LOG_ERROR << "JointComponent::validate_binding"
-              << ": "
-              << "joint configuration contains invalid limits or gains.";
-    return false;
-  }
-  return true;
-}
 
-bool JointComponent::calculate_effort(const mjData& data, const JointCommand& command,
-                                      double* effort) const {
-  if (effort == nullptr || !finite(command.position) || !finite(command.velocity) ||
-      !finite(command.effort) || !finite(command.stiffness) || !finite(command.damping)) {
-    LOG_ERROR << "JointComponent::calculate_effort"
-              << ": "
-              << "command values must be finite and effort pointer valid.";
-    return false;
-  }
-  const double position = data.qpos[qpos_address_];
-  const double velocity = data.qvel[dof_address_];
+  bool result = false;
   switch (command.mode) {
-    case ControlMode::Position:
-      *effort = info_.position_stiffness *
-                    (clamp_limits(info_.position_limits, command.position) - position) +
-                info_.position_damping * (0.0 - velocity);
+    case JointControlMode::Position:
+      result = write_position_command(context, command);
       break;
-    case ControlMode::Velocity:
-      *effort = info_.velocity_damping *
-                (clamp_limits(info_.velocity_limits, command.velocity) - velocity);
+    case JointControlMode::Velocity:
+      result = write_velocity_command(context, command);
       break;
-    case ControlMode::Effort:
-      *effort = clamp_limits(info_.effort_limits, command.effort);
+    case JointControlMode::Effort:
+      result = write_effort_command(context, command);
       break;
-    case ControlMode::Hybrid:
-      if (command.stiffness < 0.0 || command.damping < 0.0) {
-        LOG_ERROR << "JointComponent::calculate_effort"
-                  << ": "
-                  << "hybrid stiffness and damping must be non-negative.";
-        return false;
-      }
-      *effort =
-          clamp_limits(info_.effort_limits, command.effort) +
-          command.stiffness * (clamp_limits(info_.position_limits, command.position) - position) +
-          command.damping * (clamp_limits(info_.velocity_limits, command.velocity) - velocity);
+    case JointControlMode::Hybrid:
+      result = write_hybrid_command(context, command);
       break;
+    default:
+      LOG_ERROR << "joint '" << info_.joint_name << "' received unsupported control mode "
+                << static_cast<int>(command.mode) << ".";
+      return false;
   }
-  *effort = clamp_limits(info_.effort_limits, *effort);
+  if (!result) {
+    return false;
+  }
+
+  command_ = command;
+  state_.mode = command.mode;
   return true;
 }
 
-bool JointComponent::write_effort_output(const mjModel& model, mjData& data, double effort) const {
-  effort = clamp_motor_force_limits(model, effort);
-  data.ctrl[motor_id_] = clamp_motor_control_limits(model, effort);
+bool JointComponent::read(const mjContext& context, JointState& state) const {
+  UNUSED(context);
+  if (!is_initialized()) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
+    return false;
+  }
+  state = state_;
   return true;
 }
 
-double JointComponent::clamp_limits(const Limit& limits, double value) {
+bool JointComponent::is_initialized() const noexcept { return initialized_; }
+
+bool JointComponent::write_position_command(const mjContext& context,
+                                            const JointCommand& command) const {
+  if (!std::isfinite(command.position)) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' position command must be finite.";
+    return false;
+  }
+
+  const double position_state = context.data->qpos[joint_.qpos_address];
+  const double velocity_state = context.data->qvel[joint_.dof_address];
+  double effort = info_.position_stiffness *
+                      (clamp_limits(info_.position_limits, command.position) - position_state) +
+                  info_.position_damping * (0.0 - velocity_state);
+  effort = clamp_limits(info_.effort_limits, effort);
+  effort = clamp_force_limits(context, effort);
+  context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
+  return true;
+}
+
+bool JointComponent::write_velocity_command(const mjContext& context,
+                                            const JointCommand& command) const {
+  if (!std::isfinite(command.velocity)) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' velocity command must be finite.";
+    return false;
+  }
+  const double velocity_state = context.data->qvel[joint_.dof_address];
+  double effort = info_.velocity_damping *
+                  (clamp_limits(info_.velocity_limits, command.velocity) - velocity_state);
+  effort = clamp_limits(info_.effort_limits, effort);
+  effort = clamp_force_limits(context, effort);
+  context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
+  return true;
+}
+
+bool JointComponent::write_effort_command(const mjContext& context,
+                                          const JointCommand& command) const {
+  if (!std::isfinite(command.effort)) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' effort command must be finite.";
+    return false;
+  }
+  double effort = clamp_limits(info_.effort_limits, command.effort);
+  effort = clamp_force_limits(context, effort);
+  context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
+  return true;
+}
+
+bool JointComponent::write_hybrid_command(const mjContext& context,
+                                          const JointCommand& command) const {
+  if (!std::isfinite(command.position) || !std::isfinite(command.velocity) ||
+      !std::isfinite(command.effort) || !std::isfinite(command.stiffness) ||
+      !std::isfinite(command.damping)) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' hybrid command values must be finite.";
+    return false;
+  }
+  if (command.stiffness < 0.0) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' hybrid stiffness must be non-negative.";
+    return false;
+  }
+  if (command.damping < 0.0) {
+    LOG_ERROR << "joint '" << info_.joint_name << "' hybrid damping must be non-negative.";
+    return false;
+  }
+  const double position_state = context.data->qpos[joint_.qpos_address];
+  const double velocity_state = context.data->qvel[joint_.dof_address];
+  double effort =
+      command.effort +
+      command.stiffness * (clamp_limits(info_.position_limits, command.position) - position_state) +
+      command.damping * (clamp_limits(info_.velocity_limits, command.velocity) - velocity_state);
+  effort = clamp_limits(info_.effort_limits, effort);
+  effort = clamp_force_limits(context, effort);
+  context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
+  return true;
+}
+
+double JointComponent::clamp_limits(const Limit& limits, double value) const {
   return std::clamp(value, limits.min, limits.max);
 }
 
-double JointComponent::clamp_motor_control_limits(const mjModel& model, double value) const {
-  if (!is_limited(model.actuator_ctrllimited[motor_id_])) {
+double JointComponent::clamp_ctrl_limits(const mjContext& context, double value) const {
+  if (context.model->actuator_ctrllimited[joint_.actuator_id] == 0) {
     return value;
   }
-  const mjtNum* range = model.actuator_ctrlrange + 2 * motor_id_;
+  const mjtNum* range = context.model->actuator_ctrlrange + 2 * joint_.actuator_id;
   return std::clamp(value, static_cast<double>(range[0]), static_cast<double>(range[1]));
 }
 
-double JointComponent::clamp_motor_force_limits(const mjModel& model, double value) const {
-  if (!is_limited(model.actuator_forcelimited[motor_id_])) {
+double JointComponent::clamp_force_limits(const mjContext& context, double value) const {
+  if (context.model->actuator_forcelimited[joint_.actuator_id] == 0) {
     return value;
   }
-  const mjtNum* range = model.actuator_forcerange + 2 * motor_id_;
+  const mjtNum* range = context.model->actuator_forcerange + 2 * joint_.actuator_id;
   return std::clamp(value, static_cast<double>(range[0]), static_cast<double>(range[1]));
-}
-
-bool JointComponent::finite(double value) { return std::isfinite(value); }
-
-int JointComponent::find_motor_id(const mjModel& model) const {
-  const int actuator_id = mj_name2id(&model, mjOBJ_ACTUATOR, info_.actuator.c_str());
-  if (actuator_id < 0 || model.actuator_trntype[actuator_id] != mjTRN_JOINT ||
-      model.actuator_trnid[2 * actuator_id] != joint_id_ ||
-      model.actuator_biastype[actuator_id] != mjBIAS_NONE) {
-    return -1;
-  }
-  return actuator_id;
-}
-
-JointType JointComponent::parse_joint_type(int mujoco_joint_type) {
-  if (mujoco_joint_type == mjJNT_HINGE) {
-    return JointType::Revolute;
-  }
-  if (mujoco_joint_type == mjJNT_SLIDE) {
-    return JointType::Prismatic;
-  }
-  return JointType::Revolute;
 }
 
 }  // namespace mujoco_simulation

@@ -82,10 +82,10 @@ MJCF：
 
 ------------------------------------------------------------------------
 
-## 5. ControlMode
+## 5. JointControlMode
 
 ``` cpp
-enum class ControlMode
+enum class JointControlMode
 {
     Position,
     Velocity,
@@ -101,7 +101,7 @@ enum class ControlMode
 ``` cpp
 struct JointCommand
 {
-    ControlMode mode;
+    JointControlMode mode;
 
     double position;
 
@@ -122,7 +122,7 @@ struct JointCommand
 ``` cpp
 struct JointState
 {
-    ControlMode mode;
+    JointControlMode mode;
 
     double position;
 

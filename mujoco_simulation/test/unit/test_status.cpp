@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "mujoco_simulation/result_code.hpp"
-#include "mujoco_simulation/simulation_status.hpp"
+#include "mujoco_simulation/simulation.hpp"
 
 namespace mujoco_simulation {
 namespace {

@@ -1,215 +1,156 @@
 #include "mujoco_simulation/component/lidar/lidar_component.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <limits>
 #include <utility>
 
 #include "mujoco_simulation/common/logging.hpp"
-#include "mujoco_simulation/component/update_context.hpp"
+#include "mujoco_simulation/common/macro.hpp"
+#include "mujoco_simulation/common/math.hpp"
 
 namespace mujoco_simulation {
-namespace {
-
-struct LidarBeamBinding {
-  std::size_t beam_index{0};
-  int sensor_id{-1};
-  int sensor_address{-1};
-};
-
-struct LidarBinding {
-  std::vector<LidarBeamBinding> beams;
-};
-
-int parse_beam_index(const std::string& sensor_name, const std::string& prefix) {
-  const std::string expected_prefix = prefix + "-";
-  if (sensor_name.rfind(expected_prefix, 0) != 0) {
-    return -1;
-  }
-
-  const std::string suffix = sensor_name.substr(expected_prefix.size());
-  if (suffix.empty() || !std::all_of(suffix.begin(), suffix.end(), [](unsigned char value) {
-        return std::isdigit(value) != 0;
-      })) {
-    return -1;
-  }
-  return std::stoi(suffix);
-}
-
-}  // namespace
-
-struct LidarComponent::Impl {
-  LidarBinding binding;
-};
 
 LidarComponent::LidarComponent(LidarInfo info)
-    : impl_(std::make_unique<Impl>()), info_(std::move(info)) {}
+    : SimulationComponent(info.name, info.update_rate), info_(std::move(info)) {}
 
-LidarComponent::~LidarComponent() = default;
-
-LidarComponent::LidarComponent(LidarComponent&&) noexcept = default;
-
-LidarComponent& LidarComponent::operator=(LidarComponent&&) noexcept = default;
-
-std::string LidarComponent::name() const noexcept { return info_.common.name; }
-
-bool LidarComponent::bind(const mjModel& model) {
-  if (info_.common.name.empty()) {
-    LOG_ERROR << "LidarComponent::bind"
-              << ": "
-              << "lidar component name must not be empty.";
+bool LidarComponent::init(const mjContext& context) {
+  initialized_ = false;
+  beam_addresses_.clear();
+  if (!configure(context)) {
     return false;
   }
-  if (model.opt.timestep <= 0.0) {
-    LOG_ERROR << "LidarComponent::bind"
-              << ": "
-              << "model timestep must be positive.";
-    return false;
-  }
+
+  const mjModel& model = *context.model;
   if (info_.sensor_prefix.empty()) {
-    LOG_ERROR << "LidarComponent::bind"
-              << ": "
-              << "sensor prefix must not be empty.";
+    LOG_ERROR << "lidar '" << info_.name << "' sensor prefix must not be empty.";
     return false;
   }
-  if (info_.angle_increment <= 0.0 || info_.angle_max < info_.angle_min) {
-    LOG_ERROR << "LidarComponent::bind"
-              << ": "
-              << "lidar angles are invalid.";
+  if (!std::isfinite(info_.angle_min) || !std::isfinite(info_.angle_max) ||
+      !std::isfinite(info_.angle_increment)) {
+    LOG_ERROR << "lidar '" << info_.name << "' angular configuration must be finite.";
+    return false;
+  }
+  if (!std::isfinite(info_.range_min) || !std::isfinite(info_.range_max)) {
+    LOG_ERROR << "lidar '" << info_.name << "' range configuration must be finite.";
+    return false;
+  }
+  if (info_.angle_increment <= 0.0) {
+    LOG_ERROR << "lidar '" << info_.name << "' angle increment must be positive.";
+    return false;
+  }
+  if (info_.angle_max < info_.angle_min) {
+    LOG_ERROR << "lidar '" << info_.name << "' angle maximum is less than angle minimum.";
     return false;
   }
   if (info_.range_max < info_.range_min) {
-    LOG_ERROR << "LidarComponent::bind"
-              << ": "
-              << "lidar ranges are invalid.";
+    LOG_ERROR << "lidar '" << info_.name << "' range maximum is less than range minimum.";
     return false;
   }
 
   const double span = (info_.angle_max - info_.angle_min) / info_.angle_increment;
-  const int beam_count = static_cast<int>(std::llround(span)) + 1;
-  if (beam_count <= 0) {
-    LOG_ERROR << "LidarComponent::bind"
-              << ": "
-              << "computed beam count must be positive.";
+  const double rounded_span = std::round(span);
+  if (!equal(span, rounded_span) ||
+      rounded_span > static_cast<double>(std::numeric_limits<int>::max() - 1)) {
+    LOG_ERROR << "lidar '" << info_.name
+              << "' angle span must be an integral number of increments.";
     return false;
   }
+  const int beam_count = static_cast<int>(rounded_span) + 1;
 
-  impl_->binding.beams.assign(static_cast<std::size_t>(beam_count), {});
+  beam_addresses_.resize(static_cast<std::size_t>(beam_count), -1);
   for (int beam_index = 0; beam_index < beam_count; ++beam_index) {
-    impl_->binding.beams[static_cast<std::size_t>(beam_index)].beam_index =
-        static_cast<std::size_t>(beam_index);
-    impl_->binding.beams[static_cast<std::size_t>(beam_index)].sensor_id = -1;
-    impl_->binding.beams[static_cast<std::size_t>(beam_index)].sensor_address = -1;
-  }
-
-  for (int sensor_id = 0; sensor_id < model.nsensor; ++sensor_id) {
+    const std::string sensor_name = info_.sensor_prefix + "-" + std::to_string(beam_index);
+    const int sensor_id = mj_name2id(&model, mjOBJ_SENSOR, sensor_name.c_str());
+    if (sensor_id < 0) {
+      LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
+                << "' was not found in the model.";
+      return false;
+    }
     if (model.sensor_type[sensor_id] != mjSENS_RANGEFINDER) {
-      continue;
+      LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name << "' has type "
+                << model.sensor_type[sensor_id] << ", expected " << mjSENS_RANGEFINDER << ".";
+      return false;
     }
     if (model.sensor_dim[sensor_id] != 1) {
-      continue;
-    }
-
-    const char* sensor_name = mj_id2name(&model, mjOBJ_SENSOR, sensor_id);
-    if (sensor_name == nullptr) {
-      continue;
-    }
-
-    const int beam_index = parse_beam_index(sensor_name, info_.sensor_prefix);
-    if (beam_index < 0 || beam_index >= beam_count) {
-      continue;
-    }
-
-    LidarBeamBinding& beam = impl_->binding.beams[static_cast<std::size_t>(beam_index)];
-    if (beam.sensor_id >= 0) {
-      LOG_ERROR << "LidarComponent::bind"
-                << ": "
-                << "duplicate lidar beam sensor binding.";
+      LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name << "' has dimension "
+                << model.sensor_dim[sensor_id] << ", expected 1.";
       return false;
     }
-
     const int address = model.sensor_adr[sensor_id];
     if (address < 0 || address >= model.nsensordata) {
-      LOG_ERROR << "LidarComponent::bind"
-                << ": "
-                << "lidar sensor address is out of range.";
+      LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
+                << "' has an out-of-range sensor address.";
       return false;
     }
-    beam.sensor_id = sensor_id;
-    beam.sensor_address = address;
+    beam_addresses_[static_cast<std::size_t>(beam_index)] = address;
   }
 
-  for (const LidarBeamBinding& beam : impl_->binding.beams) {
-    if (beam.sensor_id < 0 || beam.sensor_address < 0) {
-      LOG_ERROR << "LidarComponent::bind"
-                << ": "
-                << "missing lidar beam sensor binding.";
-      return false;
-    }
-  }
-
-  if (!set_update_rate(info_.common.update_rate, 1.0 / model.opt.timestep)) {
-    return false;
-  }
-
-  return set_defaults();
-}
-
-bool LidarComponent::reset(const mjModel& model, mjData& data) {
-  (void)model;
-  (void)data;
-  sample_sequence_ = 0;
-  return set_defaults();
-}
-
-bool LidarComponent::update(const UpdateContext& context) {
-  (void)context.model;
-  (void)context.step_count;
-  if (impl_->binding.beams.empty()) {
-    LOG_ERROR << "LidarComponent::update"
-              << ": "
-              << "lidar must be bound before update.";
-    return false;
-  }
-
-  state_.sequence = ++sample_sequence_;
-  state_.timestamp_ns = context.simulation_time <= 0.0
-                            ? 0
-                            : static_cast<std::uint64_t>(context.simulation_time * 1.0e9);
-  state_.frame_id = info_.common.frame_id;
-  state_.scan_time = info_.common.update_rate > 0.0 ? 1.0 / info_.common.update_rate : 0.0;
-  state_.time_increment = 0.0;
-
-  for (const LidarBeamBinding& beam : impl_->binding.beams) {
-    const double range = context.data.sensordata[beam.sensor_address];
-    state_.ranges[beam.beam_index] =
-        (!std::isfinite(range) || range < info_.range_min || range > info_.range_max)
-            ? std::numeric_limits<double>::infinity()
-            : range;
-    state_.intensities[beam.beam_index] = 0.0;
-  }
-
-  return true;
-}
-
-bool LidarComponent::read(LidarState& state) const {
-  state = state_;
-  return true;
-}
-
-bool LidarComponent::set_defaults() {
+  sequence_ = 0;
   state_ = {};
-  state_.frame_id = info_.common.frame_id;
+  state_.frame_id = info_.frame_id;
   state_.angle_min = info_.angle_min;
   state_.angle_max = info_.angle_max;
   state_.angle_increment = info_.angle_increment;
   state_.range_min = info_.range_min;
   state_.range_max = info_.range_max;
+  state_.ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
+  state_.intensities.assign(beam_addresses_.size(), 0.0);
+  initialized_ = true;
+  return true;
+}
+
+bool LidarComponent::reset(const mjContext& context) {
+  UNUSED(context);
+  if (!initialized_) {
+    LOG_ERROR << "lidar '" << info_.name << "' is not initialized.";
+    return false;
+  }
+
+  sequence_ = 0;
+  state_ = {};
+  state_.frame_id = info_.frame_id;
+  state_.angle_min = info_.angle_min;
+  state_.angle_max = info_.angle_max;
+  state_.angle_increment = info_.angle_increment;
+  state_.range_min = info_.range_min;
+  state_.range_max = info_.range_max;
+  state_.ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
+  state_.intensities.assign(beam_addresses_.size(), 0.0);
+  return true;
+}
+
+bool LidarComponent::update(const mjContext& context) {
+  if (!initialized_) {
+    LOG_ERROR << "lidar '" << info_.name << "' is not initialized.";
+    return false;
+  }
+
+  state_.sequence = ++sequence_;
+  state_.timestamp = context.data->time;
+  state_.frame_id = info_.frame_id;
+  state_.scan_time =
+      info_.update_rate > 0.0 ? 1.0 / info_.update_rate : context.model->opt.timestep;
   state_.time_increment = 0.0;
-  state_.scan_time = 0.0;
-  state_.ranges.assign(impl_->binding.beams.size(), std::numeric_limits<double>::infinity());
-  state_.intensities.assign(impl_->binding.beams.size(), 0.0);
+
+  for (std::size_t beam_index = 0; beam_index < beam_addresses_.size(); ++beam_index) {
+    const double range = context.data->sensordata[beam_addresses_[beam_index]];
+    state_.ranges[beam_index] =
+        (!std::isfinite(range) || range < info_.range_min || range > info_.range_max)
+            ? std::numeric_limits<double>::infinity()
+            : range;
+    state_.intensities[beam_index] = 0.0;
+  }
+
+  return true;
+}
+
+bool LidarComponent::read(const mjContext& context, LidarState& state) const {
+  UNUSED(context);
+  if (!initialized_) {
+    LOG_ERROR << "lidar '" << info_.name << "' is not initialized.";
+    return false;
+  }
+  state = state_;
   return true;
 }
 

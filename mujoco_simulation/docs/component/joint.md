@@ -163,10 +163,10 @@ MuJoCo 使用：
 
 ------------------------------------------------------------------------
 
-# 6. ControlMode
+# 6. JointControlMode
 
 ``` cpp
-enum class ControlMode
+enum class JointControlMode
 {
     Position,
     Velocity,
@@ -182,7 +182,7 @@ enum class ControlMode
 ``` cpp
 struct JointCommand
 {
-    ControlMode mode;
+    JointControlMode mode;
 
     double position;
 
@@ -213,7 +213,7 @@ struct JointCommand
 ``` cpp
 struct JointState
 {
-    ControlMode mode;
+    JointControlMode mode;
 
     double position;
 
@@ -359,7 +359,7 @@ joints:
     JointType:
     Revolute
 
-    ControlMode:
+    JointControlMode:
     Hybrid
 
 使用：
@@ -380,7 +380,7 @@ joints:
     MJCF:
     hinge without range
 
-    ControlMode:
+    JointControlMode:
     Velocity
 
 ------------------------------------------------------------------------
@@ -390,7 +390,7 @@ joints:
     JointType:
     Prismatic
 
-    ControlMode:
+    JointControlMode:
     Position
 
 ------------------------------------------------------------------------
@@ -408,7 +408,7 @@ joints:
     Controller
 
      |
-     +-- ControlMode
+     +-- JointControlMode
 
      |
      +-- Joint Parameters
@@ -436,7 +436,7 @@ joints:
     Revolute
     Prismatic
 
-## ControlMode
+## JointControlMode
 
     Position
     Velocity
@@ -446,7 +446,7 @@ joints:
 ## JointCommand
 
 ``` cpp
-ControlMode mode;
+JointControlMode mode;
 
 double position;
 
@@ -462,7 +462,7 @@ double damping;
 ## JointState
 
 ``` cpp
-ControlMode mode;
+JointControlMode mode;
 
 double position;
 

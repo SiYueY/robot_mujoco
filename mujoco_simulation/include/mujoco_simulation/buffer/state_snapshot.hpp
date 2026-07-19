@@ -11,15 +11,20 @@
 
 namespace mujoco_simulation {
 
+using JointStates = std::unordered_map<std::string, JointState>;
+using ImuStates = std::unordered_map<std::string, ImuState>;
+using LidarStates = std::unordered_map<std::string, LidarState>;
+using MobileBaseStates = std::unordered_map<std::string, MobileBaseState>;
+
 struct StateSnapshot {
   std::uint64_t sequence{0};
   std::uint64_t timestamp_ns{0};
   double simulation_time{0.0};
   std::uint64_t step_count{0};
-  std::unordered_map<std::string, JointState> joints;
-  std::unordered_map<std::string, MobileBaseState> mobile_bases;
-  std::unordered_map<std::string, ImuState> imus;
-  std::unordered_map<std::string, LidarState> lidars;
+  JointStates joints;
+  MobileBaseStates mobile_bases;
+  ImuStates imus;
+  LidarStates lidars;
 
   bool joint_state(std::string name, JointState* out) const { return lookup(joints, name, out); }
   bool mobile_base_state(std::string name, MobileBaseState* out) const {

@@ -48,21 +48,21 @@ bool split_interface_key(const std::string& interface_key, std::string* joint_na
 
 using JointInterfaceSet = std::set<std::string>;
 
-std::optional<mujoco_simulation::ControlMode> control_mode_for(
+std::optional<mujoco_simulation::JointControlMode> control_mode_for(
     const JointInterfaceSet& interfaces) {
   if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_POSITION}) {
-    return mujoco_simulation::ControlMode::Position;
+    return mujoco_simulation::JointControlMode::Position;
   }
   if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_VELOCITY}) {
-    return mujoco_simulation::ControlMode::Velocity;
+    return mujoco_simulation::JointControlMode::Velocity;
   }
   if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_EFFORT}) {
-    return mujoco_simulation::ControlMode::Effort;
+    return mujoco_simulation::JointControlMode::Effort;
   }
   if (interfaces == JointInterfaceSet{hardware_interface::HW_IF_POSITION,
                                       hardware_interface::HW_IF_VELOCITY,
                                       hardware_interface::HW_IF_EFFORT, "stiffness", "damping"}) {
-    return mujoco_simulation::ControlMode::Hybrid;
+    return mujoco_simulation::JointControlMode::Hybrid;
   }
   return std::nullopt;
 }
@@ -107,7 +107,7 @@ void copy_imu_state_rt(const mujoco_simulation::ImuState& source,
     return;
   }
   target->sequence = source.sequence;
-  target->timestamp_ns = source.timestamp_ns;
+  target->timestamp = source.timestamp;
   target->orientation = source.orientation;
   target->orientation_covariance = source.orientation_covariance;
   target->angular_velocity = source.angular_velocity;
@@ -123,7 +123,7 @@ bool copy_lidar_state_rt(const mujoco_simulation::LidarState& source,
     return false;
   }
   target->sequence = source.sequence;
-  target->timestamp_ns = source.timestamp_ns;
+  target->timestamp = source.timestamp;
   target->angle_min = source.angle_min;
   target->angle_max = source.angle_max;
   target->angle_increment = source.angle_increment;
@@ -164,16 +164,16 @@ void MuJoCoHardwareInterface::initialize_command_buffers() {
     const auto it = active_joint_interfaces_.find(joint.name);
     const auto mode =
         it == active_joint_interfaces_.end() ? std::nullopt : control_mode_for(it->second);
-    if (mode == mujoco_simulation::ControlMode::Position ||
-        mode == mujoco_simulation::ControlMode::Hybrid) {
+    if (mode == mujoco_simulation::JointControlMode::Position ||
+        mode == mujoco_simulation::JointControlMode::Hybrid) {
       joint.command.position = joint.state.position;
     }
-    if (mode == mujoco_simulation::ControlMode::Velocity ||
-        mode == mujoco_simulation::ControlMode::Hybrid) {
+    if (mode == mujoco_simulation::JointControlMode::Velocity ||
+        mode == mujoco_simulation::JointControlMode::Hybrid) {
       joint.command.velocity = 0.0;
     }
-    if (mode == mujoco_simulation::ControlMode::Effort ||
-        mode == mujoco_simulation::ControlMode::Hybrid) {
+    if (mode == mujoco_simulation::JointControlMode::Effort ||
+        mode == mujoco_simulation::JointControlMode::Hybrid) {
       joint.command.effort = 0.0;
     }
     joint.command.stiffness = joint.config.position_stiffness;

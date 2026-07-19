@@ -1,70 +1,67 @@
 #include "mujoco_simulation/component/simulation_component.hpp"
 
 #include <cmath>
+#include <utility>
 
 #include "mujoco_simulation/common/logging.hpp"
+#include "mujoco_simulation/common/math.hpp"
 
 namespace mujoco_simulation {
-namespace {
-
-constexpr double kScheduleEpsilon = 1.0e-9;
-
-}  // namespace
 
 SimulationComponent::~SimulationComponent() = default;
 
-bool SimulationComponent::should_update(double simulation_time) {
-  if (period_ <= 0.0) {
+SimulationComponent::SimulationComponent(std::string name, double update_rate)
+    : name_(std::move(name)), update_rate_(update_rate) {}
+
+const std::string& SimulationComponent::name() const noexcept { return name_; }
+
+bool SimulationComponent::configure(const mjContext& context) {
+  if (!context.valid()) {
+    LOG_ERROR << "component context must provide a model and data.";
+    return false;
+  }
+  if (name_.empty()) {
+    LOG_ERROR << "component name must not be empty.";
+    return false;
+  }
+  if (!std::isfinite(update_rate_) || update_rate_ < 0.0) {
+    LOG_ERROR << "component '" << name_ << "' update rate must be finite and non-negative.";
+    return false;
+  }
+
+  const double physics_rate = 1.0 / context.model->opt.timestep;
+  if (!std::isfinite(physics_rate) || physics_rate <= 0.0) {
+    LOG_ERROR << "component '" << name_ << "' requires a finite, positive model timestep.";
+    return false;
+  }
+  if (greater(update_rate_, physics_rate)) {
+    LOG_ERROR << "component '" << name_ << "' update rate must not exceed the physics rate.";
+    return false;
+  }
+
+  reset_schedule();
+  return true;
+}
+
+bool SimulationComponent::poll_update(mjTime time) {
+  if (update_rate_ <= 0.0) {
     return true;
   }
+  const mjTime period = 1.0 / update_rate_;
 
-  if (simulation_time + kScheduleEpsilon < next_due_time_) {
+  if (less(time, next_time_)) {
     return false;
   }
 
-  std::uint64_t due_slots = 0;
   do {
-    next_due_time_ += period_;
-    ++due_slots;
-  } while (simulation_time + kScheduleEpsilon >= next_due_time_);
-  if (due_slots > 1) {
-    missed_updates_ += due_slots - 1;
-  }
+    next_time_ += period;
+  } while (greater(time, next_time_) || equal(time, next_time_));
   return true;
 }
 
-void SimulationComponent::reset_update_schedule() {
-  next_due_time_ = 0.0;
-  missed_updates_ = 0;
-}
-
-std::uint64_t SimulationComponent::missed_updates() const noexcept { return missed_updates_; }
-
-bool SimulationComponent::set_update_rate(double update_rate, double physics_rate) {
-  if (!std::isfinite(update_rate) || !std::isfinite(physics_rate) || update_rate <= 0.0 ||
-      physics_rate <= 0.0) {
-    LOG_ERROR << "SimulationComponent::set_update_rate"
-              << ": "
-              << "update_rate and physics_rate must be finite positive values.";
-    return false;
-  }
-  if (update_rate - physics_rate > kScheduleEpsilon) {
-    LOG_ERROR << "SimulationComponent::set_update_rate"
-              << ": "
-              << "update_rate must not exceed physics_rate.";
-    return false;
-  }
-
-  update_rate_ = update_rate;
-  period_ = 1.0 / update_rate_;
-  reset_update_schedule();
+bool SimulationComponent::reset_schedule() noexcept {
+  next_time_ = 0.0;
   return true;
-}
-
-void SimulationComponent::set_update_every_step() noexcept {
-  update_rate_ = 0.0;
-  period_ = 0.0;
-  reset_update_schedule();
 }
 
 }  // namespace mujoco_simulation

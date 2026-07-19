@@ -1,28 +1,36 @@
 #include "mujoco_simulation/buffer/command_buffer.hpp"
 
+#include <utility>
+
+#include "mujoco_simulation/common/logging.hpp"
+
 namespace mujoco_simulation {
 
-ResultCode CommandBuffer::write_joint_command(std::string component_name,
-                                              const JointCommand& command) {
+bool CommandBuffer::write_joint_command(std::string component_name, const JointCommand& command) {
   if (component_name.empty()) {
-    return ResultCode::InvalidArgument;
+    LOG_ERROR << "joint command component name must not be empty.";
+    return false;
   }
   std::lock_guard<std::mutex> lock(mutex_);
   joint_commands_[std::string(component_name)] = TimedJointCommand{command, Clock::now()};
   ++sequence_;
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode CommandBuffer::write_mobile_base_command(std::string component_name,
-                                                    const MobileBaseCommand& command) {
+bool CommandBuffer::write_mobile_base_command(std::string component_name,
+                                              const MobileBaseCommand& command) {
   if (component_name.empty()) {
-    return ResultCode::InvalidArgument;
+    LOG_ERROR << "mobile base command component name must not be empty.";
+    return false;
   }
+
+  MobileBaseCommand stored_command = command;
+  stored_command.mobile_base_name = component_name;
   std::lock_guard<std::mutex> lock(mutex_);
   mobile_base_commands_[std::string(component_name)] =
-      TimedMobileBaseCommand{command, Clock::now()};
+      TimedMobileBaseCommand{std::move(stored_command), Clock::now()};
   ++sequence_;
-  return ResultCode::Ok;
+  return true;
 }
 
 CommandSnapshot CommandBuffer::read() const { return read(Clock::now()); }
@@ -72,7 +80,7 @@ JointCommand CommandBuffer::effective_joint_command(std::string name,
     case CommandTimeoutBehavior::KeepLast:
       return command;
     case CommandTimeoutBehavior::HoldPosition:
-      if (command.mode == ControlMode::Position) {
+      if (command.mode == JointControlMode::Position) {
         return command;
       }
       break;
@@ -80,12 +88,12 @@ JointCommand CommandBuffer::effective_joint_command(std::string name,
       break;
   }
 
-  command.joint = std::string(name);
-  if (command.mode == ControlMode::Velocity) {
+  command.joint_name = std::string(name);
+  if (command.mode == JointControlMode::Velocity) {
     command.velocity = 0.0;
-  } else if (command.mode == ControlMode::Effort) {
+  } else if (command.mode == JointControlMode::Effort) {
     command.effort = 0.0;
-  } else if (command.mode == ControlMode::Hybrid) {
+  } else if (command.mode == JointControlMode::Hybrid) {
     command.velocity = 0.0;
     command.effort = 0.0;
   }
@@ -100,11 +108,10 @@ MobileBaseCommand CommandBuffer::effective_mobile_base_command(
     return command;
   }
 
-  command.linear = {0.0, 0.0, 0.0};
-  command.angular = {0.0, 0.0, 0.0};
-  command.linear_x = 0.0;
-  command.linear_y = 0.0;
-  command.angular_z = 0.0;
+  command.base_linear = {0.0, 0.0, 0.0};
+  command.base_angular = {0.0, 0.0, 0.0};
+  command.wheel_linear = {0.0, 0.0, 0.0, 0.0};
+  command.wheel_angular = {0.0, 0.0, 0.0, 0.0};
   return command;
 }
 

@@ -5,7 +5,7 @@
 #include <string>
 
 #include "mujoco_simulation/component/joint/joint_data.hpp"
-#include "mujoco_simulation/simulation_config.hpp"
+#include "mujoco_simulation/config/simulation_config.hpp"
 
 namespace mujoco_simulation {
 namespace {
@@ -28,8 +28,8 @@ SimulationConfig sentinel_config() {
   config.model.initial_keyframe = "sentinel_keyframe";
   config.scheduler.realtime_factor = 2.0;
   config.components.emplace_back(JointInfo{
-      .joint = "sentinel_joint",
-      .actuator = "sentinel_motor",
+      .joint_name = "sentinel_joint",
+      .actuator_name = "sentinel_motor",
   });
   return config;
 }
@@ -81,8 +81,8 @@ TEST_F(RobotMujocoConfigTest, LoadsMinimalJointConfiguration) {
   ASSERT_EQ(config.components.size(), 1U);
 
   const JointInfo& joint = require_joint(config.components.front());
-  EXPECT_EQ(joint.joint, "joint_a");
-  EXPECT_EQ(joint.actuator, "joint_a");
+  EXPECT_EQ(joint.joint_name, "joint_a");
+  EXPECT_EQ(joint.actuator_name, "joint_a");
   EXPECT_DOUBLE_EQ(joint.position_stiffness, 300.0);
   EXPECT_DOUBLE_EQ(joint.position_damping, 10.0);
   EXPECT_DOUBLE_EQ(joint.velocity_damping, 20.0);
@@ -130,8 +130,8 @@ TEST_F(RobotMujocoConfigTest, LoadsMultipleJointsIntoComponentList) {
   SimulationConfig config;
   ASSERT_TRUE(parser.load_file(config_path.string(), &config));
   ASSERT_EQ(config.components.size(), 2U);
-  EXPECT_EQ(require_joint(config.components[0]).joint, "joint_a");
-  EXPECT_EQ(require_joint(config.components[1]).joint, "joint_b");
+  EXPECT_EQ(require_joint(config.components[0]).joint_name, "joint_a");
+  EXPECT_EQ(require_joint(config.components[1]).joint_name, "joint_b");
   EXPECT_DOUBLE_EQ(require_joint(config.components[1]).velocity_damping, 3.0);
 }
 

@@ -6,42 +6,22 @@ namespace mujoco_simulation {
 
 bool ComponentRegistry::add(std::unique_ptr<SimulationComponent> component) {
   if (component == nullptr) {
-    LOG_ERROR << "ComponentRegistry::add"
-              << ": "
-              << "component must not be null.";
+    LOG_ERROR << "component must not be null.";
     return false;
   }
 
   const std::string component_name(component->name());
   if (component_name.empty()) {
-    LOG_ERROR << "ComponentRegistry::add"
-              << ": "
-              << "component name must not be empty.";
+    LOG_ERROR << "component name must not be empty.";
     return false;
   }
   if (components_.find(component_name) != components_.end()) {
-    LOG_ERROR << "ComponentRegistry::add"
-              << ": "
-              << "component name already exists.";
+    LOG_ERROR << "component name already exists.";
     return false;
   }
 
   index_component(*component, component_name);
   components_.emplace(component_name, std::move(component));
-  return true;
-}
-
-bool ComponentRegistry::remove(std::string name) {
-  const auto it = components_.find(std::string(name));
-  if (it == components_.end()) {
-    LOG_ERROR << "ComponentRegistry::remove"
-              << ": "
-              << "component name was not found.";
-    return false;
-  }
-
-  unindex_component(*it->second, name);
-  components_.erase(it);
   return true;
 }
 
@@ -176,30 +156,6 @@ void ComponentRegistry::index_component(SimulationComponent& component,
   }
   if (auto* mobile_base = dynamic_cast<MobileBaseComponent*>(&component)) {
     mobile_bases_.emplace(component_name, mobile_base);
-  }
-}
-
-void ComponentRegistry::unindex_component(const SimulationComponent& component,
-                                          std::string component_name) {
-  const std::string key(component_name);
-  if (dynamic_cast<const JointComponent*>(&component) != nullptr) {
-    joints_.erase(key);
-    return;
-  }
-  if (dynamic_cast<const CameraComponent*>(&component) != nullptr) {
-    cameras_.erase(key);
-    return;
-  }
-  if (dynamic_cast<const ImuComponent*>(&component) != nullptr) {
-    imus_.erase(key);
-    return;
-  }
-  if (dynamic_cast<const LidarComponent*>(&component) != nullptr) {
-    lidars_.erase(key);
-    return;
-  }
-  if (dynamic_cast<const MobileBaseComponent*>(&component) != nullptr) {
-    mobile_bases_.erase(key);
   }
 }
 

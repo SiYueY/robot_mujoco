@@ -1,66 +1,74 @@
 #pragma once
 
-#include <cstdint>
+#include <array>
 #include <string>
-#include <vector>
 
-#include "mujoco_simulation/common/math.hpp"
+#include "mujoco_simulation/component/mobile_base/mecanum.hpp"
 
 namespace mujoco_simulation {
 
 enum class MobileBaseType {
-  None,
-  Differential,
-  Omnidirectional,
+  Mecanum,
 };
 
-enum class OdometrySource {
-  WheelIntegration,
-  GroundTruthBodyPose,
+enum class MobileBaseControlMode {
+  Twist,
+  WheelLinear,
+  WheelAngular,
 };
+
+// 轮
+struct WheelInfo {
+  std::string wheel_name;     // 轮名称
+  std::string actuator_name;  // 执行器名称
+  double damping{0.0};        // 阻尼系数。
+};
+
+//  Mecanum 底盘
+using MecanumWheelInfo = std::array<WheelInfo, MecanumWheelCount>;
 
 struct MobileBaseInfo {
-  std::string name;
-  MobileBaseType type{MobileBaseType::None};
+  std::string mobile_base_name;
+  MobileBaseType type{MobileBaseType::Mecanum};
+
   std::string base_frame_id{"base_link"};
   std::string odom_frame_id{"odom"};
-
-  std::string left_wheel_joint;
-  std::string right_wheel_joint;
-  std::string front_left_joint;
-  std::string front_right_joint;
-  std::string rear_left_joint;
-  std::string rear_right_joint;
-
-  double wheel_radius{0.0};
-  double track_width{0.0};
-  double wheel_base{0.0};
-  OdometrySource odometry_source{OdometrySource::WheelIntegration};
   std::string base_body_name;
+
+  // Mecanum
+  MecanumInfo mecanum_info;
+  MecanumWheelInfo mecanum_wheels;
+
+  double update_rate{0.0};
 };
 
+// ROS2 Twist: https://github.com/ros2/common_interfaces/blob/humble/geometry_msgs/msg/Twist.msg
 struct MobileBaseCommand {
-  Vector3d linear;
-  Vector3d angular;
-  double linear_x{0.0};
-  double linear_y{0.0};
-  double angular_z{0.0};
-  std::uint64_t timestamp_ns{0};
+  std::string mobile_base_name;
+  MobileBaseControlMode mode{MobileBaseControlMode::Twist};
+  Vector3d base_linear{};
+  Vector3d base_angular{};
+  Vector4d wheel_linear{};   // m/s: front-left, front-right, rear-left, rear-right
+  Vector4d wheel_angular{};  // rad/s: front-left, front-right, rear-left, rear-right
 };
 
+// ROS2 Odometry: https://github.com/ros2/common_interfaces/blob/humble/nav_msgs/msg/Odometry.msg
 struct MobileBaseState {
-  std::string base_frame_id;
-  std::string odom_frame_id;
-  double x{0.0};
-  double y{0.0};
-  double yaw{0.0};
-  double linear_x{0.0};
-  double linear_y{0.0};
-  double angular_z{0.0};
-  Vector3d linear;
-  Vector3d angular;
-  std::vector<double> wheel_velocities;
-  std::uint64_t timestamp_ns{0};
+  std::string mobile_base_name;  // 底盘名称
+  double timestamp{0.0};         // seconds
+  // Frame
+  std::string odom_frame_id;  // 里程计坐标系
+  std::string base_frame_id;  // 底盘坐标系
+  // Pose
+  Vector3d pose{};
+  Vector36d pose_covariance{};
+  // Twist
+  Vector3d base_linear{};
+  Vector3d base_angular{};
+  Vector36d twist_covariance{};
+  // Wheel
+  Vector4d wheel_linear{};
+  Vector4d wheel_angular{};
 };
 
 }  // namespace mujoco_simulation

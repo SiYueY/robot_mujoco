@@ -64,6 +64,7 @@ class CameraRenderer {
   bool is_initialized() const noexcept { return initialized_; }
 
  private:
+  static bool ensure_glfw_initialized();
   bool ensure_gl_context();
   bool ensure_offscreen_capacity(int width, int height);
   bool ensure_camera_binding(const mjModel& model, const CameraConfig& spec, int* camera_id,

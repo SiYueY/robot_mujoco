@@ -1,7 +1,11 @@
 #pragma once
 
+#include <mujoco/mujoco.h>
+
+#include <memory>
 #include <string>
 
+#include "mujoco_simulation/common/mj_type.hpp"
 #include "mujoco_simulation/component/imu/imu_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
 
@@ -11,28 +15,30 @@ class ImuComponent : public SimulationComponent {
  public:
   explicit ImuComponent(ImuInfo info);
 
-  std::string name() const noexcept override;
-  bool bind(const mjModel& model) override;
-  bool reset(const mjModel& model, mjData& data) override;
-  bool update(const UpdateContext& context) override;
+  bool init(const mjContext& context) override;
+  bool reset(const mjContext& context) override;
+  bool update(const mjContext& context) override;
+
+  bool read(const mjContext& context, ImuState& state) const;
 
   const ImuInfo& info() const noexcept { return info_; }
-  bool read(ImuState& state) const;
+  bool is_initialized() const noexcept { return initialized_; }
+
+ public:
+  using SharedPtr = std::shared_ptr<ImuComponent>;
+  using UniquePtr = std::unique_ptr<ImuComponent>;
+  using WeakPtr = std::weak_ptr<ImuComponent>;
 
  private:
-  static bool validate_sensor_binding(const mjModel& model, std::string component_name,
-                                      std::string sensor_name, int expected_type, int expected_dim,
-                                      int* sensor_id, int* sensor_address);
-
+  // Imu 信息
   ImuInfo info_;
+  // 仿真信息
+  mjImu imu_{};
+  std::uint64_t sequence_{0};
+  // Imu 状态
   ImuState state_{};
-  int framequat_sensor_id_{-1};
-  int framequat_address_{-1};
-  int gyro_sensor_id_{-1};
-  int gyro_address_{-1};
-  int accelerometer_sensor_id_{-1};
-  int accelerometer_address_{-1};
-  std::uint64_t sample_sequence_{0};
+  // 初始化标志
+  bool initialized_{false};
 };
 
 }  // namespace mujoco_simulation

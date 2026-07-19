@@ -113,6 +113,22 @@ bool is_sensor_type(const hardware_interface::ComponentInfo& sensor, const std::
   return configured == type;
 }
 
+const char* mecanum_wheel_parameter_name(mujoco_simulation::MecanumWheelIndex index) {
+  using mujoco_simulation::MecanumWheelIndex;
+  switch (index) {
+    case MecanumWheelIndex::FrontLeft:
+      return "front_left";
+    case MecanumWheelIndex::FrontRight:
+      return "front_right";
+    case MecanumWheelIndex::RearLeft:
+      return "rear_left";
+    case MecanumWheelIndex::RearRight:
+      return "rear_right";
+    default:
+      return "";
+  }
+}
+
 }  // namespace
 
 bool is_joint_command_interface(const std::string& interface_name) {
@@ -351,72 +367,55 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
 
     MobileBaseData mb;
     mb.name = raw_name;
-    mb.config.name = raw_name;
+    mb.config.mobile_base_name = raw_name;
     mb.command = {};
     mb.state = {};
 
     const std::string type_str = parameter_or(hardware_info.hardware_parameters,
                                               "mobile_base_" + std::to_string(i) + "_type");
-    if (type_str == "differential") {
-      mb.config.type = mujoco_simulation::MobileBaseType::Differential;
-    } else if (type_str == "omnidirectional") {
-      mb.config.type = mujoco_simulation::MobileBaseType::Omnidirectional;
-    } else {
-      error_message = "Invalid mobile_base type '" + type_str + "' for '" + raw_name +
-                      "'. Must be 'differential' or 'omnidirectional'.";
+    if (type_str != "mecanum") {
+      error_message =
+          "Invalid mobile_base type '" + type_str + "' for '" + raw_name + "'. Must be 'mecanum'.";
       return false;
     }
+    mb.config.type = mujoco_simulation::MobileBaseType::Mecanum;
 
-    if (mb.config.type == mujoco_simulation::MobileBaseType::Differential) {
-      mb.config.left_wheel_joint =
-          parameter_or(hardware_info.hardware_parameters,
-                       "mobile_base_" + std::to_string(i) + "_left_wheel_joint");
-      mb.config.right_wheel_joint =
-          parameter_or(hardware_info.hardware_parameters,
-                       "mobile_base_" + std::to_string(i) + "_right_wheel_joint");
-      if (mb.config.left_wheel_joint.empty() || mb.config.right_wheel_joint.empty()) {
-        error_message = "Differential mobile base '" + raw_name +
-                        "' requires left_wheel_joint and right_wheel_joint parameters.";
+    const std::string parameter_prefix = "mobile_base_" + std::to_string(i) + "_";
+    for (std::size_t wheel_index = 0; wheel_index < mujoco_simulation::MecanumWheelCount;
+         ++wheel_index) {
+      const auto index = to_enum<mujoco_simulation::MecanumWheelIndex>(wheel_index);
+      const std::string wheel_name = mecanum_wheel_parameter_name(index);
+      auto& wheel = mb.config.mecanum_wheels[wheel_index];
+      wheel.wheel_name =
+          parameter_or(hardware_info.hardware_parameters, parameter_prefix + wheel_name + "_joint");
+      wheel.actuator_name = parameter_or(hardware_info.hardware_parameters,
+                                         parameter_prefix + wheel_name + "_actuator");
+      if (wheel.wheel_name.empty() || wheel.actuator_name.empty()) {
+        error_message = "Mecanum mobile base '" + raw_name + "' wheel '" + wheel_name +
+                        "' requires joint and actuator parameters.";
         return false;
       }
-    } else {
-      mb.config.front_left_joint =
-          parameter_or(hardware_info.hardware_parameters,
-                       "mobile_base_" + std::to_string(i) + "_front_left_joint");
-      mb.config.front_right_joint =
-          parameter_or(hardware_info.hardware_parameters,
-                       "mobile_base_" + std::to_string(i) + "_front_right_joint");
-      mb.config.rear_left_joint =
-          parameter_or(hardware_info.hardware_parameters,
-                       "mobile_base_" + std::to_string(i) + "_rear_left_joint");
-      mb.config.rear_right_joint =
-          parameter_or(hardware_info.hardware_parameters,
-                       "mobile_base_" + std::to_string(i) + "_rear_right_joint");
-      if (mb.config.front_left_joint.empty() || mb.config.front_right_joint.empty() ||
-          mb.config.rear_left_joint.empty() || mb.config.rear_right_joint.empty()) {
-        error_message = "Omnidirectional mobile base '" + raw_name +
-                        "' requires front_left_joint, front_right_joint, rear_left_joint, and "
-                        "rear_right_joint parameters.";
+      if (!parse_double_parameter(hardware_info.hardware_parameters,
+                                  parameter_prefix + wheel_name + "_damping", 0.0, &wheel.damping,
+                                  error_message)) {
         return false;
       }
     }
 
     if (!parse_double_parameter(hardware_info.hardware_parameters,
                                 "mobile_base_" + std::to_string(i) + "_wheel_radius", 0.0,
-                                &mb.config.wheel_radius, error_message)) {
+                                &mb.config.mecanum_info.wheel_radius, error_message)) {
       return false;
     }
     if (!parse_double_parameter(hardware_info.hardware_parameters,
                                 "mobile_base_" + std::to_string(i) + "_track_width", 0.0,
-                                &mb.config.track_width, error_message)) {
+                                &mb.config.mecanum_info.track_width, error_message)) {
       return false;
     }
-    if (mb.config.type == mujoco_simulation::MobileBaseType::Omnidirectional) {
-      if (!parse_double_parameter(hardware_info.hardware_parameters,
-                                  "mobile_base_" + std::to_string(i) + "_wheel_base", 0.0,
-                                  &mb.config.wheel_base, error_message)) {
-        return false;
-      }
+    if (!parse_double_parameter(hardware_info.hardware_parameters,
+                                "mobile_base_" + std::to_string(i) + "_wheel_base", 0.0,
+                                &mb.config.mecanum_info.wheel_base, error_message)) {
+      return false;
     }
 
     mb.config.base_frame_id =
@@ -428,17 +427,8 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
     mb.config.base_body_name =
         parameter_or(hardware_info.hardware_parameters,
                      "mobile_base_" + std::to_string(i) + "_base_body_name", "");
-
-    const std::string odometry_source =
-        parameter_or(hardware_info.hardware_parameters,
-                     "mobile_base_" + std::to_string(i) + "_odometry_source", "wheel_integration");
-    if (odometry_source == "wheel_integration") {
-      mb.config.odometry_source = mujoco_simulation::OdometrySource::WheelIntegration;
-    } else if (odometry_source == "ground_truth_body_pose") {
-      mb.config.odometry_source = mujoco_simulation::OdometrySource::GroundTruthBodyPose;
-    } else {
-      error_message = "Unsupported odometry_source for mobile base '" + raw_name +
-                      "'. Must be 'wheel_integration' or 'ground_truth_body_pose'.";
+    if (mb.config.base_body_name.empty()) {
+      error_message = "Mecanum mobile base '" + raw_name + "' requires a base_body_name parameter.";
       return false;
     }
 

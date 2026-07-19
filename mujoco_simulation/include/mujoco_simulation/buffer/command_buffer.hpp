@@ -8,8 +8,6 @@
 #include "mujoco_simulation/buffer/command_snapshot.hpp"
 #include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
-#include "mujoco_simulation/result_code.hpp"
-#include "mujoco_simulation/simulation_status.hpp"
 
 namespace mujoco_simulation {
 
@@ -28,10 +26,9 @@ struct CommandTimeoutConfig {
 class CommandBuffer {
  public:
   using Clock = std::chrono::steady_clock;
-  ResultCode write_joint_command(std::string component_name, const JointCommand& command);
+  bool write_joint_command(std::string component_name, const JointCommand& command);
 
-  ResultCode write_mobile_base_command(std::string component_name,
-                                       const MobileBaseCommand& command);
+  bool write_mobile_base_command(std::string component_name, const MobileBaseCommand& command);
 
   CommandSnapshot read() const;
 

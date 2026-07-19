@@ -12,11 +12,17 @@
 #include <string>
 #include <thread>
 
-#include "mujoco_simulation/runtime/model_runtime.hpp"
+#include "mujoco_simulation/runtime/simulation_runtime.hpp"
 #include "mujoco_simulation/simulation.hpp"
-#include "mujoco_simulation/viewer/mujoco_viewer.hpp"
+#include "mujoco_simulation/viewer/simulation_viewer.hpp"
 
 namespace mujoco_simulation {
+
+class SimulationRuntimeTestPeer {
+ public:
+  static const mjContext& context(const SimulationRuntime& runtime) { return runtime.context(); }
+};
+
 namespace {
 
 using namespace std::chrono_literals;
@@ -84,13 +90,13 @@ class CameraRuntimeTest : public ::testing::Test {
     SimulationConfig config;
     config.model.model_path = model_path;
     config.render_mode = mode;
-    config.components = {
-        ComponentConfig{CameraConfig{.common = {.name = "front_camera", .update_rate = update_rate},
-                                     .camera_name = "cam",
-                                     .height = 120,
-                                     .width = 160,
-                                     .enable_rgb = true,
-                                     .enable_depth = enable_depth}}};
+    config.components = {ComponentConfig{CameraConfig{.name = "front_camera",
+                                                      .update_rate = update_rate,
+                                                      .camera_name = "cam",
+                                                      .height = 120,
+                                                      .width = 160,
+                                                      .enable_rgb = true,
+                                                      .enable_depth = enable_depth}}};
     return config;
   }
 
@@ -117,14 +123,13 @@ bool viewer_start_available(const std::string& model_path) {
     return false;
   }
   if (pid == 0) {
-    ModelRuntime runtime;
-    const ResultCode load_status = runtime.load({model_path});
-    if (load_status != ResultCode::Ok) {
+    SimulationRuntime runtime;
+    if (!runtime.init({model_path})) {
       _exit(2);
     }
-    MuJoCoViewer viewer;
-    const ResultCode start_status = viewer.start(runtime.viewer_runtime_handle(), model_path);
-    if (start_status == ResultCode::Ok) {
+    SimulationViewer viewer;
+    const mjContext& context = SimulationRuntimeTestPeer::context(runtime);
+    if (viewer.start(context, model_path)) {
       viewer.stop();
       _exit(0);
     }

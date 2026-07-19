@@ -95,7 +95,7 @@ bool PublishChannel::copy_lidar_state(const PublishLidarState& source, PublishLi
   }
   target->publisher_index = source.publisher_index;
   target->state.sequence = source.state.sequence;
-  target->state.timestamp_ns = source.state.timestamp_ns;
+  target->state.timestamp = source.state.timestamp;
   target->state.frame_id = source.state.frame_id;
   target->state.angle_min = source.state.angle_min;
   target->state.angle_max = source.state.angle_max;

@@ -1,113 +1,151 @@
 #include "mujoco_simulation/component/imu/imu_component.hpp"
 
+#include <cmath>
 #include <utility>
 
 #include "mujoco_simulation/common/logging.hpp"
-#include "mujoco_simulation/component/update_context.hpp"
+#include "mujoco_simulation/common/macro.hpp"
 
 namespace mujoco_simulation {
-namespace {
+ImuComponent::ImuComponent(ImuInfo info)
+    : SimulationComponent(info.name, info.update_rate), info_(std::move(info)) {}
 
-bool copy_sensor_vector(const mjData& data, int address, double* dest, int count) {
-  if (address < 0 || dest == nullptr || count <= 0) {
-    return false;
-  }
-  for (int index = 0; index < count; ++index) {
-    dest[index] = data.sensordata[address + index];
-  }
-  return true;
-}
-
-}  // namespace
-
-ImuComponent::ImuComponent(ImuInfo info) : info_(std::move(info)) {}
-
-std::string ImuComponent::name() const noexcept { return info_.common.name; }
-
-bool ImuComponent::validate_sensor_binding(const mjModel& model, std::string component_name,
-                                           std::string sensor_name, int expected_type,
-                                           int expected_dim, int* sensor_id, int* sensor_address) {
-  (void)component_name;
-  if (sensor_id == nullptr || sensor_address == nullptr) {
-    LOG_ERROR << "ImuComponent::validate_sensor_binding"
-              << ": "
-              << "sensor output pointers must not be null.";
-    return false;
-  }
-  if (sensor_name.empty()) {
-    LOG_ERROR << "ImuComponent::validate_sensor_binding"
-              << ": "
-              << "sensor name must not be empty.";
+bool ImuComponent::init(const mjContext& context) {
+  initialized_ = false;
+  imu_ = {};
+  if (!configure(context)) {
     return false;
   }
 
-  const int id = mj_name2id(&model, mjOBJ_SENSOR, std::string(sensor_name).c_str());
-  if (id < 0) {
-    LOG_ERROR << "ImuComponent::validate_sensor_binding"
-              << ": "
-              << "sensor was not found in model.";
+  if (info_.framequat_sensor_name.empty()) {
+    LOG_ERROR << "imu '" << info_.name << "' framequat sensor name must not be empty.";
     return false;
   }
-  if (model.sensor_type[id] != expected_type) {
-    LOG_ERROR << "ImuComponent::validate_sensor_binding"
-              << ": "
-              << "sensor type does not match expected type.";
+  if (info_.gyro_sensor_name.empty()) {
+    LOG_ERROR << "imu '" << info_.name << "' gyro sensor name must not be empty.";
     return false;
   }
-  if (model.sensor_dim[id] != expected_dim) {
-    LOG_ERROR << "ImuComponent::validate_sensor_binding"
-              << ": "
-              << "sensor dimension does not match expected dimension.";
+  if (info_.accelerometer_sensor_name.empty()) {
+    LOG_ERROR << "imu '" << info_.name << "' accelerometer sensor name must not be empty.";
+    return false;
+  }
+  for (const double value : info_.orientation_covariance) {
+    if (!std::isfinite(value)) {
+      LOG_ERROR << "imu '" << info_.name << "' orientation covariance must be finite.";
+      return false;
+    }
+  }
+  for (const double value : info_.angular_velocity_covariance) {
+    if (!std::isfinite(value)) {
+      LOG_ERROR << "imu '" << info_.name << "' angular velocity covariance must be finite.";
+      return false;
+    }
+  }
+  for (const double value : info_.linear_acceleration_covariance) {
+    if (!std::isfinite(value)) {
+      LOG_ERROR << "imu '" << info_.name << "' linear acceleration covariance must be finite.";
+      return false;
+    }
+  }
+
+  const mjModel& model = *context.model;
+  imu_.framequat_sensor_id = mj_name2id(&model, mjOBJ_SENSOR, info_.framequat_sensor_name.c_str());
+  if (imu_.framequat_sensor_id < 0) {
+    LOG_ERROR << "imu '" << info_.name << "' framequat sensor '" << info_.framequat_sensor_name
+              << "' was not found in the model.";
+    return false;
+  }
+  if (model.sensor_type[imu_.framequat_sensor_id] != mjSENS_FRAMEQUAT) {
+    LOG_ERROR << "imu '" << info_.name << "' framequat sensor '" << info_.framequat_sensor_name
+              << "' has type " << model.sensor_type[imu_.framequat_sensor_id] << ", expected "
+              << mjSENS_FRAMEQUAT << ".";
+    return false;
+  }
+  if (model.sensor_dim[imu_.framequat_sensor_id] != 4) {
+    LOG_ERROR << "imu '" << info_.name << "' framequat sensor '" << info_.framequat_sensor_name
+              << "' has dimension " << model.sensor_dim[imu_.framequat_sensor_id]
+              << ", expected 4.";
+    return false;
+  }
+  imu_.framequat_address = model.sensor_adr[imu_.framequat_sensor_id];
+  if (imu_.framequat_address < 0 || imu_.framequat_address + 4 > model.nsensordata) {
+    LOG_ERROR << "imu '" << info_.name << "' framequat sensor '" << info_.framequat_sensor_name
+              << "' has an out-of-range sensor address.";
     return false;
   }
 
-  const int address = model.sensor_adr[id];
-  if (address < 0 || address + expected_dim > model.nsensordata) {
-    LOG_ERROR << "ImuComponent::validate_sensor_binding"
-              << ": "
-              << "sensor address is out of range.";
+  imu_.gyro_sensor_id = mj_name2id(&model, mjOBJ_SENSOR, info_.gyro_sensor_name.c_str());
+  if (imu_.gyro_sensor_id < 0) {
+    LOG_ERROR << "imu '" << info_.name << "' gyro sensor '" << info_.gyro_sensor_name
+              << "' was not found in the model.";
+    return false;
+  }
+  if (model.sensor_type[imu_.gyro_sensor_id] != mjSENS_GYRO) {
+    LOG_ERROR << "imu '" << info_.name << "' gyro sensor '" << info_.gyro_sensor_name
+              << "' has type " << model.sensor_type[imu_.gyro_sensor_id] << ", expected "
+              << mjSENS_GYRO << ".";
+    return false;
+  }
+  if (model.sensor_dim[imu_.gyro_sensor_id] != 3) {
+    LOG_ERROR << "imu '" << info_.name << "' gyro sensor '" << info_.gyro_sensor_name
+              << "' has dimension " << model.sensor_dim[imu_.gyro_sensor_id] << ", expected 3.";
+    return false;
+  }
+  imu_.gyro_address = model.sensor_adr[imu_.gyro_sensor_id];
+  if (imu_.gyro_address < 0 || imu_.gyro_address + 3 > model.nsensordata) {
+    LOG_ERROR << "imu '" << info_.name << "' gyro sensor '" << info_.gyro_sensor_name
+              << "' has an out-of-range sensor address.";
     return false;
   }
 
-  *sensor_id = id;
-  *sensor_address = address;
-  return true;
-}
-
-bool ImuComponent::bind(const mjModel& model) {
-  if (info_.common.name.empty()) {
-    LOG_ERROR << "ImuComponent::bind"
-              << ": "
-              << "imu component name must not be empty.";
+  imu_.accelerometer_sensor_id =
+      mj_name2id(&model, mjOBJ_SENSOR, info_.accelerometer_sensor_name.c_str());
+  if (imu_.accelerometer_sensor_id < 0) {
+    LOG_ERROR << "imu '" << info_.name << "' accelerometer sensor '"
+              << info_.accelerometer_sensor_name << "' was not found in the model.";
     return false;
   }
-  if (model.opt.timestep <= 0.0) {
-    LOG_ERROR << "ImuComponent::bind"
-              << ": "
-              << "model timestep must be positive.";
+  if (model.sensor_type[imu_.accelerometer_sensor_id] != mjSENS_ACCELEROMETER) {
+    LOG_ERROR << "imu '" << info_.name << "' accelerometer sensor '"
+              << info_.accelerometer_sensor_name << "' has type "
+              << model.sensor_type[imu_.accelerometer_sensor_id] << ", expected "
+              << mjSENS_ACCELEROMETER << ".";
     return false;
   }
-
-  if (!validate_sensor_binding(model, info_.common.name, info_.framequat_sensor_name,
-                               mjSENS_FRAMEQUAT, 4, &framequat_sensor_id_, &framequat_address_)) {
+  if (model.sensor_dim[imu_.accelerometer_sensor_id] != 3) {
+    LOG_ERROR << "imu '" << info_.name << "' accelerometer sensor '"
+              << info_.accelerometer_sensor_name << "' has dimension "
+              << model.sensor_dim[imu_.accelerometer_sensor_id] << ", expected 3.";
     return false;
   }
-  if (!validate_sensor_binding(model, info_.common.name, info_.gyro_sensor_name, mjSENS_GYRO, 3,
-                               &gyro_sensor_id_, &gyro_address_)) {
-    return false;
-  }
-  if (!validate_sensor_binding(model, info_.common.name, info_.accelerometer_sensor_name,
-                               mjSENS_ACCELEROMETER, 3, &accelerometer_sensor_id_,
-                               &accelerometer_address_)) {
-    return false;
-  }
-  if (!set_update_rate(info_.common.update_rate, 1.0 / model.opt.timestep)) {
+  imu_.accelerometer_address = model.sensor_adr[imu_.accelerometer_sensor_id];
+  if (imu_.accelerometer_address < 0 || imu_.accelerometer_address + 3 > model.nsensordata) {
+    LOG_ERROR << "imu '" << info_.name << "' accelerometer sensor '"
+              << info_.accelerometer_sensor_name << "' has an out-of-range sensor address.";
     return false;
   }
 
-  sample_sequence_ = 0;
+  sequence_ = 0;
   state_ = {};
-  state_.frame_id = info_.common.frame_id;
+  state_.frame_id = info_.frame_id;
+  state_.orientation = {0.0, 0.0, 0.0, 1.0};
+  state_.orientation_covariance = info_.orientation_covariance;
+  state_.angular_velocity_covariance = info_.angular_velocity_covariance;
+  state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
+  initialized_ = true;
+  return true;
+}
+
+bool ImuComponent::reset(const mjContext& context) {
+  UNUSED(context);
+  if (!initialized_) {
+    LOG_ERROR << "imu '" << info_.name << "' is not initialized.";
+    return false;
+  }
+
+  sequence_ = 0;
+  state_ = {};
+  state_.frame_id = info_.frame_id;
   state_.orientation = {0.0, 0.0, 0.0, 1.0};
   state_.orientation_covariance = info_.orientation_covariance;
   state_.angular_velocity_covariance = info_.angular_velocity_covariance;
@@ -115,54 +153,34 @@ bool ImuComponent::bind(const mjModel& model) {
   return true;
 }
 
-bool ImuComponent::reset(const mjModel& model, mjData& data) {
-  (void)model;
-  (void)data;
-  sample_sequence_ = 0;
-  state_ = {};
-  state_.frame_id = info_.common.frame_id;
-  state_.orientation = {0.0, 0.0, 0.0, 1.0};
-  state_.orientation_covariance = info_.orientation_covariance;
-  state_.angular_velocity_covariance = info_.angular_velocity_covariance;
-  state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
-  return true;
-}
-
-bool ImuComponent::update(const UpdateContext& context) {
-  (void)context.model;
-  (void)context.step_count;
-  if (framequat_address_ < 0 || gyro_address_ < 0 || accelerometer_address_ < 0) {
-    LOG_ERROR << "ImuComponent::update"
-              << ": "
-              << "imu sensors must be bound before update.";
+bool ImuComponent::update(const mjContext& context) {
+  if (!initialized_) {
+    LOG_ERROR << "imu '" << info_.name << "' is not initialized.";
     return false;
   }
 
-  state_.sequence = ++sample_sequence_;
-  state_.timestamp_ns = context.simulation_time <= 0.0
-                            ? 0
-                            : static_cast<std::uint64_t>(context.simulation_time * 1.0e9);
-  state_.frame_id = info_.common.frame_id;
-  state_.orientation_covariance = info_.orientation_covariance;
-  state_.angular_velocity_covariance = info_.angular_velocity_covariance;
-  state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
-  state_.orientation[3] = context.data.sensordata[framequat_address_];
-  state_.orientation[0] = context.data.sensordata[framequat_address_ + 1];
-  state_.orientation[1] = context.data.sensordata[framequat_address_ + 2];
-  state_.orientation[2] = context.data.sensordata[framequat_address_ + 3];
-
-  if (!copy_sensor_vector(context.data, gyro_address_, state_.angular_velocity.data(), 3) ||
-      !copy_sensor_vector(context.data, accelerometer_address_, state_.linear_acceleration.data(),
-                          3)) {
-    LOG_ERROR << "ImuComponent::update"
-              << ": "
-              << "failed to copy imu sensor data.";
-    return false;
+  state_.sequence = ++sequence_;
+  state_.timestamp = context.data->time;
+  const double* sensor_data = context.data->sensordata;
+  state_.orientation[0] = sensor_data[imu_.framequat_address + 1];
+  state_.orientation[1] = sensor_data[imu_.framequat_address + 2];
+  state_.orientation[2] = sensor_data[imu_.framequat_address + 3];
+  state_.orientation[3] = sensor_data[imu_.framequat_address];
+  for (int index = 0; index < 3; ++index) {
+    state_.angular_velocity[index] = sensor_data[imu_.gyro_address + index];
+    state_.linear_acceleration[index] = sensor_data[imu_.accelerometer_address + index];
   }
+
   return true;
 }
 
-bool ImuComponent::read(ImuState& state) const {
+bool ImuComponent::read(const mjContext& context, ImuState& state) const {
+  UNUSED(context);
+  if (!initialized_) {
+    LOG_ERROR << "imu '" << info_.name << "' is not initialized.";
+    return false;
+  }
+
   state = state_;
   return true;
 }

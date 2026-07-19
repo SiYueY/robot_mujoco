@@ -72,19 +72,21 @@ TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
   SimulationConfig config;
   config.model.model_path = model_path;
   config.components = {
-      ComponentConfig{
-          ImuInfo{.common = {.name = "imu", .frame_id = "imu_link", .update_rate = 200.0},
-                  .framequat_sensor_name = "imu_quat",
-                  .gyro_sensor_name = "imu_gyro",
-                  .accelerometer_sensor_name = "imu_acc"}},
-      ComponentConfig{LidarInfo{
-          .common = {.name = "front_lidar", .frame_id = "front_lidar_link", .update_rate = 10.0},
-          .sensor_prefix = "front_lidar",
-          .angle_min = -0.2,
-          .angle_max = 0.2,
-          .angle_increment = 0.2,
-          .range_min = 0.1,
-          .range_max = 1.0}},
+      ComponentConfig{ImuInfo{.name = "imu",
+                              .frame_id = "imu_link",
+                              .update_rate = 200.0,
+                              .framequat_sensor_name = "imu_quat",
+                              .gyro_sensor_name = "imu_gyro",
+                              .accelerometer_sensor_name = "imu_acc"}},
+      ComponentConfig{LidarInfo{.name = "front_lidar",
+                                .frame_id = "front_lidar_link",
+                                .update_rate = 10.0,
+                                .sensor_prefix = "front_lidar",
+                                .angle_min = -0.2,
+                                .angle_max = 0.2,
+                                .angle_increment = 0.2,
+                                .range_min = 0.1,
+                                .range_max = 1.0}},
   };
   ASSERT_OK_STATUS(simulation.initialize(config));
 
@@ -104,16 +106,16 @@ TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
   ASSERT_OK_STATUS(simulation.step(1));
   ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
   EXPECT_EQ(imu_state.sequence, 2U);
-  EXPECT_EQ(imu_state.timestamp_ns, 5000000U);
+  EXPECT_DOUBLE_EQ(imu_state.timestamp, 0.005);
   EXPECT_EQ(imu_state.frame_id, "imu_link");
 
   ASSERT_OK_STATUS(simulation.step(95));
   ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
   ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
   EXPECT_EQ(imu_state.sequence, 21U);
-  EXPECT_EQ(imu_state.timestamp_ns, 100000000U);
+  EXPECT_DOUBLE_EQ(imu_state.timestamp, 0.1);
   EXPECT_EQ(lidar_state.sequence, 2U);
-  EXPECT_EQ(lidar_state.timestamp_ns, 100000000U);
+  EXPECT_DOUBLE_EQ(lidar_state.timestamp, 0.1);
   EXPECT_DOUBLE_EQ(lidar_state.scan_time, 0.1);
   EXPECT_DOUBLE_EQ(lidar_state.time_increment, 0.0);
   EXPECT_EQ(lidar_state.frame_id, "front_lidar_link");
@@ -149,14 +151,15 @@ TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
 
   SimulationConfig config;
   config.model.model_path = model_path;
-  config.components = {ComponentConfig{LidarInfo{
-      .common = {.name = "front_lidar", .frame_id = "front_lidar_link", .update_rate = 10.0},
-      .sensor_prefix = "front_lidar",
-      .angle_min = 0.0,
-      .angle_max = 0.0,
-      .angle_increment = 1.0,
-      .range_min = 0.1,
-      .range_max = 1.0}}};
+  config.components = {ComponentConfig{LidarInfo{.name = "front_lidar",
+                                                 .frame_id = "front_lidar_link",
+                                                 .update_rate = 10.0,
+                                                 .sensor_prefix = "front_lidar",
+                                                 .angle_min = 0.0,
+                                                 .angle_max = 0.0,
+                                                 .angle_increment = 1.0,
+                                                 .range_min = 0.1,
+                                                 .range_max = 1.0}}};
   ASSERT_OK_STATUS(simulation.initialize(config));
 
   ASSERT_OK_STATUS(simulation.step(100));
@@ -165,7 +168,7 @@ TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
   LidarState lidar_state;
   ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
   EXPECT_EQ(lidar_state.sequence, 1U);
-  EXPECT_EQ(lidar_state.timestamp_ns, 0U);
+  EXPECT_DOUBLE_EQ(lidar_state.timestamp, 0.0);
   EXPECT_GE(lidar_state.scan_time, 0.0);
 }
 
@@ -190,22 +193,22 @@ TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
   Simulation bad_type_simulation;
   SimulationConfig bad_type_config;
   bad_type_config.model.model_path = model_path;
-  bad_type_config.components = {
-      ComponentConfig{ImuInfo{.common = {.name = "bad_type", .update_rate = 200.0},
-                              .framequat_sensor_name = "imu_gyro",
-                              .gyro_sensor_name = "imu_gyro",
-                              .accelerometer_sensor_name = "imu_acc"}}};
+  bad_type_config.components = {ComponentConfig{ImuInfo{.name = "bad_type",
+                                                        .update_rate = 200.0,
+                                                        .framequat_sensor_name = "imu_gyro",
+                                                        .gyro_sensor_name = "imu_gyro",
+                                                        .accelerometer_sensor_name = "imu_acc"}}};
   const ResultCode bad_type_status = bad_type_simulation.initialize(bad_type_config);
   EXPECT_NE(bad_type_status, ResultCode::Ok);
 
   Simulation too_fast_simulation;
   SimulationConfig too_fast_config;
   too_fast_config.model.model_path = model_path;
-  too_fast_config.components = {
-      ComponentConfig{ImuInfo{.common = {.name = "too_fast", .update_rate = 2000.0},
-                              .framequat_sensor_name = "imu_quat",
-                              .gyro_sensor_name = "imu_gyro",
-                              .accelerometer_sensor_name = "imu_acc"}}};
+  too_fast_config.components = {ComponentConfig{ImuInfo{.name = "too_fast",
+                                                        .update_rate = 2000.0,
+                                                        .framequat_sensor_name = "imu_quat",
+                                                        .gyro_sensor_name = "imu_gyro",
+                                                        .accelerometer_sensor_name = "imu_acc"}}};
   const ResultCode too_fast_status = too_fast_simulation.initialize(too_fast_config);
   EXPECT_NE(too_fast_status, ResultCode::Ok);
 }

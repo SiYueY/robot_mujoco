@@ -6,9 +6,15 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <variant>
+#include <vector>
 
+#include "mujoco_simulation/component/camera/camera_data.hpp"
 #include "mujoco_simulation/component/camera/camera_renderer_config.hpp"
-#include "mujoco_simulation/component/component_config.hpp"
+#include "mujoco_simulation/component/imu/imu_data.hpp"
+#include "mujoco_simulation/component/joint/joint_data.hpp"
+#include "mujoco_simulation/component/lidar/lidar_data.hpp"
+#include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 #include "tinyxml2.h"
 
 namespace mujoco_simulation {
@@ -17,6 +23,9 @@ enum class RenderMode {
   Headless,
   Viewer,
 };
+
+using ComponentConfig = std::variant<JointInfo, ImuInfo, CameraConfig, LidarInfo, MobileBaseInfo>;
+using ComponentConfigList = std::vector<ComponentConfig>;
 
 struct ModelConfig {
   std::string model_path;

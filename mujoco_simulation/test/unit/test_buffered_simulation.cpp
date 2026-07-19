@@ -19,14 +19,14 @@ TEST(BufferedSimulationTest, HybridCommandIsBufferedAndPublishedWithItsMode) {
   Simulation simulation;
   SimulationConfig config;
   config.model.model_path = path;
-  config.components = {JointInfo{.joint = "slide",
-                                 .actuator = "slide_motor",
+  config.components = {JointInfo{.joint_name = "slide",
+                                 .actuator_name = "slide_motor",
                                  .position_stiffness = 10.0,
                                  .position_damping = 1.0,
                                  .velocity_damping = 2.0}};
   ASSERT_EQ(simulation.initialize(config), ResultCode::Ok);
-  ASSERT_EQ(simulation.set_joint_command({.joint = "slide",
-                                          .mode = ControlMode::Hybrid,
+  ASSERT_EQ(simulation.set_joint_command({.joint_name = "slide",
+                                          .mode = JointControlMode::Hybrid,
                                           .position = 1.0,
                                           .effort = 1.0,
                                           .stiffness = 2.0,
@@ -35,7 +35,21 @@ TEST(BufferedSimulationTest, HybridCommandIsBufferedAndPublishedWithItsMode) {
   ASSERT_EQ(simulation.step(1), ResultCode::Ok);
   JointState state;
   ASSERT_TRUE(simulation.joint_state("slide", &state));
-  EXPECT_EQ(state.mode, ControlMode::Hybrid);
+  EXPECT_EQ(state.mode, JointControlMode::Hybrid);
+
+  EXPECT_EQ(simulation.step_count(), 1u);
+  const std::shared_ptr<const StateSnapshot> snapshot_after_step = simulation.state_snapshot();
+  ASSERT_NE(snapshot_after_step, nullptr);
+  EXPECT_EQ(snapshot_after_step->step_count, 1u);
+
+  ASSERT_EQ(simulation.reset(), ResultCode::Ok);
+  EXPECT_EQ(simulation.step_count(), 0u);
+  const std::shared_ptr<const StateSnapshot> snapshot_after_reset = simulation.state_snapshot();
+  ASSERT_NE(snapshot_after_reset, nullptr);
+  EXPECT_EQ(snapshot_after_reset->step_count, 0u);
+
+  ASSERT_EQ(simulation.step(1), ResultCode::Ok);
+  EXPECT_EQ(simulation.step_count(), 1u);
   std::error_code remove_error;
   std::filesystem::remove(path, remove_error);
 }

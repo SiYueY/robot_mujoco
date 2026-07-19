@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "mujoco_simulation/result_code.hpp"
-#include "mujoco_simulation/simulation_status.hpp"
+#include "mujoco_simulation/simulation.hpp"
 #include "rclcpp/callback_group.hpp"
 #include "rclcpp/context.hpp"
 #include "rclcpp/contexts/default_context.hpp"

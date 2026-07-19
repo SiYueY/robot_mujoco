@@ -374,13 +374,13 @@ TEST_F(SimulationRosBridgeTest, PublishesBundleWithExpectedTimestamps) {
   bundle.sim_time = sim_time;
   bundle.imus.push_back({.publisher_index = 0,
                          .state = {.sequence = 1,
-                                   .timestamp_ns = 0,
+                                   .timestamp = 0,
                                    .orientation = {0.0, 0.0, 0.0, 1.0},
                                    .angular_velocity = {1.0, 2.0, 3.0},
                                    .linear_acceleration = {4.0, 5.0, 6.0}}});
   bundle.lidars.push_back({.publisher_index = 0,
                            .state = {.sequence = 2,
-                                     .timestamp_ns = 0,
+                                     .timestamp = 0.0,
                                      .angle_min = -0.1,
                                      .angle_max = 0.1,
                                      .angle_increment = 0.2,
@@ -413,7 +413,7 @@ TEST(PublishChannelTest, SmallSnapshotLatestWins) {
 
   PublishBundle first;
   first.sim_time = rclcpp::Time(1'000'000'000LL, RCL_ROS_TIME);
-  first.imus.push_back({.publisher_index = 0, .state = {.sequence = 1, .timestamp_ns = 0}});
+  first.imus.push_back({.publisher_index = 0, .state = {.sequence = 1, .timestamp = 0}});
   PublishBundle second = first;
   second.sim_time = rclcpp::Time(2'000'000'000LL, RCL_ROS_TIME);
   second.imus[0].state.sequence = 2;
@@ -508,10 +508,10 @@ TEST(ConfigBuilderTest, BuildsRuntimeRosAndMappingOutputs) {
   EXPECT_EQ(config.hardware_mapping_config.imu_names.size(), 1u);
 }
 
-TEST(MessageMapperTest, MapsImuAndCameraMessages) {
+TEST(MessageMapperTest, MapsImuLidarAndCameraMessages) {
   const ImuPublisherConfig imu_config{.name = "imu", .frame_id = "imu_link", .topic = "/imu"};
   mujoco_simulation::ImuState imu_state;
-  imu_state.timestamp_ns = 0;
+  imu_state.timestamp = 0;
   imu_state.orientation = {0.0, 0.0, 0.0, 1.0};
   imu_state.angular_velocity = {1.0, 2.0, 3.0};
   imu_state.linear_acceleration = {4.0, 5.0, 6.0};
@@ -519,6 +519,17 @@ TEST(MessageMapperTest, MapsImuAndCameraMessages) {
       imu_config, imu_state, rclcpp::Time(10'000'000'000LL, RCL_ROS_TIME));
   EXPECT_EQ(imu_message.header.frame_id, "imu_link");
   EXPECT_EQ(imu_message.header.stamp.sec, 10);
+
+  const LidarPublisherConfig lidar_config{
+      .name = "lidar", .frame_id = "lidar_link", .topic = "/scan"};
+  mujoco_simulation::LidarState lidar_state;
+  lidar_state.timestamp = 0.25;
+  lidar_state.ranges = {1.0};
+  const auto lidar_message = message_mapper::make_lidar_message(
+      lidar_config, lidar_state, rclcpp::Time(10'000'000'000LL, RCL_ROS_TIME));
+  EXPECT_EQ(lidar_message.header.frame_id, "lidar_link");
+  EXPECT_EQ(lidar_message.header.stamp.sec, 0);
+  EXPECT_EQ(lidar_message.header.stamp.nanosec, 250000000U);
 
   const CameraPublisherConfig camera_config{.name = "camera",
                                             .frame_id = "camera_optical_frame",

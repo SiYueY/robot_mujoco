@@ -7,19 +7,17 @@
 namespace mujoco_simulation {
 namespace {
 
-TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAddAndRemove) {
+TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAdd) {
   ComponentRegistry registry;
 
-  auto joint = std::make_unique<JointComponent>(JointInfo{.joint = "joint"});
-  auto imu =
-      std::make_unique<ImuComponent>(ImuInfo{.common = {.name = "imu", .update_rate = 200.0}});
-  auto camera = std::make_unique<CameraComponent>(
-      CameraConfig{.common = {.name = "camera", .update_rate = 30.0}});
-  auto lidar =
-      std::make_unique<LidarComponent>(LidarInfo{.common = {.name = "lidar", .update_rate = 10.0}});
+  auto joint = std::make_unique<JointComponent>(JointInfo{.joint_name = "joint"});
+  auto imu = std::make_unique<ImuComponent>(ImuInfo{.name = "imu", .update_rate = 200.0});
+  auto camera =
+      std::make_unique<CameraComponent>(CameraConfig{.name = "camera", .update_rate = 30.0});
+  auto lidar = std::make_unique<LidarComponent>(LidarInfo{.name = "lidar", .update_rate = 10.0});
 
   auto mobile_base = std::make_unique<MobileBaseComponent>(
-      MobileBaseInfo{.name = "base", .type = MobileBaseType::Differential});
+      MobileBaseInfo{.mobile_base_name = "base", .type = MobileBaseType::Mecanum});
 
   ASSERT_TRUE(registry.add(std::move(joint)));
   ASSERT_TRUE(registry.add(std::move(imu)));
@@ -42,14 +40,6 @@ TEST(ComponentRegistryTest, TracksTypedIndexesAcrossAddAndRemove) {
   EXPECT_EQ(registry.cameras().size(), 1u);
   EXPECT_EQ(registry.lidars().size(), 1u);
   EXPECT_EQ(registry.mobile_bases().size(), 1u);
-
-  ASSERT_TRUE(registry.remove("imu"));
-  EXPECT_FALSE(registry.has_imu("imu"));
-  EXPECT_EQ(registry.imu("imu"), nullptr);
-  EXPECT_TRUE(registry.has_joint("joint"));
-  EXPECT_TRUE(registry.has_camera("camera"));
-  EXPECT_TRUE(registry.has_lidar("lidar"));
-  EXPECT_TRUE(registry.has_mobile_base("base"));
 }
 
 }  // namespace

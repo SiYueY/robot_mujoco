@@ -26,7 +26,7 @@
 
 ```text
 Simulation
-  -> ModelRuntime
+  -> SimulationRuntime
     -> mjModel + mjData
   -> SimulationScheduler
   -> ComponentManager
@@ -34,17 +34,17 @@ Simulation
       -> Joint / Imu / Lidar / Camera / MobileBase
   -> CommandBuffer / StateBuffer / CameraBuffer
   -> CameraRenderer
-  -> MuJoCoViewer
+  -> SimulationViewer
 ```
 
 关键边界：
 
 - `Simulation` 是唯一公开顶层运行时入口
-- `ModelRuntime` 负责模型加载、forward、step、reset
+- `SimulationRuntime` 负责模型加载、forward、step、reset
 - `SimulationScheduler` 负责运行态调度和状态机
 - `ComponentManager` 负责组件装配、统一更新、命令下发和聚合读状态
-- `CameraRenderer` 与 `MuJoCoViewer` 是独立渲染资源
-- `MuJoCoViewer` 通过受控 runtime handle 同步 MuJoCo 运行时，不直接对外暴露裸 `mjModel* / mjData*` 启动接口
+- `CameraRenderer` 与 `SimulationViewer` 是独立渲染资源
+- `SimulationViewer` 通过受控 `mjContext` 同步 MuJoCo 运行时，不直接对外暴露裸 `mjModel* / mjData*` 启动接口
 - viewer 启动超时通过 `SimulationConfig.viewer_startup_timeout` 控制
 - `mjModel / mjData` 保持单写线程原则，只在 scheduler/reset 安全路径中写入
 
@@ -84,7 +84,6 @@ Simulation
   - `request_reset_to_keyframe_name(...) / reset_to_keyframe_name(...)`
   - `request_reset_to_keyframe_id(...) / reset_to_keyframe_id(...)`
 - 组件与命令
-  - `reconfigure_component(...)`
   - `set_joint_command(...)`
   - `set_mobile_base_command(...)`
 - 状态读取
@@ -105,9 +104,8 @@ Simulation
 - `bind(...)`
 - `reset(...)`
 - `update(...)`
-- `should_update(double simulation_time)`
-- `reset_update_schedule()`
-- `missed_updates()`
+- `poll_update(mjTime time)`
+- `reset_schedule()`
 
 调度原则：
 
@@ -204,8 +202,7 @@ Simulation
 `MobileBase` 是多个 traction joints 的组合运动学包装，不是特殊的 `Joint`。
 
 - 当前支持：
-  - `Differential`
-  - `Omnidirectional`
+  - `Mecanum`
 - 通过轮配置把底盘命令映射为多个关节命令
 - 通过多个关节状态恢复底盘状态
 

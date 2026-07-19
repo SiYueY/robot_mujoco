@@ -9,13 +9,13 @@ namespace {
 
 TEST(StateBufferTest, TypedReadsReturnFalseBeforeFirstWrite) {
   StateBuffer buffer;
-  JointState joint{.joint = "sentinel"};
+  JointState joint{.joint_name = "sentinel"};
   ImuState imu{.frame_id = "sentinel"};
   LidarState lidar{.frame_id = "sentinel"};
   MobileBaseState mobile_base{.base_frame_id = "sentinel"};
 
   EXPECT_FALSE(buffer.read_joint_state("joint", &joint));
-  EXPECT_EQ(joint.joint, "sentinel");
+  EXPECT_EQ(joint.joint_name, "sentinel");
   EXPECT_FALSE(buffer.read_imu_state("imu", &imu));
   EXPECT_EQ(imu.frame_id, "sentinel");
   EXPECT_FALSE(buffer.read_lidar_state("lidar", &lidar));
@@ -27,7 +27,7 @@ TEST(StateBufferTest, TypedReadsReturnFalseBeforeFirstWrite) {
 TEST(StateBufferTest, TypedReadsDelegateToSnapshotLookups) {
   StateBuffer buffer;
   auto snapshot = std::make_shared<StateSnapshot>();
-  snapshot->joints.emplace("joint", JointState{.joint = "joint", .position = 1.5});
+  snapshot->joints.emplace("joint", JointState{.joint_name = "joint", .position = 1.5});
   snapshot->imus.emplace("imu", ImuState{.frame_id = "imu_link"});
   snapshot->lidars.emplace("lidar", LidarState{.frame_id = "lidar_link"});
   snapshot->mobile_bases.emplace("base", MobileBaseState{.base_frame_id = "base_link"});
@@ -35,7 +35,7 @@ TEST(StateBufferTest, TypedReadsDelegateToSnapshotLookups) {
 
   JointState joint;
   ASSERT_TRUE(buffer.read_joint_state("joint", &joint));
-  EXPECT_EQ(joint.joint, "joint");
+  EXPECT_EQ(joint.joint_name, "joint");
   EXPECT_DOUBLE_EQ(joint.position, 1.5);
 
   ImuState imu;
@@ -50,9 +50,9 @@ TEST(StateBufferTest, TypedReadsDelegateToSnapshotLookups) {
   ASSERT_TRUE(buffer.read_mobile_base_state("base", &mobile_base));
   EXPECT_EQ(mobile_base.base_frame_id, "base_link");
 
-  joint.joint = "unchanged";
+  joint.joint_name = "unchanged";
   EXPECT_FALSE(buffer.read_joint_state("missing_joint", &joint));
-  EXPECT_EQ(joint.joint, "unchanged");
+  EXPECT_EQ(joint.joint_name, "unchanged");
 }
 
 }  // namespace

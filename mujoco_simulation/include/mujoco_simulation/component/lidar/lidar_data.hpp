@@ -4,12 +4,12 @@
 #include <string>
 #include <vector>
 
-#include "mujoco_simulation/component/sensor_common_config.hpp"
-
 namespace mujoco_simulation {
 
 struct LidarInfo {
-  SensorCommonConfig common{.update_rate = 10.0};
+  std::string name;
+  std::string frame_id;
+  double update_rate{10.0};
   std::string sensor_prefix;
   double angle_min{0.0};
   double angle_max{0.0};
@@ -20,7 +20,7 @@ struct LidarInfo {
 
 struct LidarState {
   std::uint64_t sequence{0};
-  std::uint64_t timestamp_ns{0};
+  double timestamp{0.0};  // MuJoCo simulation time in seconds.
   std::string frame_id;
   double angle_min{0.0};
   double angle_max{0.0};

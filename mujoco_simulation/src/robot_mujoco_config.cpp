@@ -1,7 +1,7 @@
 #include <cmath>
 
 #include "mujoco_simulation/component/joint/joint_data.hpp"
-#include "mujoco_simulation/simulation_config.hpp"
+#include "mujoco_simulation/config/simulation_config.hpp"
 
 namespace mujoco_simulation {
 
@@ -132,8 +132,8 @@ bool SimulationConfigParser::parse_joint_config(const XMLElement& element, Joint
     return false;
   }
 
-  info->joint = trimmed_name;
-  info->actuator = trimmed_name;
+  info->joint_name = trimmed_name;
+  info->actuator_name = trimmed_name;
 
   if (!parse_position_config(element.FirstChildElement("position"), info) ||
       !parse_velocity_config(element.FirstChildElement("velocity"), info)) {
@@ -169,7 +169,7 @@ bool SimulationConfigParser::parse_robot_section(const XMLElement* robot,
   for (const XMLElement* joint = robot->FirstChildElement("joint"); joint != nullptr;
        joint = joint->NextSiblingElement("joint")) {
     JointInfo info;
-    if (!parse_joint_config(*joint, &info) || !seen_joint_names.insert(info.joint).second) {
+    if (!parse_joint_config(*joint, &info) || !seen_joint_names.insert(info.joint_name).second) {
       return false;
     }
     components->emplace_back(info);
