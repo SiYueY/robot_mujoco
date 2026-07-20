@@ -18,8 +18,6 @@
 #include "rclcpp/node_options.hpp"
 #include "rclcpp/time.hpp"
 #include "robot_mujoco_msgs/srv/reset_world.hpp"
-#include "robot_mujoco_msgs/srv/set_realtime_factor.hpp"
-#include "robot_mujoco_msgs/srv/step_simulation.hpp"
 #include "robot_mujoco_ros2/bridge_config.hpp"
 #include "robot_mujoco_ros2/publish_channel.hpp"
 #include "rosgraph_msgs/msg/clock.hpp"
@@ -35,8 +33,6 @@ class SimulationRosBridge {
  public:
   using ServiceGateCallback = std::function<bool()>;
   using StatusCallback = std::function<mujoco_simulation::ResultCode()>;
-  using StepStatusCallback = std::function<mujoco_simulation::ResultCode(std::uint32_t)>;
-  using RealtimeFactorStatusCallback = std::function<mujoco_simulation::ResultCode(double)>;
   using KeyframeResetStatusCallback =
       std::function<mujoco_simulation::ResultCode(const std::string&)>;
 
@@ -46,8 +42,6 @@ class SimulationRosBridge {
       ServiceGateCallback service_gate_callback = {}, StatusCallback reset_callback = {},
       StatusCallback start_callback = {}, StatusCallback stop_callback = {},
       StatusCallback pause_callback = {}, StatusCallback resume_callback = {},
-      StepStatusCallback step_callback = {},
-      RealtimeFactorStatusCallback realtime_factor_callback = {},
       KeyframeResetStatusCallback load_keyframe_callback = {});
   ~SimulationRosBridge();
 
@@ -84,9 +78,6 @@ class SimulationRosBridge {
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stop_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr pause_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr resume_service_;
-  rclcpp::Service<robot_mujoco_msgs::srv::StepSimulation>::SharedPtr step_service_;
-  rclcpp::Service<robot_mujoco_msgs::srv::SetRealtimeFactor>::SharedPtr
-      set_realtime_factor_service_;
   rclcpp::Service<robot_mujoco_msgs::srv::ResetWorld>::SharedPtr load_keyframe_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_service_;
   std::vector<std::unique_ptr<ImuPublisher>> imus_;

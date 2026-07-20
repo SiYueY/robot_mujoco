@@ -179,7 +179,7 @@ bool SimulationRuntime::reset_to_keyframe_id(int keyframe_id) {
 
 const mjContext& SimulationRuntime::context() const noexcept { return context_; }
 
-double SimulationRuntime::simulation_time() const noexcept {
+double SimulationRuntime::time() const noexcept {
   return context_.data == nullptr ? 0.0 : context_.data->time;
 }
 

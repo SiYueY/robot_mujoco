@@ -16,6 +16,7 @@ enum class ResultCode {
   RenderFailed,
   ThreadFailed,
   Timeout,
+  Unimplemented,
   Internal,
 };
 

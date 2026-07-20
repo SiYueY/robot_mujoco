@@ -1,7 +1,8 @@
+#include "mujoco_simulation/config/simulation_config.hpp"
+
 #include <cmath>
 
 #include "mujoco_simulation/component/joint/joint_data.hpp"
-#include "mujoco_simulation/config/simulation_config.hpp"
 
 namespace mujoco_simulation {
 

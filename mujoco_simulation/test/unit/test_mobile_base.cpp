@@ -21,7 +21,7 @@ TEST(MobileBaseTest, MecanumUsesWheelMotorEffortAndReportsWheelState) {
   ASSERT_NE(model, nullptr) << error;
   mjData* data = mj_makeData(model);
   ASSERT_NE(data, nullptr);
-  const mjContext context{model, data};
+  mjContext context(model, data);
   const int front_left_actuator = mj_name2id(model, mjOBJ_ACTUATOR, "front_left_motor");
   const int front_right_actuator = mj_name2id(model, mjOBJ_ACTUATOR, "front_right_motor");
   const int rear_left_actuator = mj_name2id(model, mjOBJ_ACTUATOR, "rear_left_motor");
@@ -101,8 +101,6 @@ TEST(MobileBaseTest, MecanumUsesWheelMotorEffortAndReportsWheelState) {
   EXPECT_FALSE(base.init(context));
   EXPECT_FALSE(base.is_initialized());
   EXPECT_FALSE(base.write(context, {.mobile_base_name = "base"}));
-  mj_deleteData(data);
-  mj_deleteModel(model);
   std::error_code remove_error;
   std::filesystem::remove(path, remove_error);
 }

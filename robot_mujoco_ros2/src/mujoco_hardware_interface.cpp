@@ -95,6 +95,8 @@ const char* result_code_name(mujoco_simulation::ResultCode code) {
       return "ThreadFailed";
     case mujoco_simulation::ResultCode::Timeout:
       return "Timeout";
+    case mujoco_simulation::ResultCode::Unimplemented:
+      return "Unimplemented";
     case mujoco_simulation::ResultCode::Internal:
       return "Internal";
   }
@@ -231,23 +233,6 @@ mujoco_simulation::ResultCode MuJoCoHardwareInterface::request_resume_status() {
     return mujoco_simulation::ResultCode::InvalidState;
   }
   return simulation_->resume();
-}
-
-mujoco_simulation::ResultCode MuJoCoHardwareInterface::request_step_status(uint32_t steps) {
-  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
-  if (simulation_ == nullptr) {
-    return mujoco_simulation::ResultCode::InvalidState;
-  }
-  return simulation_->step(steps);
-}
-
-mujoco_simulation::ResultCode MuJoCoHardwareInterface::request_set_realtime_factor_status(
-    double realtime_factor) {
-  std::lock_guard<std::mutex> lock(simulation_control_mutex_);
-  if (simulation_ == nullptr) {
-    return mujoco_simulation::ResultCode::InvalidState;
-  }
-  return simulation_->set_realtime_factor(realtime_factor);
 }
 
 mujoco_simulation::ResultCode MuJoCoHardwareInterface::request_keyframe_reset_status(
@@ -410,10 +395,6 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_init(
       [this]() { return request_reset_status(); }, [this]() { return request_start_status(); },
       [this]() { return request_stop_status(); }, [this]() { return request_pause_status(); },
       [this]() { return request_resume_status(); },
-      [this](uint32_t steps) { return request_step_status(steps); },
-      [this](double realtime_factor) {
-        return request_set_realtime_factor_status(realtime_factor);
-      },
       [this](const std::string& keyframe) { return request_keyframe_reset_status(keyframe); });
   publish_imu_states_.resize(config_.imus.size());
   publish_lidar_states_.resize(config_.lidars.size());

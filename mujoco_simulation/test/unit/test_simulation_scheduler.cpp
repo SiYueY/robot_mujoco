@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <future>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -17,18 +16,13 @@ namespace {
 using namespace std::chrono_literals;
 
 struct FakeSchedulerOperations {
-  double timestep{0.001};
   std::atomic<int> cycles{0};
   std::function<void()> after_cycle;
   std::function<bool()> run_cycle_callback;
-  std::function<bool(const ResetRequest&)> reset_callback;
 };
 
 bool register_operations(SimulationScheduler& scheduler, FakeSchedulerOperations& ops) {
-  if (!scheduler.register_timestep_provider([&ops]() { return ops.timestep; })) {
-    return false;
-  }
-  if (!scheduler.register_cycle_runner([&ops]() {
+  if (!scheduler.register_cycle([&ops]() {
         ++ops.cycles;
         if (ops.after_cycle) {
           ops.after_cycle();
@@ -40,12 +34,7 @@ bool register_operations(SimulationScheduler& scheduler, FakeSchedulerOperations
       })) {
     return false;
   }
-  return scheduler.register_reset_handler([&ops](const ResetRequest& request) {
-    if (ops.reset_callback) {
-      return ops.reset_callback(request);
-    }
-    return true;
-  });
+  return true;
 }
 
 }  // namespace
@@ -58,7 +47,7 @@ TEST(SimulationSchedulerTest, RejectsStartBeforeInitialize) {
 TEST(SimulationSchedulerTest, ManualStepAllowedWhenStoppedAndRejectedWhenRunning) {
   SimulationScheduler scheduler;
   FakeSchedulerOperations ops;
-  ASSERT_TRUE(scheduler.initialize({}));
+  ASSERT_TRUE(scheduler.initialize());
   ASSERT_TRUE(register_operations(scheduler, ops));
 
   ASSERT_TRUE(scheduler.step(3));
@@ -76,7 +65,7 @@ TEST(SimulationSchedulerTest, ManualStepAllowedWhenStoppedAndRejectedWhenRunning
 TEST(SimulationSchedulerTest, PauseStopsPhysicsAndResumeRestartsIt) {
   SimulationScheduler scheduler;
   FakeSchedulerOperations ops;
-  ASSERT_TRUE(scheduler.initialize({}));
+  ASSERT_TRUE(scheduler.initialize());
   ASSERT_TRUE(register_operations(scheduler, ops));
   ASSERT_TRUE(scheduler.start());
 
@@ -107,7 +96,7 @@ TEST(SimulationSchedulerTest, ManualStepExecutesSingleRunCyclePerStep) {
     return true;
   };
 
-  ASSERT_TRUE(scheduler.initialize({}));
+  ASSERT_TRUE(scheduler.initialize());
   ASSERT_TRUE(register_operations(scheduler, ops));
   ASSERT_TRUE(scheduler.step(2));
 
@@ -119,75 +108,12 @@ TEST(SimulationSchedulerTest, ManualStepExecutesSingleRunCyclePerStep) {
   ASSERT_TRUE(scheduler.shutdown());
 }
 
-TEST(SimulationSchedulerTest, ResetRequestRunsOnWorkerThread) {
-  SimulationScheduler scheduler;
-  FakeSchedulerOperations ops;
-  std::promise<std::thread::id> reset_thread_promise;
-  std::future<std::thread::id> reset_thread_future = reset_thread_promise.get_future();
-  const std::thread::id caller_thread = std::this_thread::get_id();
-
-  ops.reset_callback = [&reset_thread_promise](const ResetRequest&) {
-    reset_thread_promise.set_value(std::this_thread::get_id());
-    return true;
-  };
-
-  ASSERT_TRUE(scheduler.initialize({}));
-  ASSERT_TRUE(register_operations(scheduler, ops));
-  ASSERT_TRUE(scheduler.start());
-  ASSERT_TRUE(scheduler.request_reset());
-
-  ASSERT_EQ(reset_thread_future.wait_for(1s), std::future_status::ready);
-  EXPECT_NE(reset_thread_future.get(), caller_thread);
-
-  ASSERT_TRUE(scheduler.stop());
-  ASSERT_TRUE(scheduler.shutdown());
-}
-
-TEST(SimulationSchedulerTest, WaitableResetReturnsExecutionFailure) {
-  SimulationScheduler scheduler;
-  FakeSchedulerOperations ops;
-  ops.reset_callback = [](const ResetRequest&) { return false; };
-
-  ASSERT_TRUE(scheduler.initialize({}));
-  ASSERT_TRUE(register_operations(scheduler, ops));
-  ASSERT_TRUE(scheduler.start());
-
-  std::future<bool> completion = scheduler.request_reset_waitable();
-  ASSERT_EQ(completion.wait_for(1s), std::future_status::ready);
-
-  EXPECT_FALSE(completion.get());
-
-  ASSERT_TRUE(scheduler.stop());
-  ASSERT_TRUE(scheduler.shutdown());
-}
-
-TEST(SimulationSchedulerTest, WaitableResetReturnsThreadFailureWhenCallbackThrows) {
-  SimulationScheduler scheduler;
-  FakeSchedulerOperations ops;
-  ops.reset_callback = [](const ResetRequest&) -> bool {
-    throw std::runtime_error("reset callback boom");
-  };
-
-  ASSERT_TRUE(scheduler.initialize({}));
-  ASSERT_TRUE(register_operations(scheduler, ops));
-  ASSERT_TRUE(scheduler.start());
-
-  std::future<bool> completion = scheduler.request_reset_waitable();
-  ASSERT_EQ(completion.wait_for(1s), std::future_status::ready);
-
-  EXPECT_FALSE(completion.get());
-  EXPECT_EQ(scheduler.status(), SimulationStatus::Error);
-
-  ASSERT_TRUE(scheduler.stop());
-  ASSERT_TRUE(scheduler.shutdown());
-}
-
 TEST(SimulationSchedulerTest, WorkerRunCycleFailureTransitionsSchedulerToError) {
   SimulationScheduler scheduler;
   FakeSchedulerOperations ops;
   ops.run_cycle_callback = []() -> bool { throw std::runtime_error("physics worker boom"); };
 
-  ASSERT_TRUE(scheduler.initialize({}));
+  ASSERT_TRUE(scheduler.initialize());
   ASSERT_TRUE(register_operations(scheduler, ops));
   ASSERT_TRUE(scheduler.start());
 
@@ -201,58 +127,17 @@ TEST(SimulationSchedulerTest, WorkerRunCycleFailureTransitionsSchedulerToError) 
   ASSERT_TRUE(scheduler.shutdown());
 }
 
-TEST(SimulationSchedulerTest, RealtimeFactorCanBeUpdatedAfterInitialize) {
-  SimulationScheduler scheduler;
-  FakeSchedulerOperations ops;
-  SchedulerConfig config;
-  config.realtime_factor = 1.0;
-
-  ASSERT_TRUE(scheduler.initialize(config));
-  ASSERT_TRUE(register_operations(scheduler, ops));
-  EXPECT_DOUBLE_EQ(scheduler.realtime_factor(), 1.0);
-
-  ASSERT_TRUE(scheduler.set_realtime_factor(2.5));
-  EXPECT_DOUBLE_EQ(scheduler.realtime_factor(), 2.5);
-
-  ASSERT_TRUE(scheduler.start());
-  std::this_thread::sleep_for(10ms);
-  ASSERT_TRUE(scheduler.set_realtime_factor(0.5));
-  EXPECT_DOUBLE_EQ(scheduler.realtime_factor(), 0.5);
-
-  ASSERT_TRUE(scheduler.stop());
-  ASSERT_TRUE(scheduler.shutdown());
-}
-
-TEST(SimulationSchedulerTest, RejectsInvalidRealtimeFactorUpdates) {
-  SimulationScheduler scheduler;
-  FakeSchedulerOperations ops;
-
-  EXPECT_FALSE(scheduler.set_realtime_factor(0.0));
-
-  ASSERT_TRUE(scheduler.initialize({}));
-  ASSERT_TRUE(register_operations(scheduler, ops));
-
-  EXPECT_FALSE(scheduler.set_realtime_factor(0.0));
-  EXPECT_FALSE(scheduler.set_realtime_factor(-1.0));
-
-  ASSERT_TRUE(scheduler.shutdown());
-}
-
 TEST(SimulationSchedulerTest, RejectsRegisteringOperationsBeforeInitializeOrAfterStart) {
   SimulationScheduler scheduler;
   FakeSchedulerOperations ops;
 
-  EXPECT_FALSE(scheduler.register_timestep_provider([&ops]() { return ops.timestep; }));
-  EXPECT_FALSE(scheduler.register_cycle_runner([]() { return true; }));
-  EXPECT_FALSE(scheduler.register_reset_handler([](const ResetRequest&) { return true; }));
+  EXPECT_FALSE(scheduler.register_cycle([]() { return true; }));
 
-  ASSERT_TRUE(scheduler.initialize({}));
+  ASSERT_TRUE(scheduler.initialize());
   ASSERT_TRUE(register_operations(scheduler, ops));
   ASSERT_TRUE(scheduler.start());
 
-  EXPECT_FALSE(scheduler.register_timestep_provider([&ops]() { return ops.timestep; }));
-  EXPECT_FALSE(scheduler.register_cycle_runner([]() { return true; }));
-  EXPECT_FALSE(scheduler.register_reset_handler([](const ResetRequest&) { return true; }));
+  EXPECT_FALSE(scheduler.register_cycle([]() { return true; }));
 
   ASSERT_TRUE(scheduler.stop());
   ASSERT_TRUE(scheduler.shutdown());

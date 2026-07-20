@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 
 #include "mujoco_simulation/simulation.hpp"
 
@@ -47,6 +49,18 @@ class CameraRenderingTest : public ::testing::Test {
 
   std::filesystem::path model_path_;
 };
+
+bool wait_for_step_count(Simulation& simulation, std::uint64_t target_step_count,
+                         std::chrono::milliseconds timeout = std::chrono::seconds(1)) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (simulation.step_count() >= target_step_count) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return simulation.step_count() >= target_step_count;
+}
 
 TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
   Simulation simulation;
@@ -155,6 +169,7 @@ TEST_F(CameraRenderingTest, MultipleCamerasUpdateAtIndependentRatesInHeadlessMod
                                    .enable_depth = false}},
   };
   ASSERT_OK_STATUS(simulation.initialize(config));
+  ASSERT_OK_STATUS(simulation.start());
 
   CameraState fast_state;
   ASSERT_TRUE(simulation.camera_state("fast_camera", &fast_state));
@@ -163,15 +178,16 @@ TEST_F(CameraRenderingTest, MultipleCamerasUpdateAtIndependentRatesInHeadlessMod
   EXPECT_EQ(fast_state.timestamp_ns, 0U);
   EXPECT_EQ(slow_state.timestamp_ns, 0U);
 
-  ASSERT_OK_STATUS(simulation.step(4));
+  ASSERT_TRUE(wait_for_step_count(simulation, 4));
   ASSERT_TRUE(simulation.camera_state("fast_camera", &fast_state));
   ASSERT_TRUE(simulation.camera_state("slow_camera", &slow_state));
   EXPECT_EQ(fast_state.timestamp_ns, 40000000U);
   EXPECT_EQ(slow_state.timestamp_ns, 0U);
 
-  ASSERT_OK_STATUS(simulation.step(1));
+  ASSERT_TRUE(wait_for_step_count(simulation, 5));
   ASSERT_TRUE(simulation.camera_state("slow_camera", &slow_state));
   EXPECT_EQ(slow_state.timestamp_ns, 50000000U);
+  ASSERT_OK_STATUS(simulation.stop());
 }
 
 TEST_F(CameraRenderingTest, CameraInitializationReportsRenderFailedWhenNoBackendIsAllowed) {

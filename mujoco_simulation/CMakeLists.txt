@@ -168,7 +168,7 @@ target_link_libraries(mujoco_simulation_viewer_support PRIVATE
 set_target_properties(mujoco_simulation_viewer_support PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(${PROJECT_NAME} SHARED
-  src/robot_mujoco_config.cpp
+  src/config/simulation_config.cpp
   src/simulation.cpp
 )
 target_link_libraries(${PROJECT_NAME} PUBLIC

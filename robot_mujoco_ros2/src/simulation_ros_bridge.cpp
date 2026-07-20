@@ -121,9 +121,7 @@ SimulationRosBridge::SimulationRosBridge(
     SimulationRosBridgeConfig config, rclcpp::Context::SharedPtr context,
     ServiceGateCallback service_gate_callback, StatusCallback reset_callback,
     StatusCallback start_callback, StatusCallback stop_callback, StatusCallback pause_callback,
-    StatusCallback resume_callback, StepStatusCallback step_callback,
-    RealtimeFactorStatusCallback realtime_factor_callback,
-    KeyframeResetStatusCallback load_keyframe_callback)
+    StatusCallback resume_callback, KeyframeResetStatusCallback load_keyframe_callback)
     : config_(std::move(config)),
       node_(std::make_shared<rclcpp::Node>(
           config_.node_name,
@@ -165,41 +163,6 @@ SimulationRosBridge::SimulationRosBridge(
           const std::shared_ptr<std_srvs::srv::Trigger::Request>,
           std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
         fill_status_response(invoke_service_callback(callback), "Simulation resumed.", *response);
-      });
-  step_service_ = create_service<robot_mujoco_msgs::srv::StepSimulation>(
-      *node_, "/step", service_callback_group_,
-      [this, callback = std::move(step_callback)](
-          const std::shared_ptr<robot_mujoco_msgs::srv::StepSimulation::Request> request,
-          std::shared_ptr<robot_mujoco_msgs::srv::StepSimulation::Response> response) {
-        if (!is_service_allowed()) {
-          fill_status_response(mujoco_simulation::ResultCode::InvalidState, "Simulation stepped.",
-                               *response);
-          return;
-        }
-        if (!callback) {
-          fill_status_response(mujoco_simulation::ResultCode::InvalidState, "Simulation stepped.",
-                               *response);
-          return;
-        }
-        fill_status_response(callback(request->steps), "Simulation stepped.", *response);
-      });
-  set_realtime_factor_service_ = create_service<robot_mujoco_msgs::srv::SetRealtimeFactor>(
-      *node_, "/set_realtime_factor", service_callback_group_,
-      [this, callback = std::move(realtime_factor_callback)](
-          const std::shared_ptr<robot_mujoco_msgs::srv::SetRealtimeFactor::Request> request,
-          std::shared_ptr<robot_mujoco_msgs::srv::SetRealtimeFactor::Response> response) {
-        if (!is_service_allowed()) {
-          fill_status_response(mujoco_simulation::ResultCode::InvalidState,
-                               "Realtime factor updated.", *response);
-          return;
-        }
-        if (!callback) {
-          fill_status_response(mujoco_simulation::ResultCode::InvalidState,
-                               "Realtime factor updated.", *response);
-          return;
-        }
-        fill_status_response(callback(request->realtime_factor), "Realtime factor updated.",
-                             *response);
       });
   load_keyframe_service_ = create_service<robot_mujoco_msgs::srv::ResetWorld>(
       *node_, "/load_keyframe", service_callback_group_,

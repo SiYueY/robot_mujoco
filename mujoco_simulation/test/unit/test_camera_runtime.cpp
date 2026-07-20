@@ -117,6 +117,18 @@ class CameraRuntimeTest : public ::testing::Test {
   std::filesystem::path model_path_;
 };
 
+bool wait_for_step_count(Simulation& simulation, std::uint64_t target_step_count,
+                         std::chrono::milliseconds timeout = std::chrono::seconds(1)) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (simulation.step_count() >= target_step_count) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return simulation.step_count() >= target_step_count;
+}
+
 bool viewer_start_available(const std::string& model_path) {
   pid_t pid = ::fork();
   if (pid == -1) {
@@ -183,8 +195,11 @@ TEST_F(CameraRuntimeTest, CameraRemainsUsableWithViewerAndAfterViewerStops) {
   EXPECT_EQ(running_state.image.width, 160U);
   EXPECT_GT(running_state.image.data.size(), 0U);
 
+  const std::uint64_t step_count_before_restart = simulation.step_count();
   ASSERT_OK_STATUS(simulation.stop());
-  ASSERT_OK_STATUS(simulation.step(1));
+  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(wait_for_step_count(simulation, step_count_before_restart + 1));
+  ASSERT_OK_STATUS(simulation.stop());
 
   CameraState stopped_state;
   ASSERT_TRUE(simulation.camera_state("front_camera", &stopped_state));
@@ -450,9 +465,9 @@ TEST_F(CameraRuntimeTest, ConcurrentCameraReadsRemainSafeDuringStepping) {
                             std::thread(reader)};
   start_reads.store(true);
 
-  for (int step_index = 0; step_index < 100; ++step_index) {
-    ASSERT_OK_STATUS(simulation.step(1));
-  }
+  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(wait_for_step_count(simulation, 100));
+  ASSERT_OK_STATUS(simulation.stop());
 
   for (auto& thread : readers) {
     thread.join();

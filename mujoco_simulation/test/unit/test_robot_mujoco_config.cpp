@@ -26,7 +26,6 @@ SimulationConfig sentinel_config() {
   SimulationConfig config;
   config.model.model_path = "sentinel_model";
   config.model.initial_keyframe = "sentinel_keyframe";
-  config.scheduler.realtime_factor = 2.0;
   config.components.emplace_back(JointInfo{
       .joint_name = "sentinel_joint",
       .actuator_name = "sentinel_motor",

@@ -107,10 +107,8 @@ robot_mujoco
 
 ### 3.2 `robot_mujoco_msgs`
 
-`robot_mujoco_msgs` 的定位固定为仿真控制接口类型包，负责承载：
+`robot_mujoco_msgs` 的定位固定为仿真控制接口类型包，当前主要承载：
 
-- `StepSimulation.srv`
-- `SetRealtimeFactor.srv`
 - `ResetWorld.srv`
 
 未来新增的仿真控制相关 `srv/msg` 也应统一收口到这个包中。
@@ -296,7 +294,7 @@ ros_bridge publish worker
 #### 服务控制链
 
 ```text
-/start /stop /pause /resume /step /set_realtime_factor /load_keyframe /reset
+/start /stop /pause /resume /load_keyframe /reset
   -> ros_bridge service callback
     -> hardware_plugin status callback
       -> mujoco_simulation public API

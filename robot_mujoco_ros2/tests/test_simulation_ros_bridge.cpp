@@ -15,8 +15,6 @@
 #include "hardware_interface/component_parser.hpp"
 #include "rclcpp/executors/single_threaded_executor.hpp"
 #include "robot_mujoco_msgs/srv/reset_world.hpp"
-#include "robot_mujoco_msgs/srv/set_realtime_factor.hpp"
-#include "robot_mujoco_msgs/srv/step_simulation.hpp"
 #include "robot_mujoco_ros2/config_builder.hpp"
 #include "robot_mujoco_ros2/message_mapper.hpp"
 #include "robot_mujoco_ros2/publish_channel.hpp"
@@ -166,8 +164,6 @@ TEST_F(SimulationRosBridgeTest, ControlServicesInvokeCallbacksAndReturnSuccess) 
   std::atomic<int> stop_calls{0};
   std::atomic<int> pause_calls{0};
   std::atomic<int> resume_calls{0};
-  std::atomic<int> step_calls{0};
-  std::atomic<double> last_realtime_factor{0.0};
   std::string last_keyframe;
 
   bridge_ = std::make_unique<SimulationRosBridge>(
@@ -190,14 +186,6 @@ TEST_F(SimulationRosBridgeTest, ControlServicesInvokeCallbacksAndReturnSuccess) 
         ++resume_calls;
         return mujoco_simulation::ResultCode::Ok;
       },
-      [&step_calls](uint32_t) {
-        ++step_calls;
-        return mujoco_simulation::ResultCode::Ok;
-      },
-      [&last_realtime_factor](double realtime_factor) {
-        last_realtime_factor.store(realtime_factor);
-        return mujoco_simulation::ResultCode::Ok;
-      },
       [&last_keyframe](const std::string& keyframe) {
         last_keyframe = keyframe;
         return mujoco_simulation::ResultCode::Ok;
@@ -209,26 +197,16 @@ TEST_F(SimulationRosBridgeTest, ControlServicesInvokeCallbacksAndReturnSuccess) 
   auto stop_client = subscriber_node_->create_client<std_srvs::srv::Trigger>("/stop");
   auto pause_client = subscriber_node_->create_client<std_srvs::srv::Trigger>("/pause");
   auto resume_client = subscriber_node_->create_client<std_srvs::srv::Trigger>("/resume");
-  auto step_client =
-      subscriber_node_->create_client<robot_mujoco_msgs::srv::StepSimulation>("/step");
-  auto set_realtime_factor_client =
-      subscriber_node_->create_client<robot_mujoco_msgs::srv::SetRealtimeFactor>(
-          "/set_realtime_factor");
   auto load_keyframe_client =
       subscriber_node_->create_client<robot_mujoco_msgs::srv::ResetWorld>("/load_keyframe");
 
   ASSERT_TRUE(spin_until([&]() {
     return start_client->wait_for_service(0s) && stop_client->wait_for_service(0s) &&
            pause_client->wait_for_service(0s) && resume_client->wait_for_service(0s) &&
-           step_client->wait_for_service(0s) && set_realtime_factor_client->wait_for_service(0s) &&
            load_keyframe_client->wait_for_service(0s);
   }));
 
   auto trigger_request = std::make_shared<std_srvs::srv::Trigger::Request>();
-  auto step_request = std::make_shared<robot_mujoco_msgs::srv::StepSimulation::Request>();
-  step_request->steps = 3;
-  auto realtime_request = std::make_shared<robot_mujoco_msgs::srv::SetRealtimeFactor::Request>();
-  realtime_request->realtime_factor = 2.5;
   auto keyframe_request = std::make_shared<robot_mujoco_msgs::srv::ResetWorld::Request>();
   keyframe_request->keyframe = "home";
 
@@ -236,8 +214,6 @@ TEST_F(SimulationRosBridgeTest, ControlServicesInvokeCallbacksAndReturnSuccess) 
   auto stop_future = stop_client->async_send_request(trigger_request);
   auto pause_future = pause_client->async_send_request(trigger_request);
   auto resume_future = resume_client->async_send_request(trigger_request);
-  auto step_future = step_client->async_send_request(step_request);
-  auto realtime_future = set_realtime_factor_client->async_send_request(realtime_request);
   auto keyframe_future = load_keyframe_client->async_send_request(keyframe_request);
 
   ASSERT_TRUE(spin_until([&]() {
@@ -245,8 +221,6 @@ TEST_F(SimulationRosBridgeTest, ControlServicesInvokeCallbacksAndReturnSuccess) 
            stop_future.wait_for(0s) == std::future_status::ready &&
            pause_future.wait_for(0s) == std::future_status::ready &&
            resume_future.wait_for(0s) == std::future_status::ready &&
-           step_future.wait_for(0s) == std::future_status::ready &&
-           realtime_future.wait_for(0s) == std::future_status::ready &&
            keyframe_future.wait_for(0s) == std::future_status::ready;
   }));
 
@@ -254,15 +228,11 @@ TEST_F(SimulationRosBridgeTest, ControlServicesInvokeCallbacksAndReturnSuccess) 
   EXPECT_TRUE(stop_future.get()->success);
   EXPECT_TRUE(pause_future.get()->success);
   EXPECT_TRUE(resume_future.get()->success);
-  EXPECT_TRUE(step_future.get()->success);
-  EXPECT_TRUE(realtime_future.get()->success);
   EXPECT_TRUE(keyframe_future.get()->success);
   EXPECT_EQ(start_calls.load(), 1);
   EXPECT_EQ(stop_calls.load(), 1);
   EXPECT_EQ(pause_calls.load(), 1);
   EXPECT_EQ(resume_calls.load(), 1);
-  EXPECT_EQ(step_calls.load(), 1);
-  EXPECT_DOUBLE_EQ(last_realtime_factor.load(), 2.5);
   EXPECT_EQ(last_keyframe, "home");
 }
 

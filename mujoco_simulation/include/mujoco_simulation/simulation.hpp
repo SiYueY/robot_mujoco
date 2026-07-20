@@ -23,7 +23,6 @@
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 #include "mujoco_simulation/config/simulation_config.hpp"
 #include "mujoco_simulation/result_code.hpp"
-#include "mujoco_simulation/runtime/simulation_scheduler.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
 
 namespace mujoco_simulation {
@@ -49,14 +48,12 @@ class Simulation {
   ResultCode stop();
   ResultCode pause();
   ResultCode resume();
-  ResultCode set_realtime_factor(double realtime_factor);
   ResultCode request_reset();
   ResultCode request_reset_to_keyframe_name(std::string_view keyframe_name);
   ResultCode request_reset_to_keyframe_id(int keyframe_id);
   ResultCode reset();
   ResultCode reset_to_keyframe_name(std::string_view keyframe_name);
   ResultCode reset_to_keyframe_id(int keyframe_id);
-  ResultCode step(uint32_t steps);
 
   ResultCode set_joint_command(const JointCommand &command);
   bool joint_state(std::string joint_name, JointState *out) const;
@@ -70,7 +67,7 @@ class Simulation {
 
   uint64_t step_count() const;
   SimulationStatus status() const;
-  double simulation_time() const;
+  double time() const;
   std::shared_ptr<const StateSnapshot> state_snapshot() const;
   void set_snapshot_observer(SnapshotObserver observer);
 
@@ -80,42 +77,44 @@ class Simulation {
   bool initialize_scheduler();
   bool initialize_components();
   bool load_model(const ModelConfig &model_config);
-  bool request_reset_internal(const ResetRequest &request);
-  bool reset_internal(ResetRequest request);
   bool write_state_snapshot();
   bool write_state_snapshot_locked(std::shared_ptr<const StateSnapshot> *published_snapshot);
   bool update_components_for_step_locked(std::uint64_t step_count, double simulation_time);
   bool build_state_snapshot_locked(std::uint64_t step_count, double simulation_time,
                                    std::shared_ptr<const StateSnapshot> *published_snapshot);
+  // Scheduler
   bool scheduler_run_cycle();
   bool scheduler_write_commands();
   bool scheduler_update_components();
   bool scheduler_step_physics();
   bool scheduler_sync_viewer_if_due();
-  bool scheduler_reset(const ResetRequest &request);
-  double scheduler_timestep() const;
   bool start_viewer();
   bool stop_viewer();
   bool build_state_snapshot(StateSnapshot *snapshot) const;
 
+  // Configuration
   SimulationConfig config_;
+  // Buffer
   std::unique_ptr<CameraBuffer> camera_buffer_;
   std::unique_ptr<CameraRenderer> camera_renderer_;
   std::unique_ptr<CommandBuffer> command_buffer_;
-  std::unique_ptr<SimulationRuntime> simulation_runtime_;
-  std::unique_ptr<SimulationScheduler> scheduler_;
   std::unique_ptr<StateBuffer> state_buffer_;
-
-  ComponentManager component_manager_;
-  std::unique_ptr<SimulationViewer> viewer_;
-  std::chrono::steady_clock::time_point next_viewer_sync_time_{};
-  bool runtime_failed_{false};
-  std::uint64_t step_count_{0};
-  std::uint64_t state_snapshot_sequence_{0};
-  SnapshotObserver snapshot_observer_;
-
+  // Runtime
+  std::unique_ptr<SimulationRuntime> runtime_;
   mutable std::mutex runtime_mutex_;
+  // Scheduler
+  std::unique_ptr<SimulationScheduler> scheduler_;
+  // Component
+  ComponentManager component_manager_;
+  // Viewer
+  std::unique_ptr<SimulationViewer> viewer_;
   mutable std::mutex viewer_mutex_;
+  std::chrono::steady_clock::time_point next_sync_time_{};
+  bool runtime_failed_{false};
+  std::uint64_t step_{0};
+  std::uint64_t sequence_{0};
+  // Snapshot Observer
+  SnapshotObserver snapshot_observer_;
 };
 
 }  // namespace mujoco_simulation

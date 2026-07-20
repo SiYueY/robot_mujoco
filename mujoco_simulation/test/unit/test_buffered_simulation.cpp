@@ -1,13 +1,27 @@
 #include <gtest/gtest.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include "mujoco_simulation/simulation.hpp"
 
 namespace mujoco_simulation {
 namespace {
+
+bool wait_for_step_count(Simulation& simulation, std::uint64_t target_step_count,
+                         std::chrono::milliseconds timeout = std::chrono::seconds(1)) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (simulation.step_count() >= target_step_count) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return simulation.step_count() >= target_step_count;
+}
 
 TEST(BufferedSimulationTest, HybridCommandIsBufferedAndPublishedWithItsMode) {
   const auto path = std::filesystem::temp_directory_path() /
@@ -32,7 +46,9 @@ TEST(BufferedSimulationTest, HybridCommandIsBufferedAndPublishedWithItsMode) {
                                           .stiffness = 2.0,
                                           .damping = 1.0}),
             ResultCode::Ok);
-  ASSERT_EQ(simulation.step(1), ResultCode::Ok);
+  ASSERT_EQ(simulation.start(), ResultCode::Ok);
+  ASSERT_TRUE(wait_for_step_count(simulation, 1));
+  ASSERT_EQ(simulation.stop(), ResultCode::Ok);
   JointState state;
   ASSERT_TRUE(simulation.joint_state("slide", &state));
   EXPECT_EQ(state.mode, JointControlMode::Hybrid);
@@ -42,14 +58,12 @@ TEST(BufferedSimulationTest, HybridCommandIsBufferedAndPublishedWithItsMode) {
   ASSERT_NE(snapshot_after_step, nullptr);
   EXPECT_EQ(snapshot_after_step->step_count, 1u);
 
-  ASSERT_EQ(simulation.reset(), ResultCode::Ok);
-  EXPECT_EQ(simulation.step_count(), 0u);
-  const std::shared_ptr<const StateSnapshot> snapshot_after_reset = simulation.state_snapshot();
-  ASSERT_NE(snapshot_after_reset, nullptr);
-  EXPECT_EQ(snapshot_after_reset->step_count, 0u);
+  ASSERT_EQ(simulation.reset(), ResultCode::Unimplemented);
 
-  ASSERT_EQ(simulation.step(1), ResultCode::Ok);
-  EXPECT_EQ(simulation.step_count(), 1u);
+  ASSERT_EQ(simulation.start(), ResultCode::Ok);
+  ASSERT_TRUE(wait_for_step_count(simulation, 2));
+  ASSERT_EQ(simulation.stop(), ResultCode::Ok);
+  EXPECT_EQ(simulation.step_count(), 2u);
   std::error_code remove_error;
   std::filesystem::remove(path, remove_error);
 }

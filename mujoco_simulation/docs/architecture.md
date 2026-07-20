@@ -79,7 +79,6 @@ Simulation
   - `shutdown()`
   - `start() / stop() / pause() / resume()`
   - `step(...)`
-  - `set_realtime_factor(...)`
   - `request_reset(...) / reset(...)`
   - `request_reset_to_keyframe_name(...) / reset_to_keyframe_name(...)`
   - `request_reset_to_keyframe_id(...) / reset_to_keyframe_id(...)`

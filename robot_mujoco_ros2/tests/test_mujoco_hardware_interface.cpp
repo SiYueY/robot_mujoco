@@ -21,8 +21,6 @@
 #include "rclcpp/executors/single_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "robot_mujoco_msgs/srv/reset_world.hpp"
-#include "robot_mujoco_msgs/srv/set_realtime_factor.hpp"
-#include "robot_mujoco_msgs/srv/step_simulation.hpp"
 #include "robot_mujoco_ros2/mujoco_hardware_interface.hpp"
 #include "robot_mujoco_ros2/qos_profiles.hpp"
 #include "rosgraph_msgs/msg/clock.hpp"
@@ -90,7 +88,6 @@ class MuJoCoHardwareInterfaceTest : public ::testing::Test {
       <param name="mujoco_model_path">)" +
                              model_path + R"(</param>
       <param name="render_mode">headless</param>
-      <param name="sim_speed_factor">1.0</param>
     </hardware>
     <joint name="hinge">
       <command_interface name="velocity"/>
@@ -117,7 +114,6 @@ class MuJoCoHardwareInterfaceTest : public ::testing::Test {
       <param name="mujoco_model_path">)" +
                              model_path + R"(</param>
       <param name="render_mode">headless</param>
-      <param name="sim_speed_factor">1.0</param>
     </hardware>
     <joint name="hinge">
       <command_interface name="velocity"/>
@@ -207,41 +203,6 @@ class MuJoCoHardwareInterfaceTest : public ::testing::Test {
     }
 
     auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-    auto future = client->async_send_request(request);
-    if (!spin_until([&future]() { return future.wait_for(0s) == std::future_status::ready; })) {
-      return nullptr;
-    }
-
-    return future.get();
-  }
-
-  std::shared_ptr<robot_mujoco_msgs::srv::StepSimulation::Response> call_step_service(
-      uint32_t steps) {
-    auto client = subscriber_node_->create_client<robot_mujoco_msgs::srv::StepSimulation>("/step");
-    if (!spin_until([&client]() { return client->wait_for_service(0s); })) {
-      return nullptr;
-    }
-
-    auto request = std::make_shared<robot_mujoco_msgs::srv::StepSimulation::Request>();
-    request->steps = steps;
-    auto future = client->async_send_request(request);
-    if (!spin_until([&future]() { return future.wait_for(0s) == std::future_status::ready; })) {
-      return nullptr;
-    }
-
-    return future.get();
-  }
-
-  std::shared_ptr<robot_mujoco_msgs::srv::SetRealtimeFactor::Response>
-  call_set_realtime_factor_service(double realtime_factor) {
-    auto client = subscriber_node_->create_client<robot_mujoco_msgs::srv::SetRealtimeFactor>(
-        "/set_realtime_factor");
-    if (!spin_until([&client]() { return client->wait_for_service(0s); })) {
-      return nullptr;
-    }
-
-    auto request = std::make_shared<robot_mujoco_msgs::srv::SetRealtimeFactor::Request>();
-    request->realtime_factor = realtime_factor;
     auto future = client->async_send_request(request);
     if (!spin_until([&future]() { return future.wait_for(0s) == std::future_status::ready; })) {
       return nullptr;
@@ -702,15 +663,6 @@ TEST_F(MuJoCoHardwareInterfaceTest, ControlServicesPauseResumeStopAndStartSimula
   }
   EXPECT_FALSE(advanced_while_stopped);
 
-  const auto step_response = call_step_service(1);
-  ASSERT_NE(step_response, nullptr);
-  EXPECT_TRUE(step_response->success);
-  EXPECT_EQ(step_response->message, "Simulation stepped.");
-
-  ASSERT_EQ(hardware.read(time, period), hardware_interface::return_type::OK);
-  EXPECT_GT(joint_position->get_value(), stopped_position + 1e-5);
-  const double stepped_position = joint_position->get_value();
-
   const auto start_response = call_trigger_service("/start");
   ASSERT_NE(start_response, nullptr);
   EXPECT_TRUE(start_response->success);
@@ -722,7 +674,7 @@ TEST_F(MuJoCoHardwareInterfaceTest, ControlServicesPauseResumeStopAndStartSimula
     ASSERT_EQ(hardware.write(time, period), hardware_interface::return_type::OK);
     std::this_thread::sleep_for(5ms);
     ASSERT_EQ(hardware.read(time, period), hardware_interface::return_type::OK);
-    if (joint_position->get_value() > stepped_position + 1e-4) {
+    if (joint_position->get_value() > stopped_position + 1e-4) {
       restarted_motion = true;
       break;
     }
@@ -811,44 +763,6 @@ TEST_F(MuJoCoHardwareInterfaceTest, LoadKeyframeServiceRequestsResetToNamedKeyfr
     std::this_thread::sleep_for(2ms);
   }
   EXPECT_TRUE(keyframe_observed) << "observed position=" << joint_position->get_value();
-
-  ASSERT_EQ(hardware.on_deactivate(inactive_state), hardware_interface::CallbackReturn::SUCCESS);
-}
-
-TEST_F(MuJoCoHardwareInterfaceTest, SetRealtimeFactorServiceUpdatesRuntimeAndRejectsInvalidValues) {
-  const std::string model_path = write_model(R"(
-<mujoco model="hardware_interface_realtime_factor_test">
-  <option timestep="0.001" gravity="0 0 0"/>
-  <worldbody>
-    <body>
-      <joint name="hinge" type="hinge" axis="0 0 1" damping="1.0" limited="true" range="-3.14 3.14"/>
-      <geom type="capsule" size="0.05 0.2" density="100"/>
-    </body>
-  </worldbody>
-  <actuator>
-    <motor name="hinge_vel" joint="hinge"/>
-  </actuator>
-</mujoco>)");
-
-  MuJoCoHardwareInterface hardware;
-  const hardware_interface::HardwareInfo hardware_info = parse_hardware_info(model_path);
-  ASSERT_EQ(hardware.on_init(hardware_info), hardware_interface::CallbackReturn::SUCCESS);
-
-  create_subscriber_node("robot_mujoco_ros2_realtime_factor_client");
-  const rclcpp_lifecycle::State inactive_state(lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE,
-                                               "inactive");
-  ASSERT_EQ(hardware.on_activate(inactive_state), hardware_interface::CallbackReturn::SUCCESS);
-
-  const auto valid_response = call_set_realtime_factor_service(2.0);
-  ASSERT_NE(valid_response, nullptr);
-  EXPECT_TRUE(valid_response->success);
-  EXPECT_EQ(valid_response->message, "Realtime factor updated.");
-
-  const auto invalid_response = call_set_realtime_factor_service(0.0);
-  ASSERT_NE(invalid_response, nullptr);
-  EXPECT_FALSE(invalid_response->success);
-  EXPECT_EQ(invalid_response->message,
-            "SimulationScheduler realtime factor must be greater than zero.");
 
   ASSERT_EQ(hardware.on_deactivate(inactive_state), hardware_interface::CallbackReturn::SUCCESS);
 }

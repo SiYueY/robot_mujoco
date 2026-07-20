@@ -14,14 +14,14 @@
   - 通过 `Status` / `Result<T>` 暴露统一的错误处理接口。
 - `mujoco_simulation_ros`
   - ROS bridge 包。
-  - 负责 `/clock` 发布、IMU/Camera/Lidar 传感器消息发布、仿真控制服务（start/stop/pause/resume/step/set_realtime_factor/load_keyframe/reset），以及 ROS node/executor 生命周期管理。
+  - 负责 `/clock` 发布、IMU/Camera/Lidar 传感器消息发布、仿真控制服务（start/stop/pause/resume/load_keyframe/reset），以及 ROS node/executor 生命周期管理。
 - `mujoco_hardware`
   - `ros2_control` 硬件插件层。
   - 负责把 URDF / `ros2_control` 的 `HardwareInfo` 参数解析成运行时配置，把仿真状态映射为 ROS 侧的 state / command interface，并通过组合 `mujoco_simulation_ros::SimulationRosBridge` 获得 ROS 发布/服务能力。
 - `robot_mujoco`
   - 工作区聚合入口（C++ 头文件聚合 + Python robocasa 场景生成 + launch/config）。
 - `mujoco_ros2_bridge_msgs`
-  - ROS 2 服务接口定义包（`StepSimulation`、`SetRealtimeFactor`、`ResetWorld`），供 `mujoco_simulation_ros` 和 `mujoco_hardware` 共用。
+  - ROS 2 服务接口定义包（当前主要使用 `ResetWorld`），供 `mujoco_simulation_ros` 和 `mujoco_hardware` 共用。
 
 从职责边界看，`mujoco_simulation` 偏仿真运行时，`mujoco_simulation_ros` 偏 ROS 通信桥接，`mujoco_hardware` 偏 `ros2_control` 框架集成，`robot_mujoco` 偏工作区聚合与场景前处理。
 
@@ -59,7 +59,7 @@ Simulation 的 SnapshotObserver 回调
 
 - **控制链**：`ros2_control` 通过 `read()` / `write()` 和 mode switch 与 `MuJoCoHardwareInterface` 交互。`write()` 将关节命令写入 `CommandBuffer`，由 `SimulationScheduler` 在物理步进前 flush；`read()` 从 `StateBuffer` 获取最新状态快照。
 - **观测链**：`SimulationScheduler` 在每步物理仿真后触发传感器采样；snapshot observer 回调负责将 IMU/Lidar 状态和 Camera 采样通过 `SimulationRosBridge` 发布为 ROS 消息。
-- **服务链**：`SimulationRosBridge` 对外暴露 start/stop/pause/resume/step/set_realtime_factor/load_keyframe/reset 八个 ROS service；service 回调通过 `Status` 回调链转发到 `Simulation` 公开 API。
+- **服务链**：`SimulationRosBridge` 对外暴露 start/stop/pause/resume/load_keyframe/reset 六个 ROS service；service 回调通过 `Status` 回调链转发到 `Simulation` 公开 API。
 
 `mujoco_simulation::Simulation` 是运行时中心：它持有 `ModelRuntime`（模型生命周期）、`SimulationScheduler`（调度与物理线程）、`ComponentManager`（组件注册表）、`CommandBuffer` / `StateBuffer` / `CameraBuffer`（数据缓冲）、`CameraRenderer`（渲染）以及可选的 `Viewer`。`mujoco_hardware` 只通过公开接口与它交互，不直接操作 MuJoCo 原生结构。
 
@@ -73,7 +73,7 @@ Simulation 的 SnapshotObserver 回调
 
 - **传感器发布**：持有 `ImuPublisher`、`CameraPublisher`、`LidarPublisher` 三个内部类（均在 `simulation_ros_bridge.cpp` 中实现），每个 publisher 自管理 topic 名称、frame_id 和启停标志。
 - **时钟发布**：独立线程以可配置频率（默认 250 Hz）在 `/clock` topic 上发布 `rosgraph_msgs::msg::Clock`。
-- **控制服务**：提供八个 ROS service 端点 —— `/start`、`/stop`、`/pause`、`/resume`、`/step`、`/set_realtime_factor`、`/load_keyframe`、`/reset`。所有 service 通过 `StatusCallback` 函数对象将请求转发给 `MuJoCoHardwareInterface`，再由其调用 `Simulation` 公开 API。
+- **控制服务**：提供六个 ROS service 端点 —— `/start`、`/stop`、`/pause`、`/resume`、`/load_keyframe`、`/reset`。所有 service 通过 `StatusCallback` 函数对象将请求转发给 `MuJoCoHardwareInterface`，再由其调用 `Simulation` 公开 API。
 - **生命周期管理**：内部持有独立的 ROS node、`SingleThreadedExecutor` 和 executor 线程，与 `ros2_control` 线程解耦。
 
 ### 3.2 配置结构
@@ -104,7 +104,6 @@ struct SimulationRosBridgeConfig {
 
 - `mujoco_model_path`：必填，MuJoCo 模型路径。
 - `render_mode`：渲染模式，默认 `headless`，由 `mujoco_simulation::parse_render_mode()` 解析。
-- `sim_speed_factor`：仿真速度倍率，默认 `1.0`。
 - `initial_keyframe`：可选，初始化时重置到指定 MuJoCo keyframe。
 - `control_freq`：控制频率，默认 `100.0` Hz。
 
@@ -164,11 +163,11 @@ IMU / Camera / Lidar / MobileBase 采用相同模式 —— 持有 `mujoco_simul
 公开接口分为几组：
 
 - **生命周期**：`initialize(SimulationConfig)` / `shutdown()`
-- **控制**：`start()` / `stop()` / `pause()` / `resume()` / `step()` / `reset()` / `request_reset()` / `set_realtime_factor()`
+- **控制**：`start()` / `stop()` / `pause()` / `resume()` / `reset()` / `request_reset()`
 - **设备命令**：`reconfigure_component(ComponentConfig)` / `set_joint_command(JointCommand)` / `set_mobile_base_command(name, MobileBaseCommand)`
 - **设备读取**：`joint_state()` / `imu_sample()` / `lidar_sample()` / `camera_sample()` / `mobile_base_state()`
 - **快照**：`state_snapshot()` / `set_snapshot_observer(SnapshotObserver)`
-- **状态查询**：`step_count()` / `status()` / `simulation_time()`
+- **状态查询**：`step_count()` / `status()` / `time()`
 
 所有公开 API 返回 `Status` 或 `Result<T>`（见 [8.3 节](#83-错误处理策略)）。
 
@@ -367,7 +366,7 @@ RoboCasa YAML config
 
 ┌─ SimulationRosBridge executor 线程 ────────────────────────────────────┐
 │  rclcpp::SingleThreadedExecutor::spin()                                │
-│  处理 ROS service 回调 (start/stop/pause/resume/step/...)              │
+│  处理 ROS service 回调 (start/stop/pause/resume/load_keyframe/reset/...)│
 │  不直接访问主 mjData                                                   │
 └───────────────────────────────────────────────────────────────────────┘
 

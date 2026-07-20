@@ -72,8 +72,6 @@ class MuJoCoHardwareInterface : public hardware_interface::SystemInterface {
   mujoco_simulation::ResultCode request_stop_status();
   mujoco_simulation::ResultCode request_pause_status();
   mujoco_simulation::ResultCode request_resume_status();
-  mujoco_simulation::ResultCode request_step_status(uint32_t steps);
-  mujoco_simulation::ResultCode request_set_realtime_factor_status(double realtime_factor);
   mujoco_simulation::ResultCode request_keyframe_reset_status(const std::string& keyframe);
   mujoco_simulation::ResultCode request_reset_status();
   mujoco_simulation::ResultCode update_runtime_state();

@@ -34,7 +34,9 @@ class SimulationRuntime {
   bool reset_to_keyframe_name(std::string_view keyframe_name);
   bool reset_to_keyframe_id(int keyframe_id);
 
-  double simulation_time() const noexcept;
+  // 仿真时间
+  double time() const noexcept;
+  // 时间步长
   double timestep() const noexcept;
 
  private:

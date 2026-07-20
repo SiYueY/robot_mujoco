@@ -33,11 +33,7 @@ struct ModelConfig {
 };
 
 struct SchedulerConfig {
-  bool realtime_sync{true};
-  double realtime_factor{1.0};
-  double state_update_rate{1000.0};
   double viewer_update_rate{60.0};
-  std::chrono::milliseconds max_schedule_lag{100};
 };
 
 struct SimulationConfig {

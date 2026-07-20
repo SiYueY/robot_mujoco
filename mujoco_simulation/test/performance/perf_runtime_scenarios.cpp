@@ -77,7 +77,6 @@ int run_scheduler_1khz(std::uint64_t target_steps) {
   Simulation simulation;
   SimulationConfig config;
   config.model.model_path = model.path.string();
-  config.scheduler.realtime_factor = 1.0;
   const ResultCode initialize_status = simulation.initialize(config);
   if (initialize_status != ResultCode::Ok) {
     std::cerr << "initialize failed\n";
@@ -180,14 +179,14 @@ int run_headless_camera(std::uint64_t total_steps) {
   std::uint64_t collected_samples = 0;
   std::uint64_t last_timestamp_ns = 0;
   auto wall_start = Clock::now();
+  const ResultCode start_status = simulation.start();
+  if (start_status != ResultCode::Ok) {
+    std::cerr << "start failed\n";
+    return 1;
+  }
 
-  for (std::uint64_t step = 0; step < total_steps; ++step) {
+  while (simulation.step_count() < total_steps) {
     const auto before_step = Clock::now();
-    const ResultCode step_status = simulation.step(1);
-    if (step_status != ResultCode::Ok) {
-      std::cerr << "step failed\n";
-      return 1;
-    }
     CameraState state;
     if (!simulation.camera_state("front_camera", &state)) {
       std::cerr << "camera_state failed\n";
@@ -201,6 +200,12 @@ int run_headless_camera(std::uint64_t total_steps) {
       last_timestamp_ns = state.timestamp_ns;
       ++collected_samples;
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  const ResultCode stop_status = simulation.stop();
+  if (stop_status != ResultCode::Ok) {
+    std::cerr << "stop failed\n";
+    return 1;
   }
   const auto wall_end = Clock::now();
   const double wall_seconds = std::chrono::duration<double>(wall_end - wall_start).count();

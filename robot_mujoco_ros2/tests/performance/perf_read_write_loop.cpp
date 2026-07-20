@@ -62,7 +62,6 @@ hardware_interface::HardwareInfo parse_sensor_hardware_info(const std::string& m
       <param name="mujoco_model_path">)" +
                            model_path + R"(</param>
       <param name="render_mode">headless</param>
-      <param name="sim_speed_factor">1.0</param>
     </hardware>
     <joint name="hinge">
       <command_interface name="velocity"/>

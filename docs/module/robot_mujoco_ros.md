@@ -179,7 +179,7 @@ controller_manager
 - `/clock` publisher
 - IMU / Camera / Lidar publisher
 - `/start`、`/stop`、`/pause`、`/resume`
-- `/step`、`/set_realtime_factor`、`/load_keyframe`、`/reset`
+- `/load_keyframe`、`/reset`
 - ROS node 生命周期
 - callback group、executor 和 publish worker 管理
 
@@ -538,7 +538,7 @@ topic publish worker
 ### 6.3 服务控制链
 
 ```text
-/start /stop /pause /resume /step /set_realtime_factor /load_keyframe /reset
+/start /stop /pause /resume /load_keyframe /reset
   -> ros_bridge service callback
   -> hardware_plugin injected callback
   -> Simulation public API

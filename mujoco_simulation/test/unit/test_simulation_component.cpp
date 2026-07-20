@@ -1,11 +1,21 @@
 #include <gtest/gtest.h>
+#include <unistd.h>
 
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <string>
 
 #include "mujoco_simulation/component/simulation_component.hpp"
+#include "mujoco_simulation/runtime/simulation_runtime.hpp"
 
 namespace mujoco_simulation {
+
+class SimulationRuntimeTestPeer {
+ public:
+  static const mjContext& context(const SimulationRuntime& runtime) { return runtime.context(); }
+};
+
 namespace {
 
 class FakeComponent final : public SimulationComponent {
@@ -20,12 +30,29 @@ class FakeComponent final : public SimulationComponent {
 
 class SimulationComponentTest : public ::testing::Test {
  protected:
-  mjModel model_{};
-  mjData data_{};
+  void SetUp() override {
+    model_path_ = std::filesystem::temp_directory_path() /
+                  ("simulation_component_test_" + std::to_string(::getpid()) + ".xml");
+    std::ofstream output(model_path_);
+    ASSERT_TRUE(output.is_open());
+    output
+        << R"(<mujoco><option timestep=".001"/><worldbody><body><geom type="sphere" size=".1"/></body></worldbody></mujoco>)";
+    output.close();
 
-  mjContext context() { return {model_, data_}; }
+    ASSERT_TRUE(runtime_.init({model_path_}));
+  }
 
-  void SetUp() override { model_.opt.timestep = 0.001; }
+  void TearDown() override {
+    if (!model_path_.empty()) {
+      std::error_code error;
+      std::filesystem::remove(model_path_, error);
+    }
+  }
+
+  const mjContext& context() const { return SimulationRuntimeTestPeer::context(runtime_); }
+
+  std::filesystem::path model_path_;
+  SimulationRuntime runtime_;
 };
 
 TEST_F(SimulationComponentTest, ValidatesNameAndUpdateRateDuringInitialization) {

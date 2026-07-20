@@ -78,7 +78,7 @@ MuJoCoHardwareInterface::read()
 ### 4.3 ROS 控制服务
 
 ```text
-/start /stop /pause /resume /step /set_realtime_factor /load_keyframe /reset
+/start /stop /pause /resume /load_keyframe /reset
   -> SimulationRosBridge service callback
   -> Status callback provided by MuJoCoHardwareInterface
   -> Simulation public API
@@ -90,7 +90,7 @@ MuJoCoHardwareInterface::read()
 `mujoco_simulation::Simulation` 当前对下游承诺的核心接口保持为：
 
 - 生命周期：`initialize()`、`shutdown()`
-- 控制：`start()`、`stop()`、`pause()`、`resume()`、`step()`、`reset()`、`request_reset()`、`set_realtime_factor()`
+- 控制：`start()`、`stop()`、`pause()`、`resume()`、`reset()`、`request_reset()`
 - 设备命令：`reconfigure_component()`、`set_joint_command()`、`set_mobile_base_command()`
 - 设备读取：`joint_state()`、`imu_sample()`、`lidar_sample()`、`camera_sample()`、`mobile_base_state()`
 - 快照：`state_snapshot()`

@@ -100,12 +100,10 @@ Simulation
   - `ResultCode stop()`
   - `ResultCode pause()`
   - `ResultCode resume()`
-  - `ResultCode set_realtime_factor(double)`
   - `ResultCode request_reset()`
     - 异步提交 reset 请求，适合 ROS service / callback 线程
   - `ResultCode reset()`
     - 同步等待 reset 完成，适合需要明确执行结果的调用路径
-  - `ResultCode step(uint32_t)`
 - 组件配置与设备访问
   - `SimulationConfig.components`
     - 唯一组件注册入口
@@ -155,7 +153,7 @@ Simulation
   - `model_path` 和 `initial_keyframe`
   - `initial_keyframe` 在 `Simulation::initialize() -> SimulationRuntime::init(...)` 主路径中立即生效；缺失 keyframe 会直接导致初始化失败
 - `scheduler`
-  - `realtime_factor`、`viewer_update_rate` 等调度参数
+  - `viewer_update_rate` 等显示同步参数
 - `components`
   - 组件配置列表，作为后续 `ComponentManager::init(...)` 的标准输入
   - IMU / Lidar / Camera 分别直接暴露 `name`、`frame_id`、`update_rate`
@@ -334,8 +332,6 @@ ros2_control
 - `/stop`
 - `/pause`
 - `/resume`
-- `/step`
-- `/set_realtime_factor`
 - `/load_keyframe`
 - `/reset`
 
@@ -343,10 +339,6 @@ ros2_control
 
 其中：
 
-- `/step`
-  - 已支持显式指定步数
-- `/set_realtime_factor`
-  - 已支持在运行时更新实时倍率参数
 - `/load_keyframe`
   - 已支持传入 keyframe 名称并触发对应 reset
 

@@ -63,7 +63,7 @@ TEST_F(SimulationRuntimeTest, LoadsStepsAndResetsMinimalMjcf) {
       mujoco_simulation::SimulationRuntimeTestPeer::context(runtime);
   const double initial_z = context.data->qpos[2];
   ASSERT_TRUE(runtime.step(10));
-  EXPECT_GT(runtime.simulation_time(), 0.0);
+  EXPECT_GT(runtime.time(), 0.0);
   EXPECT_LT(context.data->qpos[2], initial_z);
 
   ASSERT_TRUE(runtime.reset());
@@ -170,12 +170,12 @@ TEST_F(SimulationRuntimeTest, RepeatedLoadReplacesPreviousRuntimeAndRemainsStabl
     EXPECT_TRUE(runtime.is_initialized());
 
     ASSERT_TRUE(runtime.step(2));
-    EXPECT_GT(runtime.simulation_time(), 0.0);
+    EXPECT_GT(runtime.time(), 0.0);
   }
 
   ASSERT_TRUE(runtime.init({model_path.string()}));
   EXPECT_TRUE(runtime.is_initialized());
-  EXPECT_DOUBLE_EQ(runtime.simulation_time(), 0.0);
+  EXPECT_DOUBLE_EQ(runtime.time(), 0.0);
   EXPECT_GT(runtime.timestep(), 0.0);
 }
 
@@ -186,11 +186,11 @@ TEST_F(SimulationRuntimeTest, FailedReloadInvalidatesPreviousRuntime) {
   ASSERT_TRUE(runtime.init({valid_model_path.string()}));
   ASSERT_TRUE(runtime.is_initialized());
   ASSERT_TRUE(runtime.step());
-  EXPECT_GT(runtime.simulation_time(), 0.0);
+  EXPECT_GT(runtime.time(), 0.0);
 
   EXPECT_FALSE(runtime.init({"/tmp/does_not_exist.xml"}));
   EXPECT_FALSE(runtime.is_initialized());
-  EXPECT_DOUBLE_EQ(runtime.simulation_time(), 0.0);
+  EXPECT_DOUBLE_EQ(runtime.time(), 0.0);
   EXPECT_DOUBLE_EQ(runtime.timestep(), 0.0);
   EXPECT_FALSE(runtime.step());
 }

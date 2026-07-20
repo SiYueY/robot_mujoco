@@ -169,10 +169,6 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
 
   parsed.simulation.model.initial_keyframe =
       parameter_or(hardware_info.hardware_parameters, "initial_keyframe");
-  if (!parse_double_parameter(hardware_info.hardware_parameters, "sim_speed_factor", 1.0,
-                              &parsed.simulation.scheduler.realtime_factor, error_message)) {
-    return false;
-  }
   if (!parse_double_parameter(hardware_info.hardware_parameters, "viewer_update_rate", 60.0,
                               &parsed.simulation.scheduler.viewer_update_rate, error_message)) {
     return false;

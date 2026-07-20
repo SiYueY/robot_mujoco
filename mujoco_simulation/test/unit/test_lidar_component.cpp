@@ -15,12 +15,7 @@ namespace {
 class LidarComponentTest : public ::testing::Test {
  protected:
   void TearDown() override {
-    if (data_ != nullptr) {
-      mj_deleteData(data_);
-    }
-    if (model_ != nullptr) {
-      mj_deleteModel(model_);
-    }
+    context_.clear();
     std::error_code error;
     std::filesystem::remove(model_path_, error);
   }
@@ -34,11 +29,12 @@ class LidarComponentTest : public ::testing::Test {
     output.close();
 
     char error[1024] = {};
-    model_ = mj_loadXML(model_path_.c_str(), nullptr, error, sizeof(error));
-    ASSERT_NE(model_, nullptr) << error;
-    data_ = mj_makeData(model_);
-    ASSERT_NE(data_, nullptr);
-    mj_forward(model_, data_);
+    mjModel* model = mj_loadXML(model_path_.c_str(), nullptr, error, sizeof(error));
+    ASSERT_NE(model, nullptr) << error;
+    mjData* data = mj_makeData(model);
+    ASSERT_NE(data, nullptr);
+    mj_forward(model, data);
+    context_ = mjContext(model, data);
   }
 
   LidarInfo valid_info() const {
@@ -53,10 +49,12 @@ class LidarComponentTest : public ::testing::Test {
             .range_max = 5.0};
   }
 
-  mjContext context() const { return {model_, data_}; }
+  const mjContext& context() const { return context_; }
 
-  mjModel* model_{nullptr};
-  mjData* data_{nullptr};
+  mjModel* model() const { return const_cast<mjModel*>(context_.model); }
+  mjData* data() const { return context_.data; }
+
+  mjContext context_{};
   std::filesystem::path model_path_;
 };
 
@@ -67,11 +65,11 @@ TEST_F(LidarComponentTest, InitializesAndSamplesRanges) {
   ASSERT_TRUE(lidar.init(context()));
   EXPECT_TRUE(lidar.is_initialized());
 
-  const int first_sensor = mj_name2id(model_, mjOBJ_SENSOR, "lidar-0");
-  const int second_sensor = mj_name2id(model_, mjOBJ_SENSOR, "lidar-1");
-  data_->sensordata[model_->sensor_adr[first_sensor]] = 1.0;
-  data_->sensordata[model_->sensor_adr[second_sensor]] = 6.0;
-  data_->time = 0.25;
+  const int first_sensor = mj_name2id(model(), mjOBJ_SENSOR, "lidar-0");
+  const int second_sensor = mj_name2id(model(), mjOBJ_SENSOR, "lidar-1");
+  data()->sensordata[model()->sensor_adr[first_sensor]] = 1.0;
+  data()->sensordata[model()->sensor_adr[second_sensor]] = 6.0;
+  data()->time = 0.25;
 
   ASSERT_TRUE(lidar.update(context()));
   LidarState state;
@@ -102,8 +100,8 @@ TEST_F(LidarComponentTest, FailedReinitializationInvalidatesPreviousBinding) {
   LidarComponent lidar(valid_info());
   ASSERT_TRUE(lidar.init(context()));
 
-  const int sensor_id = mj_name2id(model_, mjOBJ_SENSOR, "lidar-0");
-  model_->sensor_type[sensor_id] = mjSENS_GYRO;
+  const int sensor_id = mj_name2id(model(), mjOBJ_SENSOR, "lidar-0");
+  model()->sensor_type[sensor_id] = mjSENS_GYRO;
   EXPECT_FALSE(lidar.init(context()));
   EXPECT_FALSE(lidar.is_initialized());
   EXPECT_FALSE(lidar.update(context()));
@@ -141,16 +139,16 @@ TEST_F(LidarComponentTest, RejectsInvalidInfoAndSensorBindings) {
   missing_sensor.sensor_prefix = "missing";
   EXPECT_FALSE(LidarComponent(missing_sensor).init(context()));
 
-  const int sensor_id = mj_name2id(model_, mjOBJ_SENSOR, "lidar-0");
-  model_->sensor_type[sensor_id] = mjSENS_GYRO;
+  const int sensor_id = mj_name2id(model(), mjOBJ_SENSOR, "lidar-0");
+  model()->sensor_type[sensor_id] = mjSENS_GYRO;
   EXPECT_FALSE(LidarComponent(valid_info()).init(context()));
-  model_->sensor_type[sensor_id] = mjSENS_RANGEFINDER;
+  model()->sensor_type[sensor_id] = mjSENS_RANGEFINDER;
 
-  model_->sensor_dim[sensor_id] = 2;
+  model()->sensor_dim[sensor_id] = 2;
   EXPECT_FALSE(LidarComponent(valid_info()).init(context()));
-  model_->sensor_dim[sensor_id] = 1;
+  model()->sensor_dim[sensor_id] = 1;
 
-  model_->sensor_adr[sensor_id] = model_->nsensordata;
+  model()->sensor_adr[sensor_id] = model()->nsensordata;
   EXPECT_FALSE(LidarComponent(valid_info()).init(context()));
 }
 
