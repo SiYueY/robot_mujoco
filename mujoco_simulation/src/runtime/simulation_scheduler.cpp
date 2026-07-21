@@ -8,17 +8,17 @@
 
 namespace mujoco_simulation {
 
-bool SimulationScheduler::invoke_cycle(const std::function<bool()>& callback) {
-  if (!callback) {
-    LOG_ERROR << "required scheduler cycle host is not configured.";
+bool SimulationScheduler::invoke_task(const std::function<bool()>& task) {
+  if (!task) {
+    LOG_ERROR << "required scheduler task host is not configured.";
     return false;
   }
   try {
-    return callback();
+    return task();
   } catch (const std::exception&) {
-    LOG_ERROR << "scheduler cycle callback threw an exception.";
+    LOG_ERROR << "scheduler task task threw an exception.";
   } catch (...) {
-    LOG_ERROR << "scheduler cycle callback threw an unknown exception.";
+    LOG_ERROR << "scheduler task task threw an unknown exception.";
   }
   return false;
 }
@@ -30,15 +30,15 @@ bool SimulationScheduler::initialize() {
     return false;
   }
 
-  cycle_ = {};
+  task_ = {};
   stop_requested_ = false;
   status_ = SimulationStatus::Stopped;
   return true;
 }
 
-bool SimulationScheduler::register_cycle(std::function<bool()> cycle) {
-  if (!cycle) {
-    LOG_ERROR << "scheduler cycle must not be empty.";
+bool SimulationScheduler::register_task(std::function<bool()> task) {
+  if (!task) {
+    LOG_ERROR << "scheduler task must not be empty.";
     return false;
   }
 
@@ -53,7 +53,7 @@ bool SimulationScheduler::register_cycle(std::function<bool()> cycle) {
     LOG_ERROR << "scheduler cannot register operations after execution has started.";
     return false;
   }
-  cycle_ = std::move(cycle);
+  task_ = std::move(task);
   return true;
 }
 
@@ -70,7 +70,7 @@ bool SimulationScheduler::shutdown() {
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
-  cycle_ = {};
+  task_ = {};
   stop_requested_ = false;
   status_ = SimulationStatus::Uninitialized;
   return true;
@@ -184,7 +184,7 @@ bool SimulationScheduler::step(std::size_t count) {
   }
 
   for (std::size_t i = 0; i < count; ++i) {
-    if (!execute_cycle_once()) {
+    if (!execute_task_once()) {
       std::lock_guard<std::mutex> lock(mutex_);
       set_error_locked();
       return false;
@@ -199,10 +199,10 @@ SimulationStatus SimulationScheduler::status() const {
   return status_;
 }
 
-bool SimulationScheduler::execute_cycle_once() {
+bool SimulationScheduler::execute_task_once() {
   {
     std::lock_guard<std::mutex> execution_lock(execution_mutex_);
-    if (!invoke_cycle(cycle_)) {
+    if (!invoke_task(task_)) {
       return false;
     }
   }
@@ -214,7 +214,8 @@ void SimulationScheduler::worker_loop() {
     while (true) {
       {
         std::unique_lock<std::mutex> lock(mutex_);
-        cv_.wait(lock, [this]() { return worker_should_wake_locked(); });
+        cv_.wait(lock,
+                 [this]() { return stop_requested_ || status_ == SimulationStatus::Running; });
         if (stop_requested_) {
           break;
         }
@@ -229,7 +230,7 @@ void SimulationScheduler::worker_loop() {
         continue;
       }
 
-      if (!execute_cycle_once()) {
+      if (!execute_task_once()) {
         std::lock_guard<std::mutex> lock(mutex_);
         set_error_locked();
         break;
@@ -250,10 +251,6 @@ void SimulationScheduler::worker_loop() {
   if (status_ != SimulationStatus::Error && status_ != SimulationStatus::Uninitialized) {
     status_ = SimulationStatus::Stopped;
   }
-}
-
-bool SimulationScheduler::worker_should_wake_locked() const {
-  return stop_requested_ || status_ == SimulationStatus::Running;
 }
 
 void SimulationScheduler::set_error_locked() { status_ = SimulationStatus::Error; }

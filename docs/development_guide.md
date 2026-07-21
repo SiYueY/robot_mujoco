@@ -129,12 +129,12 @@ struct SimulationRosBridgeConfig {
 - **生命周期管理**：`on_init()` 调用配置解析，创建 `Simulation` 和 `SimulationRosBridge`，注册 snapshot observer 回调。
 - **接口导出**：`export_state_interfaces()` 导出 joint 和 IMU 的 state interface；`export_command_interfaces()` 导出 joint command interface。
 - **模式切换**：`prepare_command_mode_switch()` 校验要切换的接口是否合理；`perform_command_mode_switch()` 通过 `Simulation::reconfigure_component()` 下发 mode 变化。
-- **运行时读写**：`read()` 从 `Simulation::state_snapshot()` 获取状态快照并更新本地 `JointData` / `ImuData` 等；`write()` 将 controller 命令通过 `Simulation::set_joint_command()` 写入 `CommandBuffer`。
+- **运行时读写**：`read()` 从 `Simulation::robot_state()` 获取状态快照并更新本地 `JointData` / `ImuData` 等；`write()` 将 controller 命令通过 `Simulation::set_joint_command()` 写入 `CommandBuffer`。
 
 关键设计要点：
 
 - `MuJoCoHardwareInterface` 直接持有 `std::unique_ptr<mujoco_simulation::Simulation>` 和 `std::unique_ptr<mujoco_simulation_ros::SimulationRosBridge>`。旧版 `Robot` 包装类和 `SensorBridge` 均已移除。
-- 状态更新走 snapshot 模式：`update_runtime_state()` 调用 `simulation_->state_snapshot()` 获取共享指针，然后从 snapshot 中查找各组件状态。这避免了直接访问 `mjData` 的并发问题。
+- 状态更新走 snapshot 模式：`update_runtime_state()` 调用 `simulation_->robot_state()` 获取共享指针，然后从 snapshot 中查找各组件状态。这避免了直接访问 `mjData` 的并发问题。
 - ROS 消息发布通过 snapshot observer 异步触发：`SimulationScheduler` 在每步物理仿真后发布 snapshot，observer 回调在 `mujoco_hardware` 侧执行 `publish_snapshot_to_ros()`。
 
 ### 4.3 数据结构：`HardwareConfig` 与 `JointData` 等
@@ -166,8 +166,8 @@ IMU / Camera / Lidar / MobileBase 采用相同模式 —— 持有 `mujoco_simul
 - **控制**：`start()` / `stop()` / `pause()` / `resume()` / `reset()` / `request_reset()`
 - **设备命令**：`reconfigure_component(ComponentConfig)` / `set_joint_command(JointCommand)` / `set_mobile_base_command(name, MobileBaseCommand)`
 - **设备读取**：`joint_state()` / `imu_sample()` / `lidar_sample()` / `camera_sample()` / `mobile_base_state()`
-- **快照**：`state_snapshot()` / `set_snapshot_observer(SnapshotObserver)`
-- **状态查询**：`step_count()` / `status()` / `time()`
+- **快照**：`robot_state()` / `set_snapshot_observer(SnapshotObserver)`
+- **状态查询**：`step()` / `status()` / `time()`
 
 所有公开 API 返回 `Status` 或 `Result<T>`（见 [8.3 节](#83-错误处理策略)）。
 
@@ -346,7 +346,7 @@ RoboCasa YAML config
 ┌─ ros2_control 线程 ───────────────────────────────────────────────────┐
 │  controller_manager -> MuJoCoHardwareInterface::read() / write()      │
 │  read():                                                              │
-│    -> Simulation::state_snapshot()  (从 StateBuffer 读取共享指针)      │
+│    -> Simulation::robot_state()  (从 StateBuffer 读取共享指针)      │
 │    -> 更新本地 JointData / ImuData / LidarData / MobileBaseData       │
 │  write():                                                             │
 │    -> Simulation::set_joint_command()  (写入 CommandBuffer)           │

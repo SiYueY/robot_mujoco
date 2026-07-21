@@ -5,8 +5,8 @@
 #include <unordered_map>
 
 #include "mujoco_simulation/buffer/camera_buffer.hpp"
-#include "mujoco_simulation/buffer/command_snapshot.hpp"
-#include "mujoco_simulation/buffer/state_snapshot.hpp"
+#include "mujoco_simulation/buffer/robot_command.hpp"
+#include "mujoco_simulation/buffer/robot_state.hpp"
 #include "mujoco_simulation/component/camera/camera_component.hpp"
 #include "mujoco_simulation/component/component_registry.hpp"
 #include "mujoco_simulation/component/imu/imu_component.hpp"
@@ -25,8 +25,8 @@ class ComponentManager {
   bool reset(const mjContext& context);
   bool update(const mjContext& context, CameraRenderer* camera_renderer,
               CameraBuffer* camera_buffer);
-  bool write_command(const mjContext& context, const CommandSnapshot& snapshot);
-  bool read_state(const mjContext& context, StateSnapshot& snapshot) const;
+  bool write_command(const mjContext& context, const RobotCommand& snapshot);
+  bool read_state(const mjContext& context, RobotState& snapshot) const;
   bool read_state(const mjContext& context, JointStates& states) const;
   bool read_state(const mjContext& context, ImuStates& states) const;
   bool read_state(const mjContext& context, LidarStates& states) const;

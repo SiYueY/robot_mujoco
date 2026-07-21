@@ -269,7 +269,7 @@ bool ComponentManager::update(const mjContext& context, CameraRenderer* camera_r
   return true;
 }
 
-bool ComponentManager::write_command(const mjContext& context, const CommandSnapshot& snapshot) {
+bool ComponentManager::write_command(const mjContext& context, const RobotCommand& snapshot) {
   if (!context.valid()) {
     LOG_ERROR << "component manager requires a valid MuJoCo context.";
     return false;
@@ -297,7 +297,7 @@ bool ComponentManager::write_command(const mjContext& context, const CommandSnap
   return true;
 }
 
-bool ComponentManager::read_state(const mjContext& context, StateSnapshot& snapshot) const {
+bool ComponentManager::read_state(const mjContext& context, RobotState& snapshot) const {
   if (!context.valid()) {
     LOG_ERROR << "component manager requires a valid MuJoCo context.";
     return false;

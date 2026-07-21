@@ -33,11 +33,11 @@ bool CommandBuffer::write_mobile_base_command(std::string component_name,
   return true;
 }
 
-CommandSnapshot CommandBuffer::read() const { return read(Clock::now()); }
+RobotCommand CommandBuffer::read() const { return read(Clock::now()); }
 
-CommandSnapshot CommandBuffer::read(const Clock::time_point now) const {
+RobotCommand CommandBuffer::read(const Clock::time_point now) const {
   std::lock_guard<std::mutex> lock(mutex_);
-  CommandSnapshot snapshot;
+  RobotCommand snapshot;
   snapshot.sequence = sequence_;
   for (const auto& [name, timed_command] : joint_commands_) {
     snapshot.joint_commands.emplace(name, effective_joint_command(name, timed_command, now));

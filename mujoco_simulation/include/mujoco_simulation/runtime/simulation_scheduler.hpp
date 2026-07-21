@@ -14,7 +14,7 @@ namespace mujoco_simulation {
 class SimulationScheduler {
  public:
   bool initialize();
-  bool register_cycle(std::function<bool()> cycle);
+  bool register_task(std::function<bool()> task);
   bool shutdown();
 
   bool start();
@@ -26,13 +26,13 @@ class SimulationScheduler {
   SimulationStatus status() const;
 
  private:
-  static bool invoke_cycle(const std::function<bool()>& callback);
-  bool execute_cycle_once();
+  static bool invoke_task(const std::function<bool()>& callback);
+  bool execute_task_once();
   void worker_loop();
-  bool worker_should_wake_locked() const;
   void set_error_locked();
 
-  std::function<bool()> cycle_;
+  // Task
+  std::function<bool()> task_;
 
   mutable std::mutex mutex_;
   std::condition_variable cv_;

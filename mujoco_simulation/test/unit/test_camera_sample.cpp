@@ -10,17 +10,17 @@ namespace {
 TEST(CameraStateTest, StoresCompatibleCameraStatePayload) {
   CameraState state;
   state.sequence = 5;
-  state.timestamp_ns = 987654321ULL;
+  state.timestamp = 987654321ULL;
   state.frame_id = "camera_link";
   state.optical_frame_id = "camera_optical_frame";
-  state.image.timestamp = state.timestamp_ns;
+  state.image.timestamp = state.timestamp;
   state.image.frame_id = "camera_optical_frame";
   state.image.width = 2;
   state.image.height = 2;
   state.image.step = 6;
   state.image.encoding = "rgb8";
   state.image.data = {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U};
-  state.depth_image.timestamp = state.timestamp_ns;
+  state.depth_image.timestamp = state.timestamp;
   state.depth_image.frame_id = "camera_optical_frame";
   state.depth_image.width = 2;
   state.depth_image.height = 2;
@@ -34,7 +34,7 @@ TEST(CameraStateTest, StoresCompatibleCameraStatePayload) {
   state.camera_info.k = {320.0, 0.0, 159.5, 0.0, 321.0, 119.5, 0.0, 0.0, 1.0};
   state.camera_info.p = {320.0, 0.0, 159.5, 0.0, 0.0, 321.0, 119.5, 0.0, 0.0, 0.0, 1.0, 0.0};
 
-  EXPECT_EQ(state.image.timestamp, state.timestamp_ns);
+  EXPECT_EQ(state.image.timestamp, state.timestamp);
   EXPECT_EQ(state.image.frame_id, "camera_optical_frame");
   EXPECT_EQ(state.image.width, 2U);
   EXPECT_EQ(state.image.height, 2U);
@@ -42,7 +42,7 @@ TEST(CameraStateTest, StoresCompatibleCameraStatePayload) {
   EXPECT_EQ(state.image.encoding, "rgb8");
   EXPECT_EQ(state.image.data[0], 1U);
 
-  EXPECT_EQ(state.depth_image.timestamp, state.timestamp_ns);
+  EXPECT_EQ(state.depth_image.timestamp, state.timestamp);
   EXPECT_EQ(state.depth_image.frame_id, "camera_optical_frame");
   EXPECT_EQ(state.depth_image.width, 2U);
   EXPECT_EQ(state.depth_image.height, 2U);

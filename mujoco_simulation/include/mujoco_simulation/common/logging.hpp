@@ -10,7 +10,7 @@
 //   LOG_INFO << "simulation initialized";
 //   LOG_WARNING << "fallback configuration is active";
 //   LOG_ERROR << "failed to bind joint " << joint_name;
-//   LOG_DEBUG << "step=" << step_count;
+//   LOG_DEBUG << "step=" << step;
 #define MUJOCO_SIMULATION_LOG_CONTEXT "[mujoco_simulation] [" << ELPP_FUNC << "] "
 #define LOG_INFO LOG(INFO) << MUJOCO_SIMULATION_LOG_CONTEXT
 #define LOG_WARNING LOG(WARNING) << MUJOCO_SIMULATION_LOG_CONTEXT

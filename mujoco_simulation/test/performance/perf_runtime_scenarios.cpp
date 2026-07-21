@@ -77,13 +77,11 @@ int run_scheduler_1khz(std::uint64_t target_steps) {
   Simulation simulation;
   SimulationConfig config;
   config.model.model_path = model.path.string();
-  const ResultCode initialize_status = simulation.initialize(config);
-  if (initialize_status != ResultCode::Ok) {
+  if (!simulation.initialize(config)) {
     std::cerr << "initialize failed\n";
     return 1;
   }
-  const ResultCode start_status = simulation.start();
-  if (start_status != ResultCode::Ok) {
+  if (!simulation.start()) {
     std::cerr << "start failed\n";
     return 1;
   }
@@ -96,28 +94,27 @@ int run_scheduler_1khz(std::uint64_t target_steps) {
   std::uint64_t last_step = 0;
 
   while (last_step < target_steps) {
-    const auto snapshot = simulation.state_snapshot();
-    if (snapshot != nullptr && snapshot->step_count > last_step) {
+    const auto snapshot = simulation.robot_state();
+    if (snapshot != nullptr && snapshot->step > last_step) {
       const auto now = Clock::now();
       if (!first_wall.has_value()) {
         first_wall = now;
         first_sim_time = snapshot->simulation_time;
       } else if (last_wall.has_value()) {
-        const auto step_delta = snapshot->step_count - last_step;
+        const auto step_delta = snapshot->step - last_step;
         if (step_delta > 0) {
           const auto wall_delta_ms = std::chrono::duration<double, std::milli>(now - *last_wall);
           per_step_wall_ms.push_back(wall_delta_ms.count() / static_cast<double>(step_delta));
         }
       }
       last_wall = now;
-      last_step = snapshot->step_count;
+      last_step = snapshot->step;
       last_sim_time = snapshot->simulation_time;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
-  const ResultCode stop_status = simulation.stop();
-  if (stop_status != ResultCode::Ok) {
+  if (!simulation.stop()) {
     std::cerr << "stop failed\n";
     return 1;
   }
@@ -168,8 +165,7 @@ int run_headless_camera(std::uint64_t total_steps) {
                                                     .width = 160,
                                                     .enable_rgb = true,
                                                     .enable_depth = true}}};
-  const ResultCode initialize_status = simulation.initialize(config);
-  if (initialize_status != ResultCode::Ok) {
+  if (!simulation.initialize(config)) {
     std::cerr << "initialize failed\n";
     return 1;
   }
@@ -179,16 +175,15 @@ int run_headless_camera(std::uint64_t total_steps) {
   std::uint64_t collected_samples = 0;
   std::uint64_t last_timestamp_ns = 0;
   auto wall_start = Clock::now();
-  const ResultCode start_status = simulation.start();
-  if (start_status != ResultCode::Ok) {
+  if (!simulation.start()) {
     std::cerr << "start failed\n";
     return 1;
   }
 
-  while (simulation.step_count() < total_steps) {
+  while (simulation.step() < total_steps) {
     const auto before_step = Clock::now();
     CameraState state;
-    if (!simulation.camera_state("front_camera", &state)) {
+    if (!simulation.read_state("front_camera", &state)) {
       std::cerr << "camera_state failed\n";
       return 1;
     }
@@ -197,13 +192,12 @@ int run_headless_camera(std::uint64_t total_steps) {
       sample_latency_ms.push_back(
           std::chrono::duration<double, std::milli>(after_read - before_step).count());
       last_sequence = state.sequence;
-      last_timestamp_ns = state.timestamp_ns;
+      last_timestamp_ns = state.timestamp;
       ++collected_samples;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  const ResultCode stop_status = simulation.stop();
-  if (stop_status != ResultCode::Ok) {
+  if (!simulation.stop()) {
     std::cerr << "stop failed\n";
     return 1;
   }

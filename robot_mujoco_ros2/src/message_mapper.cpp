@@ -7,9 +7,8 @@
 
 namespace robot_mujoco_ros2::message_mapper {
 
-rclcpp::Time select_stamp(const rclcpp::Time& fallback, std::uint64_t timestamp_ns) {
-  return timestamp_ns == 0 ? fallback
-                           : rclcpp::Time(static_cast<int64_t>(timestamp_ns), RCL_ROS_TIME);
+rclcpp::Time select_stamp(const rclcpp::Time& fallback, std::uint64_t timestamp) {
+  return timestamp == 0 ? fallback : rclcpp::Time(static_cast<int64_t>(timestamp), RCL_ROS_TIME);
 }
 
 rclcpp::Time select_simulation_stamp(const rclcpp::Time& fallback, double time_seconds) {

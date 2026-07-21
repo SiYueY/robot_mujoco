@@ -80,8 +80,7 @@ Simulation
   - `start() / stop() / pause() / resume()`
   - `step(...)`
   - `request_reset(...) / reset(...)`
-  - `request_reset_to_keyframe_name(...) / reset_to_keyframe_name(...)`
-  - `request_reset_to_keyframe_id(...) / reset_to_keyframe_id(...)`
+  - `request_reset_to_keyframe(...) / reset_to_keyframe(...)`
 - 组件与命令
   - `set_joint_command(...)`
   - `set_mobile_base_command(...)`
@@ -91,7 +90,7 @@ Simulation
   - `lidar_state(...)`
   - `camera_state(...)`
   - `mobile_base_state(...)`
-  - `state_snapshot()`
+  - `robot_state()`
 
 ## 组件模型与调度模型
 
@@ -121,14 +120,14 @@ Simulation
 - `CommandBuffer`
   - 缓存外部线程提交的最新控制命令
 - `StateBuffer`
-  - 缓存聚合后的最新 `StateSnapshot`
+  - 缓存聚合后的最新 `RobotState`
 - `CameraBuffer`
   - 缓存各 camera 的最新 `CameraState`
 
 缓冲接口语义统一使用 `write(...)` / `read(...)`。
 
 - `StateBuffer`
-  - 通过原子发布 `shared_ptr<const StateSnapshot>` 共享最新快照
+  - 通过原子发布 `shared_ptr<const RobotState>` 共享最新快照
 - `CameraBuffer`
   - 按 camera 名字保存不可变 `CameraState` 指针，缩短锁持有时间
 

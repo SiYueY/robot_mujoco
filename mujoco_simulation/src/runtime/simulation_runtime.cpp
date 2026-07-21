@@ -88,7 +88,7 @@ bool SimulationRuntime::init(const ModelConfig& config) {
       return false;
     }
   } else {
-    mj_forward(context_.model, context_.data);
+    reset_to_default();
   }
 
   initialized_ = true;
@@ -144,7 +144,7 @@ bool SimulationRuntime::reset() {
   return reset_to_default();
 }
 
-bool SimulationRuntime::reset_to_keyframe_name(std::string_view keyframe_name) {
+bool SimulationRuntime::reset(std::string keyframe_name) {
   if (!is_initialized()) {
     LOG_ERROR << "model runtime is not loaded.";
     return false;
@@ -156,22 +156,6 @@ bool SimulationRuntime::reset_to_keyframe_name(std::string_view keyframe_name) {
   const int keyframe_id = mj_name2id(context_.model, mjOBJ_KEY, std::string(keyframe_name).c_str());
   if (keyframe_id < 0) {
     LOG_ERROR << "keyframe '" << keyframe_name << "' was not found.";
-    return false;
-  }
-  return reset_to_keyframe(keyframe_id);
-}
-
-bool SimulationRuntime::reset_to_keyframe_id(int keyframe_id) {
-  if (!is_initialized()) {
-    LOG_ERROR << "model runtime is not loaded.";
-    return false;
-  }
-  if (keyframe_id < 0) {
-    LOG_ERROR << "keyframe id must not be negative.";
-    return false;
-  }
-  if (keyframe_id >= context_.model->nkey) {
-    LOG_ERROR << "keyframe id " << keyframe_id << " was not found.";
     return false;
   }
   return reset_to_keyframe(keyframe_id);

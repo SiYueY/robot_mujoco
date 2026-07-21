@@ -37,7 +37,7 @@ struct CameraRenderIntrinsics {
 
 struct CameraRenderState {
   std::uint64_t sequence{0};
-  std::uint64_t timestamp_ns{0};
+  std::uint64_t timestamp{0};
   std::string frame_id;
   std::string optical_frame_id;
   CameraRenderImage color;
@@ -59,7 +59,7 @@ class CameraRenderer {
 
   bool copy_simulation_data(const mjModel& model, const mjData& source);
   bool render(const mjModel& model, const CameraConfig& spec, std::uint64_t sequence,
-              std::uint64_t timestamp_ns, std::shared_ptr<const CameraRenderState>* out);
+              std::uint64_t timestamp, std::shared_ptr<const CameraRenderState>* out);
 
   bool is_initialized() const noexcept { return initialized_; }
 

@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "mujoco_simulation/buffer/command_snapshot.hpp"
+#include "mujoco_simulation/buffer/robot_command.hpp"
 #include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 
@@ -30,9 +30,9 @@ class CommandBuffer {
 
   bool write_mobile_base_command(std::string component_name, const MobileBaseCommand& command);
 
-  CommandSnapshot read() const;
+  RobotCommand read() const;
 
-  CommandSnapshot read(const Clock::time_point now) const;
+  RobotCommand read(const Clock::time_point now) const;
 
   void clear();
 

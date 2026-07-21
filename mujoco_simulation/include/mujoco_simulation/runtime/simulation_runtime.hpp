@@ -3,7 +3,7 @@
 #include <mujoco/mujoco.h>
 
 #include <cstddef>
-#include <string_view>
+#include <string>
 
 #include "mujoco_simulation/common/mj_type.hpp"
 #include "mujoco_simulation/config/simulation_config.hpp"
@@ -24,15 +24,13 @@ class SimulationRuntime {
   SimulationRuntime& operator=(SimulationRuntime&& other) noexcept;
 
   bool init(const ModelConfig& config);
-
   bool is_initialized() const noexcept;
 
   bool step();
   bool step(std::size_t count);
   bool forward();
   bool reset();
-  bool reset_to_keyframe_name(std::string_view keyframe_name);
-  bool reset_to_keyframe_id(int keyframe_id);
+  bool reset(std::string keyframe_name);
 
   // 仿真时间
   double time() const noexcept;

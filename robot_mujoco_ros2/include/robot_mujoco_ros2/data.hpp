@@ -17,7 +17,7 @@ struct JointData {
   std::string name;
   std::vector<std::string> command_interfaces;
   std::vector<std::string> state_interfaces;
-  mujoco_simulation::JointConfig config;
+  mujoco_simulation::JointInfo config;
   mujoco_simulation::JointCommand command;
   mujoco_simulation::JointState state;
 };
@@ -27,7 +27,7 @@ struct ImuData {
   std::vector<std::string> state_interfaces;
   std::string frame_id;
   std::string topic;
-  mujoco_simulation::ImuConfig config;
+  mujoco_simulation::ImuInfo config;
   mujoco_simulation::ImuState state;
 };
 
@@ -50,13 +50,13 @@ struct LidarData {
   std::string name;
   std::string frame_id;
   std::string topic;
-  mujoco_simulation::LidarConfig config;
+  mujoco_simulation::LidarInfo config;
   mujoco_simulation::LidarState state;
 };
 
 struct MobileBaseData {
   std::string name;
-  mujoco_simulation::MobileBaseConfig config;
+  mujoco_simulation::MobileBaseInfo config;
   mujoco_simulation::MobileBaseCommand command;
   mujoco_simulation::MobileBaseState state;
 };

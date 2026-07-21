@@ -114,14 +114,14 @@ Simulation
   - `bool lidar_state(..., LidarState* out)`
   - `ResultCode set_mobile_base_command(...)`
   - `bool mobile_base_state(..., MobileBaseState* out)`
-  - `state_snapshot()`
+  - `robot_state()`
 
 内部约束：
 
 - `mjModel / mjData` 保持单写线程原则
 - `ComponentManager` 负责组件更新、命令分发和状态汇总
 - `CommandBuffer / StateBuffer / CameraBuffer` 统一采用 `write(...) / read(...)` 语义
-  - `StateBuffer` 以原子发布 `StateSnapshot` 指针为主
+  - `StateBuffer` 以原子发布 `RobotState` 指针为主
   - `CameraBuffer` 以每个 camera 的不可变状态指针为主，避免在锁内复制大对象
 
 ## 错误返回模型
@@ -190,8 +190,7 @@ Simulation
 reset 当前公开接口为：
 
 - `reset(...)`
-- `reset_to_keyframe_name(...)`
-- `reset_to_keyframe_id(...)`
+- `reset_to_keyframe(...)`
 
 复位始终重置 MuJoCo 模型与组件状态，清空命令、状态和相机缓存，并清零调度与快照统计。
 

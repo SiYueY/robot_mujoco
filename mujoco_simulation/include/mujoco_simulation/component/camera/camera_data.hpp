@@ -47,7 +47,7 @@ struct CameraInfo {
 
 struct CameraState {
   std::uint64_t sequence{0};
-  std::uint64_t timestamp_ns{0};
+  std::uint64_t timestamp{0};
   std::string frame_id;
   std::string optical_frame_id;
   Image image;

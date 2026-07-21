@@ -8,7 +8,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <string_view>
 
 #include "mujoco_simulation/buffer/camera_buffer.hpp"
 #include "mujoco_simulation/buffer/command_buffer.hpp"
@@ -33,7 +32,7 @@ class SimulationScheduler;
 
 class Simulation {
  public:
-  using SnapshotObserver = std::function<void(std::shared_ptr<const StateSnapshot> snapshot)>;
+  using SnapshotObserver = std::function<void(std::shared_ptr<const RobotState> snapshot)>;
 
   Simulation();
   ~Simulation();
@@ -41,34 +40,29 @@ class Simulation {
   Simulation(const Simulation &) = delete;
   Simulation &operator=(const Simulation &) = delete;
 
-  ResultCode initialize(const SimulationConfig &config);
-  ResultCode shutdown();
+  bool initialize(const SimulationConfig &config);
+  bool shutdown();
 
-  ResultCode start();
-  ResultCode stop();
-  ResultCode pause();
-  ResultCode resume();
-  ResultCode request_reset();
-  ResultCode request_reset_to_keyframe_name(std::string_view keyframe_name);
-  ResultCode request_reset_to_keyframe_id(int keyframe_id);
-  ResultCode reset();
-  ResultCode reset_to_keyframe_name(std::string_view keyframe_name);
-  ResultCode reset_to_keyframe_id(int keyframe_id);
+  bool start();
+  bool stop();
+  bool pause();
+  bool resume();
+  bool reset();
+  bool reset(std::string keyframe_name);
 
-  ResultCode set_joint_command(const JointCommand &command);
-  bool joint_state(std::string joint_name, JointState *out) const;
+  bool write_command(std::string name, const JointCommand &command);
+  bool write_command(std::string name, const MobileBaseCommand &command);
 
-  bool imu_state(std::string imu_name, ImuState *out) const;
-  bool camera_state(std::string camera_name, CameraState *out) const;
-  bool lidar_state(std::string lidar_name, LidarState *out) const;
+  bool read_state(std::string name, JointState *state) const;
+  bool read_state(std::string name, ImuState *state) const;
+  bool read_state(std::string name, CameraState *state) const;
+  bool read_state(std::string name, LidarState *state) const;
+  bool read_state(std::string name, MobileBaseState *state) const;
 
-  ResultCode set_mobile_base_command(std::string name, const MobileBaseCommand &command);
-  bool mobile_base_state(std::string name, MobileBaseState *out) const;
-
-  uint64_t step_count() const;
+  uint64_t step() const;
   SimulationStatus status() const;
   double time() const;
-  std::shared_ptr<const StateSnapshot> state_snapshot() const;
+  std::shared_ptr<const RobotState> robot_state() const;
   void set_snapshot_observer(SnapshotObserver observer);
 
  private:
@@ -78,19 +72,19 @@ class Simulation {
   bool initialize_components();
   bool load_model(const ModelConfig &model_config);
   bool write_state_snapshot();
-  bool write_state_snapshot_locked(std::shared_ptr<const StateSnapshot> *published_snapshot);
-  bool update_components_for_step_locked(std::uint64_t step_count, double simulation_time);
-  bool build_state_snapshot_locked(std::uint64_t step_count, double simulation_time,
-                                   std::shared_ptr<const StateSnapshot> *published_snapshot);
+  bool write_state_snapshot_locked(std::shared_ptr<const RobotState> *published_snapshot);
+  bool update_components_for_step_locked(std::uint64_t step, double simulation_time);
+  bool build_state_snapshot_locked(std::uint64_t step, double simulation_time,
+                                   std::shared_ptr<const RobotState> *published_snapshot);
   // Scheduler
-  bool scheduler_run_cycle();
+  bool scheduler_run_task();
   bool scheduler_write_commands();
   bool scheduler_update_components();
   bool scheduler_step_physics();
   bool scheduler_sync_viewer_if_due();
   bool start_viewer();
   bool stop_viewer();
-  bool build_state_snapshot(StateSnapshot *snapshot) const;
+  bool build_state_snapshot(RobotState *snapshot) const;
 
   // Configuration
   SimulationConfig config_;

@@ -141,7 +141,7 @@ bool CameraRenderer::copy_simulation_data(const mjModel& model, const mjData& so
 }
 
 bool CameraRenderer::render(const mjModel& model, const CameraConfig& spec, std::uint64_t sequence,
-                            std::uint64_t timestamp_ns,
+                            std::uint64_t timestamp,
                             std::shared_ptr<const CameraRenderState>* out) {
   if (out == nullptr) {
     LOG_ERROR << "output render state pointer is null.";
@@ -184,7 +184,7 @@ bool CameraRenderer::render(const mjModel& model, const CameraConfig& spec, std:
 
   auto state = std::make_shared<CameraRenderState>();
   state->sequence = sequence;
-  state->timestamp_ns = timestamp_ns;
+  state->timestamp = timestamp;
   state->frame_id = spec.frame_id.empty() ? spec.name : spec.frame_id;
   state->optical_frame_id = spec.optical_frame_id.empty() ? state->frame_id : spec.optical_frame_id;
   state->intrinsics = compute_intrinsics(fovy_degrees, static_cast<std::uint32_t>(spec.width),

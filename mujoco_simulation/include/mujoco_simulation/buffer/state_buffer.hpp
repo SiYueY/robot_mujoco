@@ -3,15 +3,15 @@
 #include <memory>
 #include <string>
 
-#include "mujoco_simulation/buffer/state_snapshot.hpp"
+#include "mujoco_simulation/buffer/robot_state.hpp"
 
 namespace mujoco_simulation {
 
 class StateBuffer {
  public:
-  void write(std::shared_ptr<const StateSnapshot> snapshot);
+  void write(std::shared_ptr<const RobotState> snapshot);
 
-  std::shared_ptr<const StateSnapshot> read() const;
+  std::shared_ptr<const RobotState> read() const;
 
   bool read_joint_state(std::string name, JointState* out) const;
 
@@ -24,7 +24,7 @@ class StateBuffer {
   void clear();
 
  private:
-  std::shared_ptr<const StateSnapshot> current_;
+  std::shared_ptr<const RobotState> current_;
 };
 
 }  // namespace mujoco_simulation

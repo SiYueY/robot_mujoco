@@ -26,7 +26,7 @@ TEST(StateBufferTest, TypedReadsReturnFalseBeforeFirstWrite) {
 
 TEST(StateBufferTest, TypedReadsDelegateToSnapshotLookups) {
   StateBuffer buffer;
-  auto snapshot = std::make_shared<StateSnapshot>();
+  auto snapshot = std::make_shared<RobotState>();
   snapshot->joints.emplace("joint", JointState{.joint_name = "joint", .position = 1.5});
   snapshot->imus.emplace("imu", ImuState{.frame_id = "imu_link"});
   snapshot->lidars.emplace("lidar", LidarState{.frame_id = "lidar_link"});

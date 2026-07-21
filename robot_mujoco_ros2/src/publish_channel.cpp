@@ -137,9 +137,8 @@ bool PublishChannel::copy_camera_state(std::size_t publisher_index,
   frame->publisher_index = publisher_index;
   frame->sequence = state.sequence;
   frame->acquisition_stamp =
-      state.timestamp_ns == 0
-          ? rclcpp::Time(0, 0, RCL_ROS_TIME)
-          : rclcpp::Time(static_cast<int64_t>(state.timestamp_ns), RCL_ROS_TIME);
+      state.timestamp == 0 ? rclcpp::Time(0, 0, RCL_ROS_TIME)
+                           : rclcpp::Time(static_cast<int64_t>(state.timestamp), RCL_ROS_TIME);
   frame->camera_info.width = state.camera_info.width;
   frame->camera_info.height = state.camera_info.height;
   frame->camera_info.distortion_model = state.camera_info.distortion_model;

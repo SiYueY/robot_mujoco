@@ -16,42 +16,42 @@ Simulation::Simulation() = default;
 
 Simulation::~Simulation() { UNUSED(shutdown()); }
 
-ResultCode Simulation::initialize(const SimulationConfig& config) {
+bool Simulation::initialize(const SimulationConfig& config) {
   if (runtime_ != nullptr && runtime_->is_initialized()) {
-    return ResultCode::AlreadyExists;
+    return false;
   }
   if (config.scheduler.viewer_update_rate <= 0.0) {
-    return ResultCode::InvalidArgument;
+    return false;
   }
 
   config_ = config;
 
   if (!load_model(config.model)) {
     UNUSED(shutdown());
-    return ResultCode::Internal;
+    return false;
   }
 
   if (config.render_mode == RenderMode::Viewer) {
     if (!start_viewer()) {
       UNUSED(shutdown());
-      return ResultCode::Internal;
+      return false;
     }
   }
 
   if (!initialize_scheduler()) {
     UNUSED(shutdown());
-    return ResultCode::Internal;
+    return false;
   }
 
   if (!initialize_components()) {
     UNUSED(shutdown());
-    return ResultCode::Internal;
+    return false;
   }
 
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode Simulation::shutdown() {
+bool Simulation::shutdown() {
   UNUSED(stop());
   UNUSED(stop_viewer());
 
@@ -72,12 +72,12 @@ ResultCode Simulation::shutdown() {
     sequence_ = 0;
   }
 
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode Simulation::start() {
+bool Simulation::start() {
   if (scheduler_ == nullptr) {
-    return ResultCode::InvalidState;
+    return false;
   }
 
   bool should_start_viewer = false;
@@ -85,7 +85,7 @@ ResultCode Simulation::start() {
     {
       std::lock_guard<std::mutex> runtime_lock(runtime_mutex_);
       if (runtime_ == nullptr || !runtime_->is_initialized()) {
-        return ResultCode::FailedPrecondition;
+        return false;
       }
     }
     std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
@@ -96,17 +96,17 @@ ResultCode Simulation::start() {
 
   if (should_start_viewer) {
     if (!start_viewer()) {
-      return ResultCode::Internal;
+      return false;
     }
   }
 
-  return scheduler_->start() ? ResultCode::Ok : ResultCode::Internal;
+  return scheduler_->start();
 }
 
-ResultCode Simulation::stop() {
+bool Simulation::stop() {
   if (scheduler_ != nullptr) {
     if (!scheduler_->stop()) {
-      return ResultCode::Internal;
+      return false;
     }
   }
   {
@@ -114,59 +114,51 @@ ResultCode Simulation::stop() {
     runtime_failed_ = false;
   }
   UNUSED(stop_viewer());
-  return ResultCode::Ok;
+  return true;
 }
 
-ResultCode Simulation::pause() {
+bool Simulation::pause() {
   if (scheduler_ == nullptr) {
-    return ResultCode::InvalidState;
+    return false;
   }
-  return scheduler_->pause() ? ResultCode::Ok : ResultCode::Internal;
+  return scheduler_->pause();
 }
 
-ResultCode Simulation::resume() {
+bool Simulation::resume() {
   if (scheduler_ == nullptr) {
-    return ResultCode::InvalidState;
+    return false;
   }
-  return scheduler_->resume() ? ResultCode::Ok : ResultCode::Internal;
+  return scheduler_->resume();
 }
 
-ResultCode Simulation::request_reset() { return ResultCode::Unimplemented; }
-
-ResultCode Simulation::request_reset_to_keyframe_name(std::string_view keyframe_name) {
-  UNUSED(keyframe_name);
-  return ResultCode::Unimplemented;
+bool Simulation::reset() {
+  std::lock_guard<std::mutex> lock(runtime_mutex_);
+  if (runtime_ == nullptr || !runtime_->is_initialized()) {
+    return false;
+  }
+  return runtime_->reset();
 }
 
-ResultCode Simulation::request_reset_to_keyframe_id(int keyframe_id) {
-  UNUSED(keyframe_id);
-  return ResultCode::Unimplemented;
+bool Simulation::reset(std::string keyframe_name) {
+  std::lock_guard<std::mutex> lock(runtime_mutex_);
+  if (runtime_ == nullptr || !runtime_->is_initialized()) {
+    return false;
+  }
+  return runtime_->reset(std::move(keyframe_name));
 }
 
-ResultCode Simulation::reset() { return ResultCode::Unimplemented; }
-
-ResultCode Simulation::reset_to_keyframe_name(std::string_view keyframe_name) {
-  UNUSED(keyframe_name);
-  return ResultCode::Unimplemented;
-}
-
-ResultCode Simulation::reset_to_keyframe_id(int keyframe_id) {
-  UNUSED(keyframe_id);
-  return ResultCode::Unimplemented;
-}
-
-ResultCode Simulation::set_joint_command(const JointCommand& command) {
+bool Simulation::write_command(std::string name, const JointCommand& command) {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   CommandBuffer* command_buffer = command_buffer_.get();
   if (command_buffer == nullptr) {
-    return ResultCode::InvalidState;
+    return false;
   }
-  return command_buffer->write_joint_command(command.joint_name, command)
-             ? ResultCode::Ok
-             : ResultCode::InvalidArgument;
+  JointCommand resolved_command = command;
+  resolved_command.joint_name = std::move(name);
+  return command_buffer->write_joint_command(resolved_command.joint_name, resolved_command);
 }
 
-bool Simulation::joint_state(std::string joint_name, JointState* out) const {
+bool Simulation::read_state(std::string joint_name, JointState* out) const {
   if (out == nullptr) {
     return false;
   }
@@ -178,7 +170,7 @@ bool Simulation::joint_state(std::string joint_name, JointState* out) const {
   return state_buffer->read_joint_state(joint_name, out);
 }
 
-bool Simulation::imu_state(std::string imu_name, ImuState* out) const {
+bool Simulation::read_state(std::string imu_name, ImuState* out) const {
   if (out == nullptr) {
     return false;
   }
@@ -190,7 +182,7 @@ bool Simulation::imu_state(std::string imu_name, ImuState* out) const {
   return state_buffer->read_imu_state(imu_name, out);
 }
 
-bool Simulation::camera_state(std::string camera_name, CameraState* out) const {
+bool Simulation::read_state(std::string camera_name, CameraState* out) const {
   if (out == nullptr) {
     return false;
   }
@@ -202,7 +194,7 @@ bool Simulation::camera_state(std::string camera_name, CameraState* out) const {
   return camera_buffer->read(camera_name, out);
 }
 
-bool Simulation::lidar_state(std::string lidar_name, LidarState* out) const {
+bool Simulation::read_state(std::string lidar_name, LidarState* out) const {
   if (out == nullptr) {
     return false;
   }
@@ -214,17 +206,16 @@ bool Simulation::lidar_state(std::string lidar_name, LidarState* out) const {
   return state_buffer->read_lidar_state(lidar_name, out);
 }
 
-ResultCode Simulation::set_mobile_base_command(std::string name, const MobileBaseCommand& command) {
+bool Simulation::write_command(std::string name, const MobileBaseCommand& command) {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   CommandBuffer* command_buffer = command_buffer_.get();
   if (command_buffer == nullptr) {
-    return ResultCode::InvalidState;
+    return false;
   }
-  return command_buffer->write_mobile_base_command(name, command) ? ResultCode::Ok
-                                                                  : ResultCode::InvalidArgument;
+  return command_buffer->write_mobile_base_command(std::move(name), command);
 }
 
-bool Simulation::mobile_base_state(std::string name, MobileBaseState* out) const {
+bool Simulation::read_state(std::string name, MobileBaseState* out) const {
   if (out == nullptr) {
     return false;
   }
@@ -236,7 +227,7 @@ bool Simulation::mobile_base_state(std::string name, MobileBaseState* out) const
   return state_buffer->read_mobile_base_state(name, out);
 }
 
-uint64_t Simulation::step_count() const {
+uint64_t Simulation::step() const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   return step_;
 }
@@ -261,7 +252,7 @@ double Simulation::time() const {
   return runtime_->time();
 }
 
-std::shared_ptr<const StateSnapshot> Simulation::state_snapshot() const {
+std::shared_ptr<const RobotState> Simulation::robot_state() const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   StateBuffer* state_buffer = state_buffer_.get();
   return state_buffer == nullptr ? nullptr : state_buffer->read();
@@ -284,7 +275,7 @@ bool Simulation::initialize_scheduler() {
   if (!scheduler->initialize()) {
     return false;
   }
-  if (!scheduler->register_cycle([this]() { return scheduler_run_cycle(); })) {
+  if (!scheduler->register_task([this]() { return scheduler_run_task(); })) {
     return false;
   }
 
@@ -292,7 +283,7 @@ bool Simulation::initialize_scheduler() {
   return true;
 }
 
-bool Simulation::scheduler_run_cycle() {
+bool Simulation::scheduler_run_task() {
   if (!scheduler_write_commands()) {
     return false;
   }
@@ -360,7 +351,7 @@ bool Simulation::scheduler_write_commands() {
     return false;
   }
 
-  const CommandSnapshot snapshot = command_buffer_->read(CommandBuffer::Clock::now());
+  const RobotCommand snapshot = command_buffer_->read(CommandBuffer::Clock::now());
   const mjContext& context = runtime_->context();
   return component_manager_.write_command(context, snapshot);
 }
@@ -375,8 +366,7 @@ bool Simulation::scheduler_update_components() {
   return update_components_for_step_locked(step_, simulation_time);
 }
 
-bool Simulation::update_components_for_step_locked(std::uint64_t step_count,
-                                                   double simulation_time) {
+bool Simulation::update_components_for_step_locked(std::uint64_t step, double simulation_time) {
   if (runtime_ == nullptr || !runtime_->is_initialized()) {
     return false;
   }
@@ -385,7 +375,7 @@ bool Simulation::update_components_for_step_locked(std::uint64_t step_count,
 }
 
 bool Simulation::write_state_snapshot() {
-  std::shared_ptr<const StateSnapshot> published_snapshot;
+  std::shared_ptr<const RobotState> published_snapshot;
   SnapshotObserver snapshot_observer;
   {
     std::lock_guard<std::mutex> lock(runtime_mutex_);
@@ -401,7 +391,7 @@ bool Simulation::write_state_snapshot() {
 }
 
 bool Simulation::write_state_snapshot_locked(
-    std::shared_ptr<const StateSnapshot>* published_snapshot) {
+    std::shared_ptr<const RobotState>* published_snapshot) {
   if (state_buffer_ == nullptr || runtime_ == nullptr || !runtime_->is_initialized()) {
     return false;
   }
@@ -411,18 +401,18 @@ bool Simulation::write_state_snapshot_locked(
 }
 
 bool Simulation::build_state_snapshot_locked(
-    std::uint64_t step_count, double simulation_time,
-    std::shared_ptr<const StateSnapshot>* published_snapshot) {
-  auto snapshot = std::make_shared<StateSnapshot>();
+    std::uint64_t step, double simulation_time,
+    std::shared_ptr<const RobotState>* published_snapshot) {
+  auto snapshot = std::make_shared<RobotState>();
   if (!build_state_snapshot(snapshot.get())) {
     return false;
   }
   snapshot->sequence = ++sequence_;
   snapshot->simulation_time = simulation_time;
-  snapshot->timestamp_ns =
+  snapshot->timestamp =
       simulation_time <= 0.0 ? 0 : static_cast<std::uint64_t>(simulation_time * 1.0e9);
-  snapshot->step_count = step_count;
-  std::shared_ptr<const StateSnapshot> published = snapshot;
+  snapshot->step = step;
+  std::shared_ptr<const RobotState> published = snapshot;
   state_buffer_->write(published);
   if (published_snapshot != nullptr) {
     *published_snapshot = std::move(published);
@@ -517,7 +507,7 @@ bool Simulation::stop_viewer() {
   return true;
 }
 
-bool Simulation::build_state_snapshot(StateSnapshot* snapshot) const {
+bool Simulation::build_state_snapshot(RobotState* snapshot) const {
   if (snapshot == nullptr || runtime_ == nullptr || !runtime_->is_initialized()) {
     return false;
   }

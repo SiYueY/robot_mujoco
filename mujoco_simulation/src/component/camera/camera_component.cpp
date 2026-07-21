@@ -46,10 +46,10 @@ CameraInfo camera_info_from_intrinsics(const CameraRenderIntrinsics& intrinsics,
 CameraState camera_state_from_render_state(const CameraRenderState& render_state) {
   CameraState state;
   state.sequence = render_state.sequence;
-  state.timestamp_ns = render_state.timestamp_ns;
+  state.timestamp = render_state.timestamp;
   state.frame_id = render_state.frame_id;
   state.optical_frame_id = render_state.optical_frame_id;
-  state.image.timestamp = render_state.timestamp_ns;
+  state.image.timestamp = render_state.timestamp;
   state.image.frame_id =
       render_state.optical_frame_id.empty() ? render_state.frame_id : render_state.optical_frame_id;
   state.image.width = render_state.color.width;
@@ -58,7 +58,7 @@ CameraState camera_state_from_render_state(const CameraRenderState& render_state
   state.image.step = render_state.color.step;
   state.image.data = render_state.color.data;
 
-  state.depth_image.timestamp = render_state.timestamp_ns;
+  state.depth_image.timestamp = render_state.timestamp;
   state.depth_image.frame_id =
       render_state.optical_frame_id.empty() ? render_state.frame_id : render_state.optical_frame_id;
   state.depth_image.width = render_state.depth.width;
@@ -139,10 +139,10 @@ bool CameraComponent::update(const mjContext& context) {
     return false;
   }
 
-  const std::uint64_t timestamp_ns =
+  const std::uint64_t timestamp =
       context.data->time <= 0.0 ? 0 : static_cast<std::uint64_t>(context.data->time * 1.0e9);
   std::shared_ptr<const CameraRenderState> rendered;
-  if (!camera_renderer_->render(*context.model, config_, ++sample_sequence_, timestamp_ns,
+  if (!camera_renderer_->render(*context.model, config_, ++sample_sequence_, timestamp,
                                 &rendered)) {
     LOG_ERROR << "camera render failed.";
     return false;

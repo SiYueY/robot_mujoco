@@ -25,7 +25,7 @@ TEST(CommandBufferTest, VelocityAndMobileBaseCommandsZeroAfterTimeout) {
                                                         .wheel_linear = {1.0, 2.0, 3.0, 4.0}}));
 
   std::this_thread::sleep_for(5ms);
-  const CommandSnapshot snapshot = buffer.read(CommandBuffer::Clock::now());
+  const RobotCommand snapshot = buffer.read(CommandBuffer::Clock::now());
 
   const auto joint_it = snapshot.joint_commands.find("joint");
   ASSERT_NE(joint_it, snapshot.joint_commands.end());
@@ -50,7 +50,7 @@ TEST(CommandBufferTest, PositionCommandsHoldLastTargetOnTimeout) {
   ASSERT_TRUE(buffer.write_joint_command(
       "joint", {.joint_name = "joint", .mode = JointControlMode::Position, .position = 1.5}));
   std::this_thread::sleep_for(5ms);
-  const CommandSnapshot snapshot = buffer.read(CommandBuffer::Clock::now());
+  const RobotCommand snapshot = buffer.read(CommandBuffer::Clock::now());
 
   const auto joint_it = snapshot.joint_commands.find("joint");
   ASSERT_NE(joint_it, snapshot.joint_commands.end());

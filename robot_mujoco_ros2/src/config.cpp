@@ -184,8 +184,8 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
   for (const auto& joint : hardware_info.joints) {
     JointData joint_data;
     joint_data.name = joint.name;
-    joint_data.config.joint = joint.name;
-    joint_data.config.actuator = parameter_or(joint.parameters, "motor_name");
+    joint_data.config.joint_name = joint.name;
+    joint_data.config.actuator_name = parameter_or(joint.parameters, "motor_name");
     if (!parse_double_parameter(joint.parameters, "position_stiffness", 0.0,
                                 &joint_data.config.position_stiffness, error_message) ||
         !parse_double_parameter(joint.parameters, "position_damping", 0.0,
@@ -212,8 +212,8 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
                                 &joint_data.config.effort_limits.max, error_message)) {
       return false;
     }
-    joint_data.command.joint = joint.name;
-    joint_data.state.joint = joint.name;
+    joint_data.command.joint_name = joint.name;
+    joint_data.state.joint_name = joint.name;
 
     for (const auto& command_interface : joint.command_interfaces) {
       if (!is_joint_command_interface(command_interface.name)) {
@@ -242,15 +242,15 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
       imu_data.name = sensor.name;
       imu_data.frame_id = parameter_or(sensor.parameters, "frame_id", sensor.name);
       imu_data.topic = parameter_or(sensor.parameters, "topic", sensor.name + "/imu");
-      imu_data.config.common.name = sensor.name;
-      imu_data.config.common.frame_id = imu_data.frame_id;
+      imu_data.config.name = sensor.name;
+      imu_data.config.frame_id = imu_data.frame_id;
       imu_data.config.framequat_sensor_name =
           parameter_or(sensor.parameters, "mujoco_orientation_sensor");
       imu_data.config.gyro_sensor_name = parameter_or(sensor.parameters, "mujoco_gyro_sensor");
       imu_data.config.accelerometer_sensor_name =
           parameter_or(sensor.parameters, "mujoco_accel_sensor");
       if (!parse_double_parameter(sensor.parameters, "update_rate", 200.0,
-                                  &imu_data.config.common.update_rate, error_message)) {
+                                  &imu_data.config.update_rate, error_message)) {
         return false;
       }
 
@@ -302,15 +302,15 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
           parameter_or(sensor.parameters, "depth_topic", sensor.name + "/depth/image_raw");
       camera_data.camera_info_topic =
           parameter_or(sensor.parameters, "camera_info_topic", sensor.name + "/camera_info");
-      camera_data.config.common.name = sensor.name;
+      camera_data.config.name = sensor.name;
       camera_data.config.camera_name =
           parameter_or(sensor.parameters, "mujoco_camera_name", sensor.name);
-      camera_data.config.common.frame_id = parameter_or(sensor.parameters, "frame_id", sensor.name);
+      camera_data.config.frame_id = parameter_or(sensor.parameters, "frame_id", sensor.name);
       camera_data.config.optical_frame_id = camera_data.frame_id;
       camera_data.config.enable_rgb = parameter_as_bool(sensor.parameters, "enable_rgb", true);
       camera_data.config.enable_depth = parameter_as_bool(sensor.parameters, "enable_depth", false);
       if (!parse_double_parameter(sensor.parameters, "update_rate", 30.0,
-                                  &camera_data.config.common.update_rate, error_message) ||
+                                  &camera_data.config.update_rate, error_message) ||
           !parse_int_parameter(sensor.parameters, "width", 640, &camera_data.config.width,
                                error_message) ||
           !parse_int_parameter(sensor.parameters, "height", 480, &camera_data.config.height,
@@ -328,12 +328,12 @@ bool parse_hardware_config(const hardware_interface::HardwareInfo& hardware_info
       lidar_data.name = sensor.name;
       lidar_data.frame_id = parameter_or(sensor.parameters, "frame_id", sensor.name);
       lidar_data.topic = parameter_or(sensor.parameters, "scan_topic", sensor.name + "/scan");
-      lidar_data.config.common.name = sensor.name;
-      lidar_data.config.common.frame_id = lidar_data.frame_id;
+      lidar_data.config.name = sensor.name;
+      lidar_data.config.frame_id = lidar_data.frame_id;
       lidar_data.config.sensor_prefix =
           parameter_or(sensor.parameters, "sensor_prefix", sensor.name);
       if (!parse_double_parameter(sensor.parameters, "update_rate", 10.0,
-                                  &lidar_data.config.common.update_rate, error_message) ||
+                                  &lidar_data.config.update_rate, error_message) ||
           !parse_double_parameter(sensor.parameters, "angle_min", 0.0, &lidar_data.config.angle_min,
                                   error_message) ||
           !parse_double_parameter(sensor.parameters, "angle_max", 0.0, &lidar_data.config.angle_max,

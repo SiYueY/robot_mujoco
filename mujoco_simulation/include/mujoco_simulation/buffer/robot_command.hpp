@@ -9,10 +9,13 @@
 
 namespace mujoco_simulation {
 
-struct CommandSnapshot {
-  std::unordered_map<std::string, JointCommand> joint_commands;
-  std::unordered_map<std::string, MobileBaseCommand> mobile_base_commands;
+using JointCommands = std::unordered_map<std::string, JointCommand>;
+using MobileBaseCommands = std::unordered_map<std::string, MobileBaseCommand>;
+
+struct RobotCommand {
   std::uint64_t sequence{0};
+  JointCommands joint_commands;
+  MobileBaseCommands mobile_base_commands;
 };
 
 }  // namespace mujoco_simulation

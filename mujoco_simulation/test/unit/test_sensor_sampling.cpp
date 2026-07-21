@@ -14,11 +14,7 @@
 namespace mujoco_simulation {
 namespace {
 
-#define ASSERT_OK_STATUS(expr)           \
-  do {                                   \
-    const ResultCode status__ = (expr);  \
-    ASSERT_EQ(status__, ResultCode::Ok); \
-  } while (false)
+#define ASSERT_OK_STATUS(expr) ASSERT_TRUE((expr))
 
 class SensorSamplingTest : public ::testing::Test {
  protected:
@@ -47,12 +43,12 @@ bool wait_for_step_count(Simulation& simulation, std::uint64_t target_step_count
                          std::chrono::milliseconds timeout = std::chrono::seconds(1)) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
-    if (simulation.step_count() >= target_step_count) {
+    if (simulation.step() >= target_step_count) {
       return true;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  return simulation.step_count() >= target_step_count;
+  return simulation.step() >= target_step_count;
 }
 
 TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
@@ -102,31 +98,31 @@ TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
                                 .range_min = 0.1,
                                 .range_max = 1.0}},
   };
-  ASSERT_OK_STATUS(simulation.initialize(config));
-  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(simulation.initialize(config));
+  ASSERT_TRUE(simulation.start());
 
   ImuState imu_state;
-  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
   LidarState lidar_state;
-  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
   EXPECT_EQ(imu_state.sequence, 1U);
   EXPECT_EQ(lidar_state.sequence, 1U);
 
   ASSERT_TRUE(wait_for_step_count(simulation, 4));
-  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
-  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
   EXPECT_EQ(imu_state.sequence, 1U);
   EXPECT_EQ(lidar_state.sequence, 1U);
 
   ASSERT_TRUE(wait_for_step_count(simulation, 5));
-  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
   EXPECT_EQ(imu_state.sequence, 2U);
   EXPECT_DOUBLE_EQ(imu_state.timestamp, 0.005);
   EXPECT_EQ(imu_state.frame_id, "imu_link");
 
   ASSERT_TRUE(wait_for_step_count(simulation, 100));
-  ASSERT_TRUE(simulation.imu_state("imu", &imu_state));
-  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
   EXPECT_EQ(imu_state.sequence, 21U);
   EXPECT_NEAR(imu_state.timestamp, 0.1, 1e-9);
   EXPECT_EQ(lidar_state.sequence, 2U);
@@ -138,7 +134,7 @@ TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
   EXPECT_TRUE(std::isinf(lidar_state.ranges[0]));
   EXPECT_TRUE(std::isinf(lidar_state.ranges[1]));
   EXPECT_TRUE(std::isinf(lidar_state.ranges[2]));
-  ASSERT_OK_STATUS(simulation.stop());
+  ASSERT_TRUE(simulation.stop());
 }
 
 TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
@@ -176,15 +172,15 @@ TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
                                                  .angle_increment = 1.0,
                                                  .range_min = 0.1,
                                                  .range_max = 1.0}}};
-  ASSERT_OK_STATUS(simulation.initialize(config));
-  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(simulation.initialize(config));
+  ASSERT_TRUE(simulation.start());
 
   ASSERT_TRUE(wait_for_step_count(simulation, 100));
-  ASSERT_OK_STATUS(simulation.stop());
-  ASSERT_EQ(simulation.reset(), ResultCode::Unimplemented);
+  ASSERT_TRUE(simulation.stop());
+  ASSERT_TRUE(simulation.reset());
 
   LidarState lidar_state;
-  ASSERT_TRUE(simulation.lidar_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
   EXPECT_GT(lidar_state.sequence, 0U);
   EXPECT_GT(lidar_state.timestamp, 0.0);
   EXPECT_GE(lidar_state.scan_time, 0.0);
@@ -216,8 +212,7 @@ TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
                                                         .gyro_sensor_name = "imu_gyro",
                                                         .accelerometer_sensor_name = "imu_acc",
                                                         .update_rate = 200.0}}};
-  const ResultCode bad_type_status = bad_type_simulation.initialize(bad_type_config);
-  EXPECT_NE(bad_type_status, ResultCode::Ok);
+  EXPECT_FALSE(bad_type_simulation.initialize(bad_type_config));
 
   Simulation too_fast_simulation;
   SimulationConfig too_fast_config;
@@ -227,8 +222,7 @@ TEST_F(SensorSamplingTest, InvalidSensorBindingsFailInitialization) {
                                                         .gyro_sensor_name = "imu_gyro",
                                                         .accelerometer_sensor_name = "imu_acc",
                                                         .update_rate = 2000.0}}};
-  const ResultCode too_fast_status = too_fast_simulation.initialize(too_fast_config);
-  EXPECT_NE(too_fast_status, ResultCode::Ok);
+  EXPECT_FALSE(too_fast_simulation.initialize(too_fast_config));
 }
 
 #undef ASSERT_OK_STATUS

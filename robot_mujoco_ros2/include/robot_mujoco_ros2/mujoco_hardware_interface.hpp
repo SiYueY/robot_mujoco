@@ -76,9 +76,9 @@ class MuJoCoHardwareInterface : public hardware_interface::SystemInterface {
   mujoco_simulation::ResultCode request_reset_status();
   mujoco_simulation::ResultCode update_runtime_state();
   mujoco_simulation::ResultCode update_runtime_state_from_snapshot(
-      const mujoco_simulation::StateSnapshot& snapshot);
+      const mujoco_simulation::RobotState& snapshot);
   mujoco_simulation::ResultCode publish_snapshot_to_channel(
-      const std::shared_ptr<const mujoco_simulation::StateSnapshot>& snapshot);
+      const std::shared_ptr<const mujoco_simulation::RobotState>& snapshot);
 
   HardwareConfig config_;
   HardwareMappingConfig hardware_mapping_config_;

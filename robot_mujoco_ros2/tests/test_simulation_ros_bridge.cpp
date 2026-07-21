@@ -48,19 +48,18 @@ hardware_interface::HardwareInfo parse_hardware_info(const std::string& urdf) {
   return infos.front();
 }
 
-mujoco_simulation::CameraState make_camera_state(std::uint64_t timestamp_ns,
-                                                 std::uint64_t sequence) {
+mujoco_simulation::CameraState make_camera_state(std::uint64_t timestamp, std::uint64_t sequence) {
   mujoco_simulation::CameraState state;
   state.sequence = sequence;
-  state.timestamp_ns = timestamp_ns;
-  state.image.timestamp = timestamp_ns;
+  state.timestamp = timestamp;
+  state.image.timestamp = timestamp;
   state.image.frame_id = "camera_optical_frame";
   state.image.width = 2;
   state.image.height = 1;
   state.image.step = 6;
   state.image.encoding = "rgb8";
   state.image.data = {1, 2, 3, 4, 5, 6};
-  state.depth_image.timestamp = timestamp_ns;
+  state.depth_image.timestamp = timestamp;
   state.depth_image.frame_id = "camera_optical_frame";
   state.depth_image.width = 2;
   state.depth_image.height = 1;

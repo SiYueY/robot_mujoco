@@ -27,11 +27,7 @@ namespace {
 
 using namespace std::chrono_literals;
 
-#define ASSERT_OK_STATUS(expr)           \
-  do {                                   \
-    const ResultCode status__ = (expr);  \
-    ASSERT_EQ(status__, ResultCode::Ok); \
-  } while (false)
+#define ASSERT_OK_STATUS(expr) ASSERT_TRUE((expr))
 
 class CameraRuntimeTest : public ::testing::Test {
  protected:
@@ -121,12 +117,12 @@ bool wait_for_step_count(Simulation& simulation, std::uint64_t target_step_count
                          std::chrono::milliseconds timeout = std::chrono::seconds(1)) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
-    if (simulation.step_count() >= target_step_count) {
+    if (simulation.step() >= target_step_count) {
       return true;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  return simulation.step_count() >= target_step_count;
+  return simulation.step() >= target_step_count;
 }
 
 bool viewer_start_available(const std::string& model_path) {
@@ -182,27 +178,26 @@ TEST_F(CameraRuntimeTest, CameraRemainsUsableWithViewerAndAfterViewerStops) {
 
   SimulationConfig config;
   config = camera_config(model_path, RenderMode::Viewer, 50.0, false);
-  const ResultCode initialize_status = simulation.initialize(config);
-  if (initialize_status != ResultCode::Ok) {
+  if (!simulation.initialize(config)) {
     GTEST_SKIP() << "simulation initialize failed";
   }
 
-  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(simulation.start());
   std::this_thread::sleep_for(100ms);
 
   CameraState running_state;
-  ASSERT_TRUE(simulation.camera_state("front_camera", &running_state));
+  ASSERT_TRUE(simulation.read_state("front_camera", &running_state));
   EXPECT_EQ(running_state.image.width, 160U);
   EXPECT_GT(running_state.image.data.size(), 0U);
 
-  const std::uint64_t step_count_before_restart = simulation.step_count();
-  ASSERT_OK_STATUS(simulation.stop());
-  ASSERT_OK_STATUS(simulation.start());
+  const std::uint64_t step_count_before_restart = simulation.step();
+  ASSERT_TRUE(simulation.stop());
+  ASSERT_TRUE(simulation.start());
   ASSERT_TRUE(wait_for_step_count(simulation, step_count_before_restart + 1));
-  ASSERT_OK_STATUS(simulation.stop());
+  ASSERT_TRUE(simulation.stop());
 
   CameraState stopped_state;
-  ASSERT_TRUE(simulation.camera_state("front_camera", &stopped_state));
+  ASSERT_TRUE(simulation.read_state("front_camera", &stopped_state));
   EXPECT_EQ(stopped_state.image.width, 160U);
   EXPECT_GE(stopped_state.image.timestamp, running_state.image.timestamp);
 }
@@ -230,45 +225,43 @@ TEST_F(CameraRuntimeTest, StartRecreatesViewerAfterStopOnSameSimulationInstance)
   }
 
   SimulationConfig config = camera_config(model_path, RenderMode::Viewer, 50.0, false);
-  const ResultCode initialize_status = simulation.initialize(config);
-  if (initialize_status != ResultCode::Ok) {
+  if (!simulation.initialize(config)) {
     GTEST_SKIP() << "simulation initialize failed";
   }
 
-  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(simulation.start());
   std::this_thread::sleep_for(100ms);
 
-  std::shared_ptr<const StateSnapshot> first_running_snapshot = simulation.state_snapshot();
+  std::shared_ptr<const RobotState> first_running_snapshot = simulation.robot_state();
   ASSERT_NE(first_running_snapshot, nullptr);
-  ASSERT_GT(first_running_snapshot->step_count, 0U);
+  ASSERT_GT(first_running_snapshot->step, 0U);
 
-  ASSERT_OK_STATUS(simulation.stop());
+  ASSERT_TRUE(simulation.stop());
   EXPECT_EQ(simulation.status(), SimulationStatus::Stopped);
 
-  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(simulation.start());
   std::this_thread::sleep_for(100ms);
   EXPECT_NE(simulation.status(), SimulationStatus::Error);
 
-  std::shared_ptr<const StateSnapshot> restarted_snapshot;
+  std::shared_ptr<const RobotState> restarted_snapshot;
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (std::chrono::steady_clock::now() < deadline) {
-    restarted_snapshot = simulation.state_snapshot();
-    if (restarted_snapshot != nullptr &&
-        restarted_snapshot->step_count > first_running_snapshot->step_count) {
+    restarted_snapshot = simulation.robot_state();
+    if (restarted_snapshot != nullptr && restarted_snapshot->step > first_running_snapshot->step) {
       break;
     }
     std::this_thread::sleep_for(20ms);
   }
 
   ASSERT_NE(restarted_snapshot, nullptr);
-  EXPECT_GT(restarted_snapshot->step_count, first_running_snapshot->step_count);
+  EXPECT_GT(restarted_snapshot->step, first_running_snapshot->step);
 
   CameraState restarted_state;
-  ASSERT_TRUE(simulation.camera_state("front_camera", &restarted_state));
+  ASSERT_TRUE(simulation.read_state("front_camera", &restarted_state));
   EXPECT_EQ(restarted_state.image.width, 160U);
   EXPECT_GT(restarted_state.image.data.size(), 0U);
 
-  ASSERT_OK_STATUS(simulation.stop());
+  ASSERT_TRUE(simulation.stop());
 }
 
 TEST_F(CameraRuntimeTest, ViewerStartStopCyclesRemainSafe) {
@@ -293,20 +286,18 @@ TEST_F(CameraRuntimeTest, ViewerStartStopCyclesRemainSafe) {
       GTEST_SKIP() << "Viewer runtime probe failed in a subprocess.";
     }
     Simulation simulation;
-    const ResultCode initialize_status =
-        simulation.initialize({.model = {.model_path = model_path},
-                               .scheduler = {.viewer_update_rate = 30.0},
-                               .render_mode = RenderMode::Viewer});
-    if (initialize_status != ResultCode::Ok) {
+    if (!simulation.initialize({.model = {.model_path = model_path},
+                                .scheduler = {.viewer_update_rate = 30.0},
+                                .render_mode = RenderMode::Viewer})) {
       GTEST_SKIP() << "simulation initialize failed";
     }
 
-    ASSERT_OK_STATUS(simulation.start());
+    ASSERT_TRUE(simulation.start());
     std::this_thread::sleep_for(50ms);
     EXPECT_NE(simulation.status(), SimulationStatus::Error);
-    ASSERT_OK_STATUS(simulation.stop());
+    ASSERT_TRUE(simulation.stop());
     EXPECT_NE(simulation.status(), SimulationStatus::Error);
-    ASSERT_OK_STATUS(simulation.shutdown());
+    ASSERT_TRUE(simulation.shutdown());
     EXPECT_EQ(simulation.status(), SimulationStatus::Uninitialized);
   }
 }
@@ -336,18 +327,17 @@ TEST_F(CameraRuntimeTest, HeadlessAndViewerCameraStatesRemainSemanticallyConsist
   }
 
   Simulation headless;
-  ASSERT_OK_STATUS(headless.initialize(camera_config(model_path, RenderMode::Headless)));
+  ASSERT_TRUE(headless.initialize(camera_config(model_path, RenderMode::Headless)));
 
   Simulation viewer;
-  const ResultCode viewer_status = viewer.initialize(camera_config(model_path, RenderMode::Viewer));
-  if (viewer_status != ResultCode::Ok) {
+  if (!viewer.initialize(camera_config(model_path, RenderMode::Viewer))) {
     GTEST_SKIP() << "viewer initialize failed";
   }
 
   CameraState headless_state;
-  ASSERT_TRUE(headless.camera_state("front_camera", &headless_state));
+  ASSERT_TRUE(headless.read_state("front_camera", &headless_state));
   CameraState viewer_state;
-  ASSERT_TRUE(viewer.camera_state("front_camera", &viewer_state));
+  ASSERT_TRUE(viewer.read_state("front_camera", &viewer_state));
 
   EXPECT_FALSE(headless_state.image.data.empty());
   EXPECT_FALSE(viewer_state.image.data.empty());
@@ -390,28 +380,27 @@ TEST_F(CameraRuntimeTest, LowViewerRateDoesNotBlockPhysicsProgress) {
   if (!viewer_start_available(model_path)) {
     GTEST_SKIP() << "Viewer runtime probe failed in a subprocess.";
   }
-  const ResultCode initialize_status = simulation.initialize(config);
-  if (initialize_status != ResultCode::Ok) {
+  if (!simulation.initialize(config)) {
     GTEST_SKIP() << "simulation initialize failed";
   }
 
-  ASSERT_OK_STATUS(simulation.start());
-  std::shared_ptr<const StateSnapshot> snapshot;
+  ASSERT_TRUE(simulation.start());
+  std::shared_ptr<const RobotState> snapshot;
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (std::chrono::steady_clock::now() < deadline) {
-    snapshot = simulation.state_snapshot();
-    if (snapshot != nullptr && snapshot->step_count > 50U && snapshot->simulation_time > 0.05) {
+    snapshot = simulation.robot_state();
+    if (snapshot != nullptr && snapshot->step > 50U && snapshot->simulation_time > 0.05) {
       break;
     }
     std::this_thread::sleep_for(20ms);
   }
 
   ASSERT_NE(snapshot, nullptr);
-  EXPECT_GT(snapshot->step_count, 50U);
+  EXPECT_GT(snapshot->step, 50U);
   EXPECT_GT(snapshot->simulation_time, 0.05);
 
-  ASSERT_OK_STATUS(simulation.stop());
-  ASSERT_OK_STATUS(simulation.shutdown());
+  ASSERT_TRUE(simulation.stop());
+  ASSERT_TRUE(simulation.shutdown());
   EXPECT_EQ(simulation.status(), SimulationStatus::Uninitialized);
 }
 
@@ -434,7 +423,7 @@ TEST_F(CameraRuntimeTest, ConcurrentCameraReadsRemainSafeDuringStepping) {
 
   SimulationConfig config;
   config = camera_config(model_path, RenderMode::Headless, 100.0, true);
-  ASSERT_OK_STATUS(simulation.initialize(config));
+  ASSERT_TRUE(simulation.initialize(config));
 
   std::atomic<int> failures{0};
   std::atomic<bool> start_reads{false};
@@ -446,7 +435,7 @@ TEST_F(CameraRuntimeTest, ConcurrentCameraReadsRemainSafeDuringStepping) {
     std::uint64_t last_timestamp = 0;
     for (int iteration = 0; iteration < 100; ++iteration) {
       CameraState state;
-      if (!simulation.camera_state("front_camera", &state)) {
+      if (!simulation.read_state("front_camera", &state)) {
         ++failures;
         continue;
       }
@@ -465,9 +454,9 @@ TEST_F(CameraRuntimeTest, ConcurrentCameraReadsRemainSafeDuringStepping) {
                             std::thread(reader)};
   start_reads.store(true);
 
-  ASSERT_OK_STATUS(simulation.start());
+  ASSERT_TRUE(simulation.start());
   ASSERT_TRUE(wait_for_step_count(simulation, 100));
-  ASSERT_OK_STATUS(simulation.stop());
+  ASSERT_TRUE(simulation.stop());
 
   for (auto& thread : readers) {
     thread.join();

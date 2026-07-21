@@ -300,7 +300,7 @@ if(BUILD_TESTING)
     test/unit/test_simulation_component.cpp
   )
   if(TARGET test_simulation_component)
-    target_link_libraries(test_simulation_component mujoco_simulation_components)
+    target_link_libraries(test_simulation_component ${PROJECT_NAME})
   endif()
 
   ament_add_gtest(test_sensor_sampling
