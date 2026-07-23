@@ -2,6 +2,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -206,6 +207,53 @@ TEST_F(ViewerTest, AsyncFailureInjectedAfterStartupIsReturnedBySync) {
 
   EXPECT_FALSE(sync_status);
 
+  viewer.stop();
+  EXPECT_FALSE(viewer.is_running());
+  EXPECT_FALSE(viewer.is_ready());
+}
+
+TEST_F(ViewerTest, StartAutomaticallyRestartsAfterRenderThreadFailure) {
+  const std::string model_path = write_model(R"(
+<mujoco model="viewer_restart_after_failure">
+  <worldbody><geom type="plane" size="1 1 0.1"/></worldbody>
+</mujoco>)");
+
+  SimulationRuntime runtime;
+  ASSERT_OK_STATUS(runtime.init({model_path}));
+
+  std::atomic<int> entries{0};
+  std::atomic<bool> release_first{false};
+  std::atomic<bool> release_second{false};
+  SimulationViewer viewer;
+  SimulationViewerTestPeer::set_render_thread_entry(
+      viewer, [&](SimulationViewer& target, mjModel*, mjData*, const std::string&) {
+        const int entry = ++entries;
+        SimulationViewerTestPeer::mark_ready(target);
+        const auto& release = entry == 1 ? release_first : release_second;
+        while (!release.load()) {
+          std::this_thread::sleep_for(1ms);
+        }
+        SimulationViewerTestPeer::inject_async_failure(target);
+      });
+
+  ASSERT_OK_STATUS(viewer.start(runtime_context(runtime), model_path));
+  ASSERT_OK_STATUS(viewer.start(runtime_context(runtime), model_path));
+  EXPECT_EQ(entries.load(), 1);
+
+  release_first.store(true);
+  const auto failure_deadline = std::chrono::steady_clock::now() + 1s;
+  while (viewer.is_running() && std::chrono::steady_clock::now() < failure_deadline) {
+    std::this_thread::sleep_for(1ms);
+  }
+  EXPECT_FALSE(viewer.is_running());
+  EXPECT_FALSE(viewer.is_ready());
+
+  ASSERT_OK_STATUS(viewer.start(runtime_context(runtime), model_path));
+  EXPECT_EQ(entries.load(), 2);
+  EXPECT_TRUE(viewer.is_running());
+  EXPECT_TRUE(viewer.is_ready());
+
+  release_second.store(true);
   viewer.stop();
   EXPECT_FALSE(viewer.is_running());
   EXPECT_FALSE(viewer.is_ready());

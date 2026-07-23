@@ -47,20 +47,20 @@ struct SimulationConfig {
 
 class SimulationConfigParser {
  public:
-  bool load_file(const std::string& path, SimulationConfig* config) const;
+  bool load_file(const std::string& path, SimulationConfig& config) const;
 
  private:
   static std::string trim_copy(const std::string& value);
   static std::string element_text(const tinyxml2::XMLElement& element);
-  static bool parse_required_double(const tinyxml2::XMLElement& element, double* out);
+  static bool parse_required_double(const tinyxml2::XMLElement& element, double& out);
   static bool reject_unknown_children(const tinyxml2::XMLElement& element,
                                       const std::unordered_set<std::string>& allowed_names);
-  static bool parse_limit_axis(const tinyxml2::XMLElement* element, Limit* limits);
-  static bool parse_position_config(const tinyxml2::XMLElement* element, JointInfo* info);
-  static bool parse_velocity_config(const tinyxml2::XMLElement* element, JointInfo* info);
-  static bool parse_joint_config(const tinyxml2::XMLElement& element, JointInfo* info);
+  static bool parse_limit_axis(const tinyxml2::XMLElement* element, Limit& limits);
+  static bool parse_position_config(const tinyxml2::XMLElement* element, JointInfo& info);
+  static bool parse_velocity_config(const tinyxml2::XMLElement* element, JointInfo& info);
+  static bool parse_joint_config(const tinyxml2::XMLElement& element, JointInfo& info);
   static bool parse_robot_section(const tinyxml2::XMLElement* robot,
-                                  ComponentConfigList* components);
+                                  ComponentConfigList& components);
   static std::optional<std::filesystem::path> resolve_model_path(
       const std::filesystem::path& config_path, const std::string& mjcf_path);
 };

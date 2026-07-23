@@ -142,18 +142,14 @@ bool CameraRenderer::copy_simulation_data(const mjModel& model, const mjData& so
 
 bool CameraRenderer::render(const mjModel& model, const CameraConfig& spec, std::uint64_t sequence,
                             std::uint64_t timestamp,
-                            std::shared_ptr<const CameraRenderState>* out) {
-  if (out == nullptr) {
-    LOG_ERROR << "output render state pointer is null.";
-    return false;
-  }
+                            std::shared_ptr<const CameraRenderState>& out) {
   if (!initialize(model)) {
     return false;
   }
 
   int camera_id = -1;
   double fovy_degrees = 0.0;
-  if (!ensure_camera_binding(model, spec, &camera_id, &fovy_degrees)) {
+  if (!ensure_camera_binding(model, spec, camera_id, fovy_degrees)) {
     return false;
   }
   if (!ensure_offscreen_capacity(spec.width, spec.height)) {
@@ -213,7 +209,7 @@ bool CameraRenderer::render(const mjModel& model, const CameraConfig& spec, std:
     state->color.height = static_cast<std::uint32_t>(spec.height);
     state->color.step = static_cast<std::uint32_t>(spec.width * 3);
     state->color.data.resize(rgb_buffer.size());
-    flip_rgb(rgb_buffer, state->color.width, state->color.height, &state->color.data);
+    flip_rgb(rgb_buffer, state->color.width, state->color.height, state->color.data);
   }
 
   if (spec.enable_depth) {
@@ -221,10 +217,10 @@ bool CameraRenderer::render(const mjModel& model, const CameraConfig& spec, std:
     state->depth.height = static_cast<std::uint32_t>(spec.height);
     state->depth.data.resize(depth_buffer.size());
     convert_and_flip_depth(model, depth_buffer, state->depth.width, state->depth.height,
-                           &state->depth.data);
+                           state->depth.data);
   }
 
-  *out = std::static_pointer_cast<const CameraRenderState>(state);
+  out = std::static_pointer_cast<const CameraRenderState>(state);
   return true;
 }
 
@@ -292,11 +288,7 @@ bool CameraRenderer::ensure_offscreen_capacity(int width, int height) {
 }
 
 bool CameraRenderer::ensure_camera_binding(const mjModel& model, const CameraConfig& spec,
-                                           int* camera_id, double* fovy_degrees) {
-  if (camera_id == nullptr || fovy_degrees == nullptr) {
-    LOG_ERROR << "camera binding outputs must not be null.";
-    return false;
-  }
+                                           int& camera_id, double& fovy_degrees) {
   if (spec.name.empty()) {
     LOG_ERROR << "camera component name must not be empty.";
     return false;
@@ -320,8 +312,8 @@ bool CameraRenderer::ensure_camera_binding(const mjModel& model, const CameraCon
     return false;
   }
 
-  *camera_id = id;
-  *fovy_degrees = static_cast<double>(model.cam_fovy[id]);
+  camera_id = id;
+  fovy_degrees = static_cast<double>(model.cam_fovy[id]);
   return true;
 }
 
@@ -347,25 +339,18 @@ CameraRenderIntrinsics CameraRenderer::compute_intrinsics(double fovy_degrees, s
 }
 
 void CameraRenderer::flip_rgb(const std::vector<std::uint8_t>& source, std::uint32_t width,
-                              std::uint32_t height, std::vector<std::uint8_t>* dest) const {
-  if (dest == nullptr) {
-    return;
-  }
+                              std::uint32_t height, std::vector<std::uint8_t>& dest) const {
   const std::size_t row_size = static_cast<std::size_t>(width) * 3U;
   for (std::uint32_t row = 0; row < height; ++row) {
     const std::size_t src_offset = static_cast<std::size_t>(row) * row_size;
     const std::size_t dst_offset = static_cast<std::size_t>(height - 1U - row) * row_size;
-    std::memcpy(dest->data() + dst_offset, source.data() + src_offset, row_size);
+    std::memcpy(dest.data() + dst_offset, source.data() + src_offset, row_size);
   }
 }
 
 void CameraRenderer::convert_and_flip_depth(const mjModel& model, const std::vector<float>& source,
                                             std::uint32_t width, std::uint32_t height,
-                                            std::vector<float>* dest) const {
-  if (dest == nullptr) {
-    return;
-  }
-
+                                            std::vector<float>& dest) const {
   const float near = static_cast<float>(model.vis.map.znear * model.stat.extent);
   const float far = static_cast<float>(model.vis.map.zfar * model.stat.extent);
   const float depth_scale = 1.0F - near / far;
@@ -375,7 +360,7 @@ void CameraRenderer::convert_and_flip_depth(const mjModel& model, const std::vec
       const std::size_t src_index = static_cast<std::size_t>(row) * width + column;
       const std::size_t dst_index = static_cast<std::size_t>(height - 1U - row) * width + column;
       const float normalized = source[src_index];
-      (*dest)[dst_index] = near / (1.0F - normalized * depth_scale);
+      dest[dst_index] = near / (1.0F - normalized * depth_scale);
     }
   }
 }

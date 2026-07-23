@@ -102,27 +102,27 @@ TEST_F(SensorSamplingTest, ImuAndLidarRespectConfiguredSamplingRates) {
   ASSERT_TRUE(simulation.start());
 
   ImuState imu_state;
-  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.read_state("imu", imu_state));
   LidarState lidar_state;
-  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", lidar_state));
   EXPECT_EQ(imu_state.sequence, 1U);
   EXPECT_EQ(lidar_state.sequence, 1U);
 
   ASSERT_TRUE(wait_for_step_count(simulation, 4));
-  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
-  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("imu", imu_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", lidar_state));
   EXPECT_EQ(imu_state.sequence, 1U);
   EXPECT_EQ(lidar_state.sequence, 1U);
 
   ASSERT_TRUE(wait_for_step_count(simulation, 5));
-  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
+  ASSERT_TRUE(simulation.read_state("imu", imu_state));
   EXPECT_EQ(imu_state.sequence, 2U);
   EXPECT_DOUBLE_EQ(imu_state.timestamp, 0.005);
   EXPECT_EQ(imu_state.frame_id, "imu_link");
 
   ASSERT_TRUE(wait_for_step_count(simulation, 100));
-  ASSERT_TRUE(simulation.read_state("imu", &imu_state));
-  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("imu", imu_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", lidar_state));
   EXPECT_EQ(imu_state.sequence, 21U);
   EXPECT_NEAR(imu_state.timestamp, 0.1, 1e-9);
   EXPECT_EQ(lidar_state.sequence, 2U);
@@ -180,7 +180,7 @@ TEST_F(SensorSamplingTest, ResetRestartsSensorSamplingWithoutNegativeScanTime) {
   ASSERT_TRUE(simulation.reset());
 
   LidarState lidar_state;
-  ASSERT_TRUE(simulation.read_state("front_lidar", &lidar_state));
+  ASSERT_TRUE(simulation.read_state("front_lidar", lidar_state));
   EXPECT_GT(lidar_state.sequence, 0U);
   EXPECT_GT(lidar_state.timestamp, 0.0);
   EXPECT_GE(lidar_state.scan_time, 0.0);

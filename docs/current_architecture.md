@@ -44,7 +44,7 @@ MuJoCoHardwareInterface
   - 负责 command flush、physics step、sensor sample、state publish、viewer sync。
 - 调用方线程
   - 通过 `set_joint_command()`、`set_mobile_base_command()`、`request_reset()` 等接口提交请求。
-  - 通过 `robot_state()`、`camera_sample()`、`joint_state()` 等只读接口取样。
+  - 通过 `read_state(snapshot)`、`camera_sample()`、`joint_state()` 等只读接口取样。
 - `SimulationRosBridge` executor 线程
   - 专用于 ROS publisher/service 回调。
   - 不直接访问主 `mjData`。
@@ -70,7 +70,7 @@ SimulationScheduler worker
   -> CameraBuffer publish shared CameraSample
 
 MuJoCoHardwareInterface::read()
-  -> Simulation::robot_state()
+  -> Simulation::read_state(snapshot)
   -> Simulation::camera_sample()
   -> SimulationRosBridge::publish_*
 ```
@@ -93,7 +93,7 @@ MuJoCoHardwareInterface::read()
 - 控制：`start()`、`stop()`、`pause()`、`resume()`、`reset()`、`request_reset()`
 - 设备命令：`reconfigure_component()`、`set_joint_command()`、`set_mobile_base_command()`
 - 设备读取：`joint_state()`、`imu_sample()`、`lidar_sample()`、`camera_sample()`、`mobile_base_state()`
-- 快照：`robot_state()`
+- 快照：`read_state(std::shared_ptr<const RobotState>&)`
 - 错误模型：`Status` / `Result<T>` + `StatusCode`
 
 其中：

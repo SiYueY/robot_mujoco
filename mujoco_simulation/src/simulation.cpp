@@ -158,10 +158,33 @@ bool Simulation::write_command(std::string name, const JointCommand& command) {
   return command_buffer->write_joint_command(resolved_command.joint_name, resolved_command);
 }
 
-bool Simulation::read_state(std::string joint_name, JointState* out) const {
-  if (out == nullptr) {
+bool Simulation::write_command(const RobotCommand& command) {
+  std::lock_guard<std::mutex> lock(runtime_mutex_);
+  CommandBuffer* command_buffer = command_buffer_.get();
+  return command_buffer != nullptr && command_buffer->write_command(command);
+}
+
+bool Simulation::read_state(std::shared_ptr<const RobotState>& out) const {
+  std::lock_guard<std::mutex> lock(runtime_mutex_);
+  StateBuffer* state_buffer = state_buffer_.get();
+  if (state_buffer == nullptr) {
+    out.reset();
     return false;
   }
+  out = state_buffer->read();
+  return out != nullptr;
+}
+
+bool Simulation::read_state(RobotState& out) const {
+  std::shared_ptr<const RobotState> snapshot;
+  if (!read_state(snapshot)) {
+    return false;
+  }
+  out = *snapshot;
+  return true;
+}
+
+bool Simulation::read_state(std::string joint_name, JointState& out) const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   StateBuffer* state_buffer = state_buffer_.get();
   if (state_buffer == nullptr) {
@@ -170,10 +193,7 @@ bool Simulation::read_state(std::string joint_name, JointState* out) const {
   return state_buffer->read_joint_state(joint_name, out);
 }
 
-bool Simulation::read_state(std::string imu_name, ImuState* out) const {
-  if (out == nullptr) {
-    return false;
-  }
+bool Simulation::read_state(std::string imu_name, ImuState& out) const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   StateBuffer* state_buffer = state_buffer_.get();
   if (state_buffer == nullptr) {
@@ -182,10 +202,7 @@ bool Simulation::read_state(std::string imu_name, ImuState* out) const {
   return state_buffer->read_imu_state(imu_name, out);
 }
 
-bool Simulation::read_state(std::string camera_name, CameraState* out) const {
-  if (out == nullptr) {
-    return false;
-  }
+bool Simulation::read_state(std::string camera_name, CameraState& out) const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   CameraBuffer* camera_buffer = camera_buffer_.get();
   if (camera_buffer == nullptr) {
@@ -194,10 +211,7 @@ bool Simulation::read_state(std::string camera_name, CameraState* out) const {
   return camera_buffer->read(camera_name, out);
 }
 
-bool Simulation::read_state(std::string lidar_name, LidarState* out) const {
-  if (out == nullptr) {
-    return false;
-  }
+bool Simulation::read_state(std::string lidar_name, LidarState& out) const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   StateBuffer* state_buffer = state_buffer_.get();
   if (state_buffer == nullptr) {
@@ -215,10 +229,7 @@ bool Simulation::write_command(std::string name, const MobileBaseCommand& comman
   return command_buffer->write_mobile_base_command(std::move(name), command);
 }
 
-bool Simulation::read_state(std::string name, MobileBaseState* out) const {
-  if (out == nullptr) {
-    return false;
-  }
+bool Simulation::read_state(std::string name, MobileBaseState& out) const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
   StateBuffer* state_buffer = state_buffer_.get();
   if (state_buffer == nullptr) {
@@ -250,12 +261,6 @@ double Simulation::time() const {
     return 0.0;
   }
   return runtime_->time();
-}
-
-std::shared_ptr<const RobotState> Simulation::robot_state() const {
-  std::lock_guard<std::mutex> lock(runtime_mutex_);
-  StateBuffer* state_buffer = state_buffer_.get();
-  return state_buffer == nullptr ? nullptr : state_buffer->read();
 }
 
 void Simulation::set_snapshot_observer(SnapshotObserver observer) {
@@ -351,7 +356,7 @@ bool Simulation::scheduler_write_commands() {
     return false;
   }
 
-  const RobotCommand snapshot = command_buffer_->read(CommandBuffer::Clock::now());
+  const RobotCommand snapshot = command_buffer_->read();
   const mjContext& context = runtime_->context();
   return component_manager_.write_command(context, snapshot);
 }
@@ -379,7 +384,7 @@ bool Simulation::write_state_snapshot() {
   SnapshotObserver snapshot_observer;
   {
     std::lock_guard<std::mutex> lock(runtime_mutex_);
-    if (!write_state_snapshot_locked(&published_snapshot)) {
+    if (!write_state_snapshot_locked(published_snapshot)) {
       return false;
     }
     snapshot_observer = snapshot_observer_;
@@ -391,7 +396,7 @@ bool Simulation::write_state_snapshot() {
 }
 
 bool Simulation::write_state_snapshot_locked(
-    std::shared_ptr<const RobotState>* published_snapshot) {
+    std::shared_ptr<const RobotState>& published_snapshot) {
   if (state_buffer_ == nullptr || runtime_ == nullptr || !runtime_->is_initialized()) {
     return false;
   }
@@ -402,9 +407,9 @@ bool Simulation::write_state_snapshot_locked(
 
 bool Simulation::build_state_snapshot_locked(
     std::uint64_t step, double simulation_time,
-    std::shared_ptr<const RobotState>* published_snapshot) {
+    std::shared_ptr<const RobotState>& published_snapshot) {
   auto snapshot = std::make_shared<RobotState>();
-  if (!build_state_snapshot(snapshot.get())) {
+  if (!build_state_snapshot(*snapshot)) {
     return false;
   }
   snapshot->sequence = ++sequence_;
@@ -414,9 +419,7 @@ bool Simulation::build_state_snapshot_locked(
   snapshot->step = step;
   std::shared_ptr<const RobotState> published = snapshot;
   state_buffer_->write(published);
-  if (published_snapshot != nullptr) {
-    *published_snapshot = std::move(published);
-  }
+  published_snapshot = std::move(published);
   return true;
 }
 
@@ -507,12 +510,12 @@ bool Simulation::stop_viewer() {
   return true;
 }
 
-bool Simulation::build_state_snapshot(RobotState* snapshot) const {
-  if (snapshot == nullptr || runtime_ == nullptr || !runtime_->is_initialized()) {
+bool Simulation::build_state_snapshot(RobotState& snapshot) const {
+  if (runtime_ == nullptr || !runtime_->is_initialized()) {
     return false;
   }
   const mjContext& context = runtime_->context();
-  return component_manager_.read_state(context, *snapshot);
+  return component_manager_.read_state(context, snapshot);
 }
 
 RenderMode parse_render_mode(const std::string& value) {

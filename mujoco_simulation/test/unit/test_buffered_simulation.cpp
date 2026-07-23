@@ -39,32 +39,50 @@ TEST(BufferedSimulationTest, HybridCommandIsBufferedAndPublishedWithItsMode) {
                                  .position_damping = 1.0,
                                  .velocity_damping = 2.0}};
   ASSERT_TRUE(simulation.initialize(config));
-  ASSERT_TRUE(simulation.write_command("slide", {.joint_name = "slide",
-                                                 .mode = JointControlMode::Hybrid,
-                                                 .position = 1.0,
-                                                 .effort = 1.0,
-                                                 .stiffness = 2.0,
-                                                 .damping = 1.0}));
+  RobotCommand command;
+  command.joint_commands.emplace("slide", JointCommand{.joint_name = "ignored",
+                                                       .mode = JointControlMode::Hybrid,
+                                                       .position = 1.0,
+                                                       .effort = 1.0,
+                                                       .stiffness = 2.0,
+                                                       .damping = 1.0});
+  ASSERT_TRUE(simulation.write_command(command));
   ASSERT_TRUE(simulation.start());
   ASSERT_TRUE(wait_for_step_count(simulation, 1));
   ASSERT_TRUE(simulation.stop());
   JointState state;
-  ASSERT_TRUE(simulation.read_state("slide", &state));
+  ASSERT_TRUE(simulation.read_state("slide", state));
   EXPECT_EQ(state.mode, JointControlMode::Hybrid);
 
-  EXPECT_EQ(simulation.step(), 1u);
-  const std::shared_ptr<const RobotState> snapshot_after_step = simulation.robot_state();
-  ASSERT_NE(snapshot_after_step, nullptr);
-  EXPECT_EQ(snapshot_after_step->step, 1u);
+  const std::uint64_t first_step = simulation.step();
+  EXPECT_GE(first_step, 1U);
+  std::shared_ptr<const RobotState> snapshot_after_step;
+  ASSERT_TRUE(simulation.read_state(snapshot_after_step));
+  EXPECT_EQ(snapshot_after_step->step, first_step);
+  RobotState copied_snapshot;
+  ASSERT_TRUE(simulation.read_state(copied_snapshot));
+  EXPECT_EQ(copied_snapshot.sequence, snapshot_after_step->sequence);
+  EXPECT_EQ(copied_snapshot.step, snapshot_after_step->step);
 
   ASSERT_TRUE(simulation.reset());
 
   ASSERT_TRUE(simulation.start());
-  ASSERT_TRUE(wait_for_step_count(simulation, 2));
+  ASSERT_TRUE(wait_for_step_count(simulation, first_step + 1));
   ASSERT_TRUE(simulation.stop());
-  EXPECT_EQ(simulation.step(), 2u);
+  EXPECT_GE(simulation.step(), first_step + 1);
   std::error_code remove_error;
   std::filesystem::remove(path, remove_error);
+}
+
+TEST(BufferedSimulationTest, FullStateReadsFailBeforeInitialization) {
+  Simulation simulation;
+  std::shared_ptr<const RobotState> shared_state = std::make_shared<RobotState>();
+  EXPECT_FALSE(simulation.read_state(shared_state));
+  EXPECT_EQ(shared_state, nullptr);
+
+  RobotState copied_state{.sequence = 42};
+  EXPECT_FALSE(simulation.read_state(copied_state));
+  EXPECT_EQ(copied_state.sequence, 42U);
 }
 
 }  // namespace

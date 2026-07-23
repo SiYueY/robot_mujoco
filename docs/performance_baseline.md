@@ -121,6 +121,19 @@ python3 scripts/ci/compare_performance_baseline.py \
 - 启动瞬态样本会保留在 `rss_kb_series` 中，但 `rss_kb_head_median` / `rss_kb_tail_median` / `rss_kb_growth_*` 会先剥离明显低于稳态的平台期前缀，再计算稳态段头尾窗口中位数
 - 夜间作业默认跑 `3600 s`
 
+### 3.5 Buffer 建议指标
+
+以下指标暂不作为 CI 硬阈值；它们用于 `CommandBuffer` / `StateBuffer` 的并发与实时性能设计评估。设计背景与提议架构见
+[`CommandBuffer 并发与实时性能设计`](../mujoco_simulation/docs/command_buffer_realtime_design.md)
+和 [`StateBuffer 并发与实时性能设计`](../mujoco_simulation/docs/state_buffer_realtime_design.md)。
+
+- `command_enqueue_latency_us_{p50,p99,max}`：命令提交延迟。
+- `command_drain_latency_us_{p50,p99,max}`：scheduler 合并并取得有效命令的延迟。
+- `command_queue_full_count`、`command_unknown_target_count`：有界模式背压与名称解析失败次数。
+- `state_publish_latency_us_{p50,p99,max}`、`state_acquire_latency_us_{p50,p99,max}`：状态发布与读取延迟。
+- `state_dropped_publication_count`、`state_max_reader_hold_us`：快照池压力与慢读者影响。
+- `command_runtime_allocations`、`state_runtime_allocations`：运行期堆分配次数。
+
 ## 4. 结果格式
 
 标准输出产物固定为 JSON，核心结构：

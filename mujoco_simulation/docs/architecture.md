@@ -90,7 +90,8 @@ Simulation
   - `lidar_state(...)`
   - `camera_state(...)`
   - `mobile_base_state(...)`
-  - `robot_state()`
+  - `read_state(std::shared_ptr<const RobotState>&)`
+  - `read_state(RobotState&)`
 
 ## 组件模型与调度模型
 
@@ -125,6 +126,13 @@ Simulation
   - 缓存各 camera 的最新 `CameraState`
 
 缓冲接口语义统一使用 `write(...)` / `read(...)`。
+
+缓冲层的并发模型、动态拓扑和确定性实时性能取舍见：
+
+- [CommandBuffer 并发与实时性能设计](./command_buffer_realtime_design.md)
+- [StateBuffer 并发与实时性能设计](./state_buffer_realtime_design.md)
+
+这两份文档包含提议架构；本页仍以当前已实现行为为准。
 
 - `StateBuffer`
   - 通过原子发布 `shared_ptr<const RobotState>` 共享最新快照

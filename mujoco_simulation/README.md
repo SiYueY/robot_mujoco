@@ -114,7 +114,8 @@ Simulation
   - `bool lidar_state(..., LidarState* out)`
   - `ResultCode set_mobile_base_command(...)`
   - `bool mobile_base_state(..., MobileBaseState* out)`
-  - `robot_state()`
+  - `bool read_state(std::shared_ptr<const RobotState>& out)`
+  - `bool read_state(RobotState& out)`
 
 内部约束：
 

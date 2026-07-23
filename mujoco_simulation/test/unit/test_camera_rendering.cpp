@@ -90,7 +90,7 @@ TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
   ASSERT_TRUE(simulation.initialize(config));
 
   CameraState state;
-  ASSERT_TRUE(simulation.read_state("front_camera", &state));
+  ASSERT_TRUE(simulation.read_state("front_camera", state));
   ASSERT_EQ(state.image.width, 160U);
   ASSERT_EQ(state.image.height, 120U);
   ASSERT_EQ(state.image.step, 480U);
@@ -168,20 +168,20 @@ TEST_F(CameraRenderingTest, MultipleCamerasUpdateAtIndependentRatesInHeadlessMod
   ASSERT_TRUE(simulation.start());
 
   CameraState fast_state;
-  ASSERT_TRUE(simulation.read_state("fast_camera", &fast_state));
+  ASSERT_TRUE(simulation.read_state("fast_camera", fast_state));
   CameraState slow_state;
-  ASSERT_TRUE(simulation.read_state("slow_camera", &slow_state));
+  ASSERT_TRUE(simulation.read_state("slow_camera", slow_state));
   EXPECT_EQ(fast_state.timestamp, 0U);
   EXPECT_EQ(slow_state.timestamp, 0U);
 
   ASSERT_TRUE(wait_for_step_count(simulation, 4));
-  ASSERT_TRUE(simulation.read_state("fast_camera", &fast_state));
-  ASSERT_TRUE(simulation.read_state("slow_camera", &slow_state));
+  ASSERT_TRUE(simulation.read_state("fast_camera", fast_state));
+  ASSERT_TRUE(simulation.read_state("slow_camera", slow_state));
   EXPECT_EQ(fast_state.timestamp, 40000000U);
   EXPECT_EQ(slow_state.timestamp, 0U);
 
   ASSERT_TRUE(wait_for_step_count(simulation, 5));
-  ASSERT_TRUE(simulation.read_state("slow_camera", &slow_state));
+  ASSERT_TRUE(simulation.read_state("slow_camera", slow_state));
   EXPECT_EQ(slow_state.timestamp, 50000000U);
   ASSERT_TRUE(simulation.stop());
 }

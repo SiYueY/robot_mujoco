@@ -251,9 +251,8 @@ mujoco_simulation::ResultCode MuJoCoHardwareInterface::request_reset_status() {
 }
 
 mujoco_simulation::ResultCode MuJoCoHardwareInterface::update_runtime_state() {
-  const std::shared_ptr<const mujoco_simulation::RobotState> snapshot =
-      simulation_ == nullptr ? nullptr : simulation_->robot_state();
-  if (snapshot == nullptr) {
+  std::shared_ptr<const mujoco_simulation::RobotState> snapshot;
+  if (simulation_ == nullptr || !simulation_->read_state(snapshot)) {
     return mujoco_simulation::ResultCode::InvalidState;
   }
   return update_runtime_state_from_snapshot(*snapshot);
@@ -322,7 +321,7 @@ mujoco_simulation::ResultCode MuJoCoHardwareInterface::publish_snapshot_to_chann
   for (std::size_t index = 0; index < config_.cameras.size(); ++index) {
     const auto& camera = config_.cameras[index];
     mujoco_simulation::CameraState state;
-    if (!simulation_->read_state(camera.name, &state)) {
+    if (!simulation_->read_state(camera.name, state)) {
       return mujoco_simulation::ResultCode::NotFound;
     }
     publish_camera_states_[index] = std::move(state);
@@ -373,7 +372,7 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_init(
   }
 
   for (auto& camera : config_.cameras) {
-    if (!simulation_->read_state(camera.name, &camera.state)) {
+    if (!simulation_->read_state(camera.name, camera.state)) {
       RCLCPP_ERROR(hardware_logger(),
                    "Failed to initialize camera state for hardware '%s', camera '%s'",
                    hardware_info.name.c_str(), camera.name.c_str());
@@ -612,9 +611,8 @@ hardware_interface::CallbackReturn MuJoCoHardwareInterface::on_activate(
                  result_code_name(read_status));
     return hardware_interface::CallbackReturn::ERROR;
   }
-  const std::shared_ptr<const mujoco_simulation::RobotState> initial_snapshot =
-      simulation_->robot_state();
-  if (initial_snapshot != nullptr) {
+  std::shared_ptr<const mujoco_simulation::RobotState> initial_snapshot;
+  if (simulation_->read_state(initial_snapshot)) {
     const mujoco_simulation::ResultCode publish_status =
         publish_snapshot_to_channel(initial_snapshot);
     if (publish_status != ResultCode::Ok) {

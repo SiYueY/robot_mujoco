@@ -59,7 +59,7 @@ class CameraRenderer {
 
   bool copy_simulation_data(const mjModel& model, const mjData& source);
   bool render(const mjModel& model, const CameraConfig& spec, std::uint64_t sequence,
-              std::uint64_t timestamp, std::shared_ptr<const CameraRenderState>* out);
+              std::uint64_t timestamp, std::shared_ptr<const CameraRenderState>& out);
 
   bool is_initialized() const noexcept { return initialized_; }
 
@@ -67,15 +67,15 @@ class CameraRenderer {
   static bool ensure_glfw_initialized();
   bool ensure_gl_context();
   bool ensure_offscreen_capacity(int width, int height);
-  bool ensure_camera_binding(const mjModel& model, const CameraConfig& spec, int* camera_id,
-                             double* fovy_degrees);
+  bool ensure_camera_binding(const mjModel& model, const CameraConfig& spec, int& camera_id,
+                             double& fovy_degrees);
   CameraRenderIntrinsics compute_intrinsics(double fovy_degrees, std::uint32_t width,
                                             std::uint32_t height) const;
   void flip_rgb(const std::vector<std::uint8_t>& source, std::uint32_t width, std::uint32_t height,
-                std::vector<std::uint8_t>* dest) const;
+                std::vector<std::uint8_t>& dest) const;
   void convert_and_flip_depth(const mjModel& model, const std::vector<float>& source,
                               std::uint32_t width, std::uint32_t height,
-                              std::vector<float>* dest) const;
+                              std::vector<float>& dest) const;
   bool initialize_egl_context();
   void release_current_context();
 

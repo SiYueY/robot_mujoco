@@ -24,10 +24,7 @@ std::string SimulationConfigParser::element_text(const XMLElement& element) {
   return text == nullptr ? "" : trim_copy(text);
 }
 
-bool SimulationConfigParser::parse_required_double(const XMLElement& element, double* out) {
-  if (out == nullptr) {
-    return false;
-  }
+bool SimulationConfigParser::parse_required_double(const XMLElement& element, double& out) {
   const std::string text = element_text(element);
   if (text.empty()) {
     return false;
@@ -44,7 +41,7 @@ bool SimulationConfigParser::parse_required_double(const XMLElement& element, do
     return false;
   }
 
-  *out = value;
+  out = value;
   return true;
 }
 
@@ -63,10 +60,7 @@ bool SimulationConfigParser::reject_unknown_children(
   return true;
 }
 
-bool SimulationConfigParser::parse_limit_axis(const XMLElement* element, Limit* limits) {
-  if (limits == nullptr) {
-    return false;
-  }
+bool SimulationConfigParser::parse_limit_axis(const XMLElement* element, Limit& limits) {
   if (element == nullptr) {
     return true;
   }
@@ -75,55 +69,55 @@ bool SimulationConfigParser::parse_limit_axis(const XMLElement* element, Limit* 
   }
 
   const XMLElement* min = element->FirstChildElement("min");
-  if (min != nullptr && !parse_required_double(*min, &limits->min)) {
+  if (min != nullptr && !parse_required_double(*min, limits.min)) {
     return false;
   }
   const XMLElement* max = element->FirstChildElement("max");
-  if (max != nullptr && !parse_required_double(*max, &limits->max)) {
+  if (max != nullptr && !parse_required_double(*max, limits.max)) {
     return false;
   }
 
-  return limits->min <= limits->max;
+  return limits.min <= limits.max;
 }
 
-bool SimulationConfigParser::parse_position_config(const XMLElement* element, JointInfo* info) {
+bool SimulationConfigParser::parse_position_config(const XMLElement* element, JointInfo& info) {
   if (element == nullptr) {
     return true;
   }
-  if (info == nullptr || !reject_unknown_children(*element, {"stiffness", "damping"})) {
+  if (!reject_unknown_children(*element, {"stiffness", "damping"})) {
     return false;
   }
 
   const XMLElement* stiffness = element->FirstChildElement("stiffness");
-  if (stiffness != nullptr && !parse_required_double(*stiffness, &info->position_stiffness)) {
+  if (stiffness != nullptr && !parse_required_double(*stiffness, info.position_stiffness)) {
     return false;
   }
   const XMLElement* damping = element->FirstChildElement("damping");
-  if (damping != nullptr && !parse_required_double(*damping, &info->position_damping)) {
+  if (damping != nullptr && !parse_required_double(*damping, info.position_damping)) {
     return false;
   }
 
   return true;
 }
 
-bool SimulationConfigParser::parse_velocity_config(const XMLElement* element, JointInfo* info) {
+bool SimulationConfigParser::parse_velocity_config(const XMLElement* element, JointInfo& info) {
   if (element == nullptr) {
     return true;
   }
-  if (info == nullptr || !reject_unknown_children(*element, {"damping"})) {
+  if (!reject_unknown_children(*element, {"damping"})) {
     return false;
   }
 
   const XMLElement* damping = element->FirstChildElement("damping");
-  if (damping != nullptr && !parse_required_double(*damping, &info->velocity_damping)) {
+  if (damping != nullptr && !parse_required_double(*damping, info.velocity_damping)) {
     return false;
   }
 
   return true;
 }
 
-bool SimulationConfigParser::parse_joint_config(const XMLElement& element, JointInfo* info) {
-  if (info == nullptr || !reject_unknown_children(element, {"position", "velocity", "limit"})) {
+bool SimulationConfigParser::parse_joint_config(const XMLElement& element, JointInfo& info) {
+  if (!reject_unknown_children(element, {"position", "velocity", "limit"})) {
     return false;
   }
 
@@ -133,8 +127,8 @@ bool SimulationConfigParser::parse_joint_config(const XMLElement& element, Joint
     return false;
   }
 
-  info->joint_name = trimmed_name;
-  info->actuator_name = trimmed_name;
+  info.joint_name = trimmed_name;
+  info.actuator_name = trimmed_name;
 
   if (!parse_position_config(element.FirstChildElement("position"), info) ||
       !parse_velocity_config(element.FirstChildElement("velocity"), info)) {
@@ -149,16 +143,13 @@ bool SimulationConfigParser::parse_joint_config(const XMLElement& element, Joint
     return false;
   }
 
-  return parse_limit_axis(limit->FirstChildElement("position"), &info->position_limits) &&
-         parse_limit_axis(limit->FirstChildElement("velocity"), &info->velocity_limits) &&
-         parse_limit_axis(limit->FirstChildElement("effort"), &info->effort_limits);
+  return parse_limit_axis(limit->FirstChildElement("position"), info.position_limits) &&
+         parse_limit_axis(limit->FirstChildElement("velocity"), info.velocity_limits) &&
+         parse_limit_axis(limit->FirstChildElement("effort"), info.effort_limits);
 }
 
 bool SimulationConfigParser::parse_robot_section(const XMLElement* robot,
-                                                 ComponentConfigList* components) {
-  if (components == nullptr) {
-    return false;
-  }
+                                                 ComponentConfigList& components) {
   if (robot == nullptr) {
     return true;
   }
@@ -170,10 +161,10 @@ bool SimulationConfigParser::parse_robot_section(const XMLElement* robot,
   for (const XMLElement* joint = robot->FirstChildElement("joint"); joint != nullptr;
        joint = joint->NextSiblingElement("joint")) {
     JointInfo info;
-    if (!parse_joint_config(*joint, &info) || !seen_joint_names.insert(info.joint_name).second) {
+    if (!parse_joint_config(*joint, info) || !seen_joint_names.insert(info.joint_name).second) {
       return false;
     }
-    components->emplace_back(info);
+    components.emplace_back(info);
   }
 
   return true;
@@ -192,8 +183,8 @@ std::optional<std::filesystem::path> SimulationConfigParser::resolve_model_path(
   return resolved.lexically_normal();
 }
 
-bool SimulationConfigParser::load_file(const std::string& path, SimulationConfig* config) const {
-  if (config == nullptr || path.empty()) {
+bool SimulationConfigParser::load_file(const std::string& path, SimulationConfig& config) const {
+  if (path.empty()) {
     return false;
   }
 
@@ -227,11 +218,11 @@ bool SimulationConfigParser::load_file(const std::string& path, SimulationConfig
 
   SimulationConfig parsed;
   parsed.model.model_path = resolved_model_path->string();
-  if (!parse_robot_section(root->FirstChildElement("robot"), &parsed.components)) {
+  if (!parse_robot_section(root->FirstChildElement("robot"), parsed.components)) {
     return false;
   }
 
-  *config = std::move(parsed);
+  config = std::move(parsed);
   return true;
 }
 

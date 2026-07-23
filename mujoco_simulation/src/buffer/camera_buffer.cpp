@@ -7,15 +7,12 @@ void CameraBuffer::write(std::string camera_name, CameraState state) {
   states_[std::string(camera_name)] = std::make_shared<const CameraState>(std::move(state));
 }
 
-bool CameraBuffer::read(std::string camera_name, CameraState* out) const {
-  if (out == nullptr) {
-    return false;
-  }
+bool CameraBuffer::read(std::string camera_name, CameraState& out) const {
   std::shared_ptr<const CameraState> state = read_shared(camera_name);
   if (state == nullptr) {
     return false;
   }
-  *out = *state;
+  out = *state;
   return true;
 }
 

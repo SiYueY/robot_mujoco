@@ -186,7 +186,7 @@ TEST_F(CameraRuntimeTest, CameraRemainsUsableWithViewerAndAfterViewerStops) {
   std::this_thread::sleep_for(100ms);
 
   CameraState running_state;
-  ASSERT_TRUE(simulation.read_state("front_camera", &running_state));
+  ASSERT_TRUE(simulation.read_state("front_camera", running_state));
   EXPECT_EQ(running_state.image.width, 160U);
   EXPECT_GT(running_state.image.data.size(), 0U);
 
@@ -197,7 +197,7 @@ TEST_F(CameraRuntimeTest, CameraRemainsUsableWithViewerAndAfterViewerStops) {
   ASSERT_TRUE(simulation.stop());
 
   CameraState stopped_state;
-  ASSERT_TRUE(simulation.read_state("front_camera", &stopped_state));
+  ASSERT_TRUE(simulation.read_state("front_camera", stopped_state));
   EXPECT_EQ(stopped_state.image.width, 160U);
   EXPECT_GE(stopped_state.image.timestamp, running_state.image.timestamp);
 }
@@ -232,8 +232,8 @@ TEST_F(CameraRuntimeTest, StartRecreatesViewerAfterStopOnSameSimulationInstance)
   ASSERT_TRUE(simulation.start());
   std::this_thread::sleep_for(100ms);
 
-  std::shared_ptr<const RobotState> first_running_snapshot = simulation.robot_state();
-  ASSERT_NE(first_running_snapshot, nullptr);
+  std::shared_ptr<const RobotState> first_running_snapshot;
+  ASSERT_TRUE(simulation.read_state(first_running_snapshot));
   ASSERT_GT(first_running_snapshot->step, 0U);
 
   ASSERT_TRUE(simulation.stop());
@@ -246,8 +246,8 @@ TEST_F(CameraRuntimeTest, StartRecreatesViewerAfterStopOnSameSimulationInstance)
   std::shared_ptr<const RobotState> restarted_snapshot;
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (std::chrono::steady_clock::now() < deadline) {
-    restarted_snapshot = simulation.robot_state();
-    if (restarted_snapshot != nullptr && restarted_snapshot->step > first_running_snapshot->step) {
+    if (simulation.read_state(restarted_snapshot) &&
+        restarted_snapshot->step > first_running_snapshot->step) {
       break;
     }
     std::this_thread::sleep_for(20ms);
@@ -257,7 +257,7 @@ TEST_F(CameraRuntimeTest, StartRecreatesViewerAfterStopOnSameSimulationInstance)
   EXPECT_GT(restarted_snapshot->step, first_running_snapshot->step);
 
   CameraState restarted_state;
-  ASSERT_TRUE(simulation.read_state("front_camera", &restarted_state));
+  ASSERT_TRUE(simulation.read_state("front_camera", restarted_state));
   EXPECT_EQ(restarted_state.image.width, 160U);
   EXPECT_GT(restarted_state.image.data.size(), 0U);
 
@@ -335,9 +335,9 @@ TEST_F(CameraRuntimeTest, HeadlessAndViewerCameraStatesRemainSemanticallyConsist
   }
 
   CameraState headless_state;
-  ASSERT_TRUE(headless.read_state("front_camera", &headless_state));
+  ASSERT_TRUE(headless.read_state("front_camera", headless_state));
   CameraState viewer_state;
-  ASSERT_TRUE(viewer.read_state("front_camera", &viewer_state));
+  ASSERT_TRUE(viewer.read_state("front_camera", viewer_state));
 
   EXPECT_FALSE(headless_state.image.data.empty());
   EXPECT_FALSE(viewer_state.image.data.empty());
@@ -388,8 +388,8 @@ TEST_F(CameraRuntimeTest, LowViewerRateDoesNotBlockPhysicsProgress) {
   std::shared_ptr<const RobotState> snapshot;
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (std::chrono::steady_clock::now() < deadline) {
-    snapshot = simulation.robot_state();
-    if (snapshot != nullptr && snapshot->step > 50U && snapshot->simulation_time > 0.05) {
+    if (simulation.read_state(snapshot) && snapshot->step > 50U &&
+        snapshot->simulation_time > 0.05) {
       break;
     }
     std::this_thread::sleep_for(20ms);
@@ -435,7 +435,7 @@ TEST_F(CameraRuntimeTest, ConcurrentCameraReadsRemainSafeDuringStepping) {
     std::uint64_t last_timestamp = 0;
     for (int iteration = 0; iteration < 100; ++iteration) {
       CameraState state;
-      if (!simulation.read_state("front_camera", &state)) {
+      if (!simulation.read_state("front_camera", state)) {
         ++failures;
         continue;
       }

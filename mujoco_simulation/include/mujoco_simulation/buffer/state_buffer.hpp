@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 
-#include "mujoco_simulation/buffer/robot_state.hpp"
+#include "mujoco_simulation/data/robot_state.hpp"
 
 namespace mujoco_simulation {
 
@@ -13,13 +13,13 @@ class StateBuffer {
 
   std::shared_ptr<const RobotState> read() const;
 
-  bool read_joint_state(std::string name, JointState* out) const;
+  bool read_joint_state(std::string name, JointState& out) const;
 
-  bool read_mobile_base_state(std::string name, MobileBaseState* out) const;
+  bool read_mobile_base_state(std::string name, MobileBaseState& out) const;
 
-  bool read_imu_state(std::string name, ImuState* out) const;
+  bool read_imu_state(std::string name, ImuState& out) const;
 
-  bool read_lidar_state(std::string name, LidarState* out) const;
+  bool read_lidar_state(std::string name, LidarState& out) const;
 
   void clear();
 

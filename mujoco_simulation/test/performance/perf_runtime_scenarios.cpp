@@ -94,8 +94,8 @@ int run_scheduler_1khz(std::uint64_t target_steps) {
   std::uint64_t last_step = 0;
 
   while (last_step < target_steps) {
-    const auto snapshot = simulation.robot_state();
-    if (snapshot != nullptr && snapshot->step > last_step) {
+    std::shared_ptr<const RobotState> snapshot;
+    if (simulation.read_state(snapshot) && snapshot->step > last_step) {
       const auto now = Clock::now();
       if (!first_wall.has_value()) {
         first_wall = now;
@@ -183,7 +183,7 @@ int run_headless_camera(std::uint64_t total_steps) {
   while (simulation.step() < total_steps) {
     const auto before_step = Clock::now();
     CameraState state;
-    if (!simulation.read_state("front_camera", &state)) {
+    if (!simulation.read_state("front_camera", state)) {
       std::cerr << "camera_state failed\n";
       return 1;
     }

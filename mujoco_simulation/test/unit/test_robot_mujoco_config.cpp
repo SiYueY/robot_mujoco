@@ -74,7 +74,7 @@ TEST_F(RobotMujocoConfigTest, LoadsMinimalJointConfiguration) {
          </robot_mujoco>)");
 
   SimulationConfig config;
-  ASSERT_TRUE(parser.load_file(config_path.string(), &config));
+  ASSERT_TRUE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path,
             (config_path.parent_path() / "robot.xml").lexically_normal().string());
   ASSERT_EQ(config.components.size(), 1U);
@@ -108,7 +108,7 @@ TEST_F(RobotMujocoConfigTest, ResolvesRelativeMjcfPathFromConfigDirectory) {
   output.close();
 
   SimulationConfig config;
-  ASSERT_TRUE(parser.load_file(config_path.string(), &config));
+  ASSERT_TRUE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path,
             (nested_dir / "../models/robot.xml").lexically_normal().string());
 }
@@ -127,7 +127,7 @@ TEST_F(RobotMujocoConfigTest, LoadsMultipleJointsIntoComponentList) {
          </robot_mujoco>)");
 
   SimulationConfig config;
-  ASSERT_TRUE(parser.load_file(config_path.string(), &config));
+  ASSERT_TRUE(parser.load_file(config_path.string(), config));
   ASSERT_EQ(config.components.size(), 2U);
   EXPECT_EQ(require_joint(config.components[0]).joint_name, "joint_a");
   EXPECT_EQ(require_joint(config.components[1]).joint_name, "joint_b");
@@ -141,7 +141,7 @@ TEST_F(RobotMujocoConfigTest, RejectsMissingRootElement) {
 
   SimulationConfig config = sentinel_config();
   const SimulationConfig before = config;
-  EXPECT_FALSE(parser.load_file(config_path.string(), &config));
+  EXPECT_FALSE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path, before.model.model_path);
   EXPECT_EQ(config.components.size(), before.components.size());
 }
@@ -153,7 +153,7 @@ TEST_F(RobotMujocoConfigTest, RejectsMissingMjcf) {
 
   SimulationConfig config = sentinel_config();
   const SimulationConfig before = config;
-  EXPECT_FALSE(parser.load_file(config_path.string(), &config));
+  EXPECT_FALSE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path, before.model.model_path);
   EXPECT_EQ(config.components.size(), before.components.size());
 }
@@ -168,7 +168,7 @@ TEST_F(RobotMujocoConfigTest, RejectsJointWithoutName) {
 
   SimulationConfig config = sentinel_config();
   const SimulationConfig before = config;
-  EXPECT_FALSE(parser.load_file(config_path.string(), &config));
+  EXPECT_FALSE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path, before.model.model_path);
   EXPECT_EQ(config.components.size(), before.components.size());
 }
@@ -187,7 +187,7 @@ TEST_F(RobotMujocoConfigTest, RejectsInvalidNumericValue) {
 
   SimulationConfig config = sentinel_config();
   const SimulationConfig before = config;
-  EXPECT_FALSE(parser.load_file(config_path.string(), &config));
+  EXPECT_FALSE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path, before.model.model_path);
   EXPECT_EQ(config.components.size(), before.components.size());
 }
@@ -211,7 +211,7 @@ TEST_F(RobotMujocoConfigTest, RejectsInvalidLimitRange) {
 
   SimulationConfig config = sentinel_config();
   const SimulationConfig before = config;
-  EXPECT_FALSE(parser.load_file(config_path.string(), &config));
+  EXPECT_FALSE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path, before.model.model_path);
   EXPECT_EQ(config.components.size(), before.components.size());
 }
@@ -229,7 +229,7 @@ TEST_F(RobotMujocoConfigTest, RejectsDuplicateJointNames) {
 
   SimulationConfig config = sentinel_config();
   const SimulationConfig before = config;
-  EXPECT_FALSE(parser.load_file(config_path.string(), &config));
+  EXPECT_FALSE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path, before.model.model_path);
   EXPECT_EQ(config.components.size(), before.components.size());
 }
@@ -248,7 +248,7 @@ TEST_F(RobotMujocoConfigTest, RejectsUnknownTag) {
 
   SimulationConfig config = sentinel_config();
   const SimulationConfig before = config;
-  EXPECT_FALSE(parser.load_file(config_path.string(), &config));
+  EXPECT_FALSE(parser.load_file(config_path.string(), config));
   EXPECT_EQ(config.model.model_path, before.model.model_path);
   EXPECT_EQ(config.components.size(), before.components.size());
 }

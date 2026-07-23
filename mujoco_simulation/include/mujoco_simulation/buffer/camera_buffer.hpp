@@ -13,7 +13,7 @@ class CameraBuffer {
  public:
   void write(std::string camera_name, CameraState state);
 
-  bool read(std::string camera_name, CameraState* out) const;
+  bool read(std::string camera_name, CameraState& out) const;
 
   std::shared_ptr<const CameraState> read_shared(std::string camera_name) const;
 

@@ -16,13 +16,13 @@ TEST(CameraBufferTest, WriteReadAndClearStates) {
   buffer.write("camera", state);
 
   CameraState read;
-  ASSERT_TRUE(buffer.read("camera", &read));
+  ASSERT_TRUE(buffer.read("camera", read));
   EXPECT_EQ(read.sequence, 7U);
   EXPECT_EQ(read.timestamp, 1234U);
   EXPECT_EQ(read.frame_id, "camera_link");
 
   buffer.clear();
-  EXPECT_FALSE(buffer.read("camera", &read));
+  EXPECT_FALSE(buffer.read("camera", read));
 }
 
 }  // namespace

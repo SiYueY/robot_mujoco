@@ -7,7 +7,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <thread>
 
@@ -41,6 +40,14 @@ class SimulationViewer {
   bool is_ready() const;
 
  private:
+  enum class ViewerState {
+    Stopped,
+    Starting,
+    Ready,
+    Stopping,
+    Failed,
+  };
+
   using SimulateHandle = std::unique_ptr<mujoco::Simulate, void (*)(mujoco::Simulate*)>;
   using RenderThreadEntry =
       std::function<void(SimulationViewer&, mjModel*, mjData*, const std::string&)>;
@@ -50,6 +57,12 @@ class SimulationViewer {
   static void delete_simulate(mujoco::Simulate* simulate);
   void mark_ready();
   void record_async_failure();
+  void finish_render_thread();
+  void request_stop_locked();
+  void join_render_thread();
+  void cleanup_stopped_state();
+  void stop_impl();
+  void render_thread_main(mjModel* model, mjData* data, std::string displayed_filename);
 
   std::chrono::milliseconds startup_timeout_{5000};
   const mjModel* model_{nullptr};
@@ -61,10 +74,9 @@ class SimulationViewer {
   RenderThreadEntry render_thread_entry_;
   std::thread render_thread_;
   std::condition_variable cv_;
+  mutable std::mutex lifecycle_mutex_;
   mutable std::mutex mutex_;
-  bool ready_{false};
-  bool stop_requested_{false};
-  bool async_failed_{false};
+  ViewerState state_{ViewerState::Stopped};
 };
 
 }  // namespace mujoco_simulation

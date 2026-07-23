@@ -5,8 +5,6 @@
 #include <unordered_map>
 
 #include "mujoco_simulation/buffer/camera_buffer.hpp"
-#include "mujoco_simulation/buffer/robot_command.hpp"
-#include "mujoco_simulation/buffer/robot_state.hpp"
 #include "mujoco_simulation/component/camera/camera_component.hpp"
 #include "mujoco_simulation/component/component_registry.hpp"
 #include "mujoco_simulation/component/imu/imu_component.hpp"
@@ -14,6 +12,8 @@
 #include "mujoco_simulation/component/lidar/lidar_component.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_component.hpp"
 #include "mujoco_simulation/config/simulation_config.hpp"
+#include "mujoco_simulation/data/robot_command.hpp"
+#include "mujoco_simulation/data/robot_state.hpp"
 
 namespace mujoco_simulation {
 

@@ -27,29 +27,22 @@ struct RobotState {
   ImuStates imus;
   LidarStates lidars;
 
-  bool joint_state(std::string name, JointState* state) const {
-    return lookup(joints, name, state);
+  bool read_state(std::string name, JointState& state) const { return find(joints, name, state); }
+  bool read_state(std::string name, MobileBaseState& state) const {
+    return find(mobile_bases, name, state);
   }
-  bool mobile_base_state(std::string name, MobileBaseState* state) const {
-    return lookup(mobile_bases, name, state);
-  }
-  bool imu_state(std::string name, ImuState* state) const { return lookup(imus, name, state); }
-  bool lidar_state(std::string name, LidarState* state) const {
-    return lookup(lidars, name, state);
-  }
+  bool read_state(std::string name, ImuState& state) const { return find(imus, name, state); }
+  bool read_state(std::string name, LidarState& state) const { return find(lidars, name, state); }
 
  private:
   template <typename T>
-  static bool lookup(const std::unordered_map<std::string, T>& values, const std::string& name,
-                     T* state) {
-    if (state == nullptr) {
+  static bool find(const std::unordered_map<std::string, T>& states, const std::string& name,
+                   T& state) {
+    const auto it = states.find(name);
+    if (it == states.end()) {
       return false;
     }
-    const auto it = values.find(name);
-    if (it == values.end()) {
-      return false;
-    }
-    *state = it->second;
+    state = it->second;
     return true;
   }
 };

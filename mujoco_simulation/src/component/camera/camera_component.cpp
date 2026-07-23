@@ -142,8 +142,7 @@ bool CameraComponent::update(const mjContext& context) {
   const std::uint64_t timestamp =
       context.data->time <= 0.0 ? 0 : static_cast<std::uint64_t>(context.data->time * 1.0e9);
   std::shared_ptr<const CameraRenderState> rendered;
-  if (!camera_renderer_->render(*context.model, config_, ++sample_sequence_, timestamp,
-                                &rendered)) {
+  if (!camera_renderer_->render(*context.model, config_, ++sample_sequence_, timestamp, rendered)) {
     LOG_ERROR << "camera render failed.";
     return false;
   }

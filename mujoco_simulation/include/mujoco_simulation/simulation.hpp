@@ -21,6 +21,8 @@
 #include "mujoco_simulation/component/lidar/lidar_data.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 #include "mujoco_simulation/config/simulation_config.hpp"
+#include "mujoco_simulation/data/robot_command.hpp"
+#include "mujoco_simulation/data/robot_state.hpp"
 #include "mujoco_simulation/result_code.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
 
@@ -52,17 +54,19 @@ class Simulation {
 
   bool write_command(std::string name, const JointCommand &command);
   bool write_command(std::string name, const MobileBaseCommand &command);
+  bool write_command(const RobotCommand &command);
 
-  bool read_state(std::string name, JointState *state) const;
-  bool read_state(std::string name, ImuState *state) const;
-  bool read_state(std::string name, CameraState *state) const;
-  bool read_state(std::string name, LidarState *state) const;
-  bool read_state(std::string name, MobileBaseState *state) const;
+  bool read_state(std::shared_ptr<const RobotState> &state) const;
+  bool read_state(RobotState &state) const;
+  bool read_state(std::string name, JointState &state) const;
+  bool read_state(std::string name, ImuState &state) const;
+  bool read_state(std::string name, CameraState &state) const;
+  bool read_state(std::string name, LidarState &state) const;
+  bool read_state(std::string name, MobileBaseState &state) const;
 
   uint64_t step() const;
   SimulationStatus status() const;
   double time() const;
-  std::shared_ptr<const RobotState> robot_state() const;
   void set_snapshot_observer(SnapshotObserver observer);
 
  private:
@@ -72,10 +76,10 @@ class Simulation {
   bool initialize_components();
   bool load_model(const ModelConfig &model_config);
   bool write_state_snapshot();
-  bool write_state_snapshot_locked(std::shared_ptr<const RobotState> *published_snapshot);
+  bool write_state_snapshot_locked(std::shared_ptr<const RobotState> &published_snapshot);
   bool update_components_for_step_locked(std::uint64_t step, double simulation_time);
   bool build_state_snapshot_locked(std::uint64_t step, double simulation_time,
-                                   std::shared_ptr<const RobotState> *published_snapshot);
+                                   std::shared_ptr<const RobotState> &published_snapshot);
   // Scheduler
   bool scheduler_run_task();
   bool scheduler_write_commands();
@@ -84,7 +88,7 @@ class Simulation {
   bool scheduler_sync_viewer_if_due();
   bool start_viewer();
   bool stop_viewer();
-  bool build_state_snapshot(RobotState *snapshot) const;
+  bool build_state_snapshot(RobotState &snapshot) const;
 
   // Configuration
   SimulationConfig config_;
