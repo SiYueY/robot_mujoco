@@ -3,6 +3,7 @@
 #include <array>
 #include <string>
 
+#include "mujoco_simulation/component/component_id.hpp"
 #include "mujoco_simulation/component/mobile_base/mecanum.hpp"
 
 namespace mujoco_simulation {
@@ -28,6 +29,7 @@ struct WheelInfo {
 using MecanumWheelInfo = std::array<WheelInfo, MecanumWheelCount>;
 
 struct MobileBaseInfo {
+  MobileBaseId id{kInvalidComponentId};
   std::string mobile_base_name;
   MobileBaseType type{MobileBaseType::Mecanum};
 
@@ -45,7 +47,6 @@ struct MobileBaseInfo {
 // ROS2 Twist:
 // https://github.com/ros2/common_interfaces/blob/humble/geometry_msgs/msg/Twist.msg
 struct MobileBaseCommand {
-  std::string mobile_base_name;
   MobileBaseControlMode mode{MobileBaseControlMode::Twist};
   Vector3d base_linear{};
   Vector3d base_angular{};
@@ -58,8 +59,7 @@ struct MobileBaseCommand {
 // ROS2 Odometry:
 // https://github.com/ros2/common_interfaces/blob/humble/nav_msgs/msg/Odometry.msg
 struct MobileBaseState {
-  std::string mobile_base_name; // 底盘名称
-  double timestamp{0.0};        // seconds
+  double timestamp{0.0}; // seconds
   // Frame
   std::string odom_frame_id; // 里程计坐标系
   std::string base_frame_id; // 底盘坐标系

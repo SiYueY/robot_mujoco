@@ -103,6 +103,29 @@ bool SimulationScheduler::start() {
   return true;
 }
 
+bool SimulationScheduler::start_paused() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (status_ == SimulationStatus::Uninitialized) {
+    LOG_ERROR << "scheduler is not initialized.";
+    return false;
+  }
+  if (status_ != SimulationStatus::Stopped) {
+    LOG_ERROR << "scheduler is not stopped.";
+    return false;
+  }
+
+  stop_requested_ = false;
+  status_ = SimulationStatus::Paused;
+  try {
+    worker_thread_ = std::thread([this]() { worker_loop(); });
+  } catch (const std::exception &) {
+    status_ = SimulationStatus::Stopped;
+    LOG_ERROR << "failed to start paused scheduler thread.";
+    return false;
+  }
+  return true;
+}
+
 bool SimulationScheduler::stop() {
   {
     std::lock_guard<std::mutex> lock(mutex_);

@@ -39,7 +39,6 @@ bool MobileBaseComponent::init(const mjContext &context) {
 
   command_ = {};
   working_state_ = {};
-  working_state_.mobile_base_name = info_.mobile_base_name;
   working_state_.base_frame_id = info_.base_frame_id;
   working_state_.odom_frame_id = info_.odom_frame_id;
   state_ = std::make_shared<MobileBaseState>(working_state_);
@@ -102,12 +101,6 @@ bool MobileBaseComponent::write(const mjContext &context,
   if (!is_initialized()) {
     LOG_ERROR << "mobile base '" << info_.mobile_base_name
               << "' is not initialized.";
-    return false;
-  }
-  if (command.mobile_base_name != info_.mobile_base_name) {
-    LOG_ERROR << "mobile base '" << info_.mobile_base_name
-              << "' received a command for '" << command.mobile_base_name
-              << "'.";
     return false;
   }
 

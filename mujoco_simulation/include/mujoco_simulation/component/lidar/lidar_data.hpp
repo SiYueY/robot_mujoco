@@ -4,9 +4,12 @@
 #include <string>
 #include <vector>
 
+#include "mujoco_simulation/component/component_id.hpp"
+
 namespace mujoco_simulation {
 
 struct LidarInfo {
+  LidarId id{kInvalidComponentId};
   std::string name;
   std::string frame_id;
   double update_rate{10.0};

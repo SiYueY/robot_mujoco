@@ -5,10 +5,12 @@
 #include <vector>
 
 #include "mujoco_simulation/common/math.hpp"
+#include "mujoco_simulation/component/component_id.hpp"
 
 namespace mujoco_simulation {
 
 struct CameraConfig {
+  CameraId id{kInvalidComponentId};
   std::string name;
   std::string frame_id;
   double update_rate{30.0};

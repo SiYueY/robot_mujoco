@@ -51,6 +51,8 @@ public:
 
   bool write_command(std::string name, const JointCommand &command);
   bool write_command(std::string name, const MobileBaseCommand &command);
+  bool write_command(JointId id, const JointCommand &command);
+  bool write_command(MobileBaseId id, const MobileBaseCommand &command);
   bool write_command(const RobotCommand &command);
 
   bool read_state(std::shared_ptr<const RobotState> &state) const;
@@ -60,6 +62,16 @@ public:
   bool read_state(std::string name, CameraState &state) const;
   bool read_state(std::string name, LidarState &state) const;
   bool read_state(std::string name, MobileBaseState &state) const;
+  bool read_state(JointId id, JointState &state) const;
+  bool read_state(ImuId id, ImuState &state) const;
+  bool read_state(CameraId id, CameraState &state) const;
+  bool read_state(LidarId id, LidarState &state) const;
+  bool read_state(MobileBaseId id, MobileBaseState &state) const;
+  bool read_state(JointStates &states) const;
+  bool read_state(ImuStates &states) const;
+  bool read_state(CameraStates &states) const;
+  bool read_state(LidarStates &states) const;
+  bool read_state(MobileBaseStates &states) const;
 
   uint64_t step() const;
   SimulationStatus status() const;

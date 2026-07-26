@@ -88,7 +88,6 @@ set(MUJOCO_SIMULATION_SOURCES
   src/buffer/state_buffer.cpp
   src/component/simulation_component.cpp
   src/component/component_manager.cpp
-  src/component/component_registry.cpp
   src/component/camera/camera_component.cpp
   src/component/imu/imu_component.cpp
   src/component/joint/joint_component.cpp
@@ -117,6 +116,10 @@ endif()
 add_library(mujoco_simulation ${MUJOCO_SIMULATION_LIBRARY_TYPE}
   ${MUJOCO_SIMULATION_SOURCES})
 add_library(mujoco_simulation::mujoco_simulation ALIAS mujoco_simulation)
+
+set_source_files_properties(
+  third_party/easyloggingpp/easylogging++.cc
+  PROPERTIES COMPILE_DEFINITIONS AUTO_INITIALIZE_EASYLOGGINGPP)
 
 set(MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR
   "${CMAKE_CURRENT_BINARY_DIR}/generated")

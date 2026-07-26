@@ -1,8 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 
 #include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
@@ -13,10 +13,9 @@ namespace mujoco_simulation {
 
 class MUJOCO_SIMULATION_PUBLIC CommandBuffer {
 public:
-  bool write_joint_command(std::string component_name,
-                           const JointCommand &command);
+  bool write_joint_command(JointId id, const JointCommand &command);
 
-  bool write_mobile_base_command(std::string component_name,
+  bool write_mobile_base_command(MobileBaseId id,
                                  const MobileBaseCommand &command);
 
   bool write_command(const RobotCommand &command);

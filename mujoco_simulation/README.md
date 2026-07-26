@@ -44,6 +44,8 @@ Simulation
 
 - scheduler worker thread
   - 唯一连续推进 `mjModel / mjData` 的线程
+- camera render worker thread
+  - 只读取物理线程复制的私有 `mjData`，执行离屏渲染和图像转换
 - viewer render thread
   - 只负责被动渲染与 viewer 同步
 - external caller threads
@@ -96,6 +98,8 @@ Simulation
     - 初始化时传入的组件配置入口
   - `bool write_command(std::string, const JointCommand&)`
   - `bool write_command(std::string, const MobileBaseCommand&)`
+  - `bool write_command(JointId, const JointCommand&)`
+  - `bool write_command(MobileBaseId, const MobileBaseCommand&)`
   - `bool write_command(const RobotCommand&)`
   - `bool read_state(std::shared_ptr<const RobotState>&)`
   - `bool read_state(RobotState&)`
@@ -104,6 +108,8 @@ Simulation
   - `bool read_state(std::string, CameraState&)`
   - `bool read_state(std::string, LidarState&)`
   - `bool read_state(std::string, MobileBaseState&)`
+  - 按 `JointId`、`ImuId`、`CameraId`、`LidarId`、`MobileBaseId` 的单组件读取重载
+  - 按组件类型读取完整稀疏状态数组的重载
 - 查询状态
   - `uint64_t step() const`
   - `double time() const`
@@ -146,6 +152,8 @@ Simulation
   - `viewer_update_rate` 为 viewer 同步频率，`Simulation::initialize()` 要求其大于零
 - `components`
   - `JointInfo`、`ImuInfo`、`CameraConfig`、`LidarInfo` 与 `MobileBaseInfo` 的变体列表
+  - 每个组件必须提供类型内唯一的显式 ID；ID 直接作为状态、命令和组件 vector 的下标
+  - 空洞为保留槽位，默认允许范围是 `0..256`；`max_component_id` 可配置
 - `camera_renderer`
   - 离屏渲染资源配置
 - `viewer_startup_timeout`
@@ -154,15 +162,11 @@ Simulation
 此外，`SimulationConfigParser::load_file(const std::string&, SimulationConfig&)`
 提供 `robot_mujoco.xml -> SimulationConfig` 的解析路径：
 
-- 当前只解析：
-  - `<mujoco><mjcf>`
-  - `<robot><joint>`
-  - joint 的 `position` / `velocity` / `limit` 子配置
+- 解析 `<mujoco><mjcf>` 及 `<robot>` 下的 `joint`、`imu`、`camera`、`lidar`、`mobile_base`。
+- 所有组件 XML 元素都必须包含 `id` 与 `name` 属性；根元素可设置
+  `max_component_id`。
 - `<mjcf>` 相对路径相对 `robot_mujoco.xml` 所在目录解析
-- 当前不解析：
-  - `initial_keyframe`
-  - `viewer_update_rate`
-  - imu / camera / lidar / mobile base
+- `initial_keyframe` 与 `viewer_update_rate` 仍通过 C++ `SimulationConfig` 配置。
 
 `Simulation` 初始化时启动 viewer，并以独立频率同步显示；Camera 不依赖 viewer 的渲染
 资源。`stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会自动重建
@@ -182,7 +186,7 @@ runtime、清空旧命令、复位并立即更新组件采样、重置 step/sequ
 | --- | --- | --- |
 | `Joint` | 单关节状态/命令读写 | 主要面向 1-DoF joint，支持 position / velocity / effort 命令语义 |
 | `Imu` | 组合多个 MuJoCo sensor 输出 IMU 状态 | 只读，依赖 `framequat` / `gyro` / `accelerometer` |
-| `Camera` | 从渲染管线读取 RGB / depth 图像 | 通过统一的 `SimulationComponent` 调度，渲染资源独立于 Viewer |
+| `Camera` | 从渲染管线读取 RGB / depth 图像 | latest-only 异步离屏渲染，资源独立于 Viewer |
 | `Lidar` | 由 `rangefinder` 传感器阵列拼装 `LaserScan` | 依赖 `<prefix>-<index>` 命名约定 |
 | `MobileBase` | 底盘运动学封装 | 当前支持四轮 mecanum |
 
@@ -190,6 +194,8 @@ runtime、清空旧命令、复位并立即更新组件采样、重置 step/sequ
 
 - `Camera` 当前支持独立的离屏渲染
   - camera 读取不依赖 viewer 显示
+  - physics 线程只复制相机快照；OpenGL 渲染和像素读取由专属 worker 执行
+  - `RobotState` 可保留上一有效图像，Camera sequence 允许相对 physics sequence 跳跃
 - `Joint` 当前是单关节、单标量接口
   - 不适合直接承载 `ball` / `free` 这类多自由度 joint
 - `Lidar` 当前输出的是 `LaserScan`

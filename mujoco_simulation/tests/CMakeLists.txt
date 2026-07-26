@@ -1,1 +1,8 @@
-# Tests will be added here.
+add_executable(mujoco_simulation_camera_renderer_async_test
+  camera_renderer_async_test.cpp)
+target_link_libraries(mujoco_simulation_camera_renderer_async_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+
+add_test(
+  NAME mujoco_simulation.camera_renderer_async
+  COMMAND mujoco_simulation_camera_renderer_async_test)

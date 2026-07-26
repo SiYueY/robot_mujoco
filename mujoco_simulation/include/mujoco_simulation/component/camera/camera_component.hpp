@@ -18,11 +18,13 @@ public:
   bool init(const mjContext &context) override;
   bool reset(const mjContext &context) override;
   bool update(const mjContext &context) override;
-  bool configure_rendering(CameraRenderer &renderer);
-  bool prepare_rendering(const mjContext &context);
+  CameraRenderTask make_render_task(std::uint64_t timestamp);
+  bool apply_render_result(const CameraRenderStatePtr &state);
+  void clear_render_state() noexcept;
   bool read_state(std::shared_ptr<const CameraState> &state) const;
 
   const CameraConfig &config() const noexcept { return config_; }
+  const CameraConfig &info() const noexcept { return config_; }
 
 public:
   using SharedPtr = std::shared_ptr<CameraComponent>;
@@ -30,15 +32,10 @@ public:
   using WeakPtr = std::weak_ptr<CameraComponent>;
 
 private:
-  static CameraRenderIntrinsics compute_intrinsics(double fovy_degrees,
-                                                   std::uint32_t width,
-                                                   std::uint32_t height);
-
   CameraConfig config_;
   int camera_id_{-1};
-  double fovy_degrees_{0.0};
   std::uint64_t sample_sequence_{0};
-  CameraRenderer *camera_renderer_{nullptr};
+  std::uint64_t last_applied_sequence_{0};
   std::shared_ptr<const CameraState> state_;
 };
 

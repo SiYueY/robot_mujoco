@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <string>
 
 #include "mujoco_simulation/data/robot_state.hpp"
 #include "mujoco_simulation/visibility.hpp"
@@ -14,15 +13,15 @@ public:
 
   std::shared_ptr<const RobotState> read() const;
 
-  bool read_joint_state(std::string name, JointState &out) const;
+  bool read_joint_state(JointId id, JointState &out) const;
 
-  bool read_mobile_base_state(std::string name, MobileBaseState &out) const;
+  bool read_mobile_base_state(MobileBaseId id, MobileBaseState &out) const;
 
-  bool read_imu_state(std::string name, ImuState &out) const;
+  bool read_imu_state(ImuId id, ImuState &out) const;
 
-  bool read_camera_state(std::string name, CameraState &out) const;
+  bool read_camera_state(CameraId id, CameraState &out) const;
 
-  bool read_lidar_state(std::string name, LidarState &out) const;
+  bool read_lidar_state(LidarId id, LidarState &out) const;
 
   void clear();
 

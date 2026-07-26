@@ -4,10 +4,12 @@
 #include <string>
 
 #include "mujoco_simulation/common/math.hpp"
+#include "mujoco_simulation/component/component_id.hpp"
 
 namespace mujoco_simulation {
 
 struct ImuInfo {
+  ImuId id{kInvalidComponentId};
   std::string name;
   std::string frame_id;
 

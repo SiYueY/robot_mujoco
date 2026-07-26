@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <limits>
-#include <mutex>
 #include <utility>
 
 #include "common/logging.hpp"
@@ -43,14 +43,12 @@ bool pixel_count_for(int width, int height, std::size_t &pixel_count) {
   if (width <= 0 || height <= 0) {
     return false;
   }
-
   const auto unsigned_width = static_cast<std::size_t>(width);
   const auto unsigned_height = static_cast<std::size_t>(height);
   if (unsigned_width >
       std::numeric_limits<std::size_t>::max() / unsigned_height) {
     return false;
   }
-
   pixel_count = unsigned_width * unsigned_height;
   return true;
 }
@@ -64,7 +62,7 @@ CameraRenderer::CameraRenderer(CameraRendererConfig config) : config_(config) {}
 CameraRenderer::~CameraRenderer() { UNUSED(release()); }
 
 bool CameraRenderer::initialize(const mjContext &context) {
-  if (initialized_) {
+  if (initialized_.load()) {
     return true;
   }
   if (!context.valid()) {
@@ -75,81 +73,317 @@ bool CameraRenderer::initialize(const mjContext &context) {
     LOG_ERROR << "max_scene_geometries must be positive.";
     return false;
   }
-  if (!create_context()) {
+
+  model_ = context.model;
+  pending_data_ = mj_makeData(model_);
+  render_data_ = mj_makeData(model_);
+  if (pending_data_ == nullptr || render_data_ == nullptr) {
+    LOG_ERROR << "failed to allocate camera render data buffers.";
+    UNUSED(release());
     return false;
   }
 
-  bool succeeded = false;
-  if (activate_context()) {
-    {
-      const ScopeExit deactivate([this] { deactivate_context(); });
-      succeeded = create_render_resources(context);
-    }
+  {
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    pending_tasks_.clear();
+    pending_ready_ = false;
+    pending_ticket_ = 0;
+    submitted_ticket_ = 0;
+    completed_ticket_ = 0;
+    completed_success_ = false;
+    worker_ready_ = false;
+    worker_initialization_failed_ = false;
+    stopping_ = false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(result_mutex_);
+    latest_results_.reset();
   }
 
-  if (!succeeded) {
+  try {
+    worker_thread_ = std::thread(&CameraRenderer::worker_loop, this);
+  } catch (const std::exception &) {
+    LOG_ERROR << "failed to start the camera render worker.";
     UNUSED(release());
+    return false;
   }
-  return succeeded;
+
+  std::unique_lock<std::mutex> lock(job_mutex_);
+  const bool worker_reported =
+      completion_condition_.wait_for(lock, kWorkerTimeout, [this] {
+        return worker_ready_ || worker_initialization_failed_;
+      });
+  if (!worker_reported || worker_initialization_failed_) {
+    LOG_ERROR << "camera render worker initialization timed out or failed.";
+    lock.unlock();
+    UNUSED(release());
+    return false;
+  }
+  initialized_.store(true);
+  return true;
+}
+
+bool CameraRenderer::submit(const mjContext &context,
+                            std::vector<CameraRenderTask> tasks) {
+  if (tasks.empty()) {
+    return true;
+  }
+  if (!context.valid()) {
+    LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
+    return false;
+  }
+  if (!initialized_.load() || !running_.load()) {
+    LOG_ERROR << "camera renderer is not initialized.";
+    return false;
+  }
+  for (const CameraRenderTask &task : tasks) {
+    if (task.config.id == kInvalidComponentId) {
+      LOG_ERROR << "camera render task id is invalid.";
+      return false;
+    }
+  }
+  {
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    if (stopping_ || pending_data_ == nullptr) {
+      LOG_WARNING << "camera renderer is stopping; dropped render request.";
+      return false;
+    }
+    if (mj_copyData(pending_data_, context.model, context.data) == nullptr) {
+      LOG_ERROR
+          << "failed to copy MuJoCo simulation data for camera rendering.";
+      return false;
+    }
+    pending_tasks_ = std::move(tasks);
+    pending_ticket_ = ++submitted_ticket_;
+    pending_ready_ = true;
+  }
+  job_condition_.notify_one();
+  return true;
+}
+
+bool CameraRenderer::read_results(CameraRenderStates &states) const {
+  std::lock_guard<std::mutex> lock(result_mutex_);
+  states = latest_results_;
+  return states != nullptr;
+}
+
+bool CameraRenderer::wait_for_submitted_results() {
+  std::unique_lock<std::mutex> lock(job_mutex_);
+  const std::uint64_t ticket = submitted_ticket_;
+  if (ticket == 0) {
+    return true;
+  }
+  const bool completed =
+      completion_condition_.wait_for(lock, kWorkerTimeout, [this, ticket] {
+        return stopping_ || completed_ticket_ >= ticket ||
+               worker_initialization_failed_;
+      });
+  if (!completed || stopping_ || worker_initialization_failed_ ||
+      completed_ticket_ < ticket) {
+    LOG_ERROR << "camera render worker did not complete the submitted frame.";
+    return false;
+  }
+  if (!completed_success_) {
+    LOG_ERROR << "camera render worker failed to render the submitted frame.";
+    return false;
+  }
+  return true;
 }
 
 bool CameraRenderer::release() {
-  const bool has_context = gl_context_.backend != OffscreenGlBackend::None;
-  const bool context_is_active = has_context && activate_context();
-  if ((initialized_ || render_data_ != nullptr) && !context_is_active) {
-    LOG_ERROR << "failed to activate offscreen context during release.";
+  {
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    stopping_ = true;
+    pending_ready_ = false;
+    pending_tasks_.clear();
+  }
+  job_condition_.notify_all();
+  completion_condition_.notify_all();
+
+  if (worker_thread_.joinable()) {
+    if (worker_thread_.get_id() == std::this_thread::get_id()) {
+      LOG_ERROR << "camera render worker cannot join itself.";
+      return false;
+    }
+    worker_thread_.join();
   }
 
+  if (pending_data_ != nullptr) {
+    mj_deleteData(pending_data_);
+    pending_data_ = nullptr;
+  }
+  if (render_data_ != nullptr) {
+    mj_deleteData(render_data_);
+    render_data_ = nullptr;
+  }
+  {
+    std::lock_guard<std::mutex> lock(result_mutex_);
+    latest_results_.reset();
+  }
+  {
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    pending_tasks_.clear();
+    pending_ready_ = false;
+    pending_ticket_ = 0;
+    submitted_ticket_ = 0;
+    completed_ticket_ = 0;
+    completed_success_ = false;
+    worker_ready_ = false;
+    worker_initialization_failed_ = false;
+    stopping_ = false;
+  }
+  model_ = nullptr;
+  initialized_.store(false);
+  running_.store(false);
+  return true;
+}
+
+void CameraRenderer::worker_loop() {
+  bool resources_ready = false;
+  try {
+    resources_ready = initialize_worker_resources();
+  } catch (const std::exception &) {
+    LOG_ERROR << "camera render worker threw during initialization.";
+  } catch (...) {
+    LOG_ERROR << "camera render worker threw an unknown initialization error.";
+  }
+  running_.store(resources_ready);
+  {
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    worker_ready_ = resources_ready;
+    worker_initialization_failed_ = !resources_ready;
+  }
+  completion_condition_.notify_all();
+  if (!resources_ready) {
+    return;
+  }
+
+  try {
+    while (true) {
+      std::vector<CameraRenderTask> tasks;
+      std::uint64_t ticket = 0;
+      {
+        std::unique_lock<std::mutex> lock(job_mutex_);
+        job_condition_.wait(lock,
+                            [this] { return stopping_ || pending_ready_; });
+        if (stopping_) {
+          break;
+        }
+        std::swap(render_data_, pending_data_);
+        tasks = std::move(pending_tasks_);
+        pending_tasks_.clear();
+        ticket = pending_ticket_;
+        pending_ready_ = false;
+      }
+
+      auto updates = std::make_shared<std::vector<CameraRenderStatePtr>>();
+      std::size_t completed_tasks = 0;
+      bool succeeded = activate_context();
+      if (!succeeded) {
+        LOG_ERROR << "failed to activate the camera render context.";
+      }
+      if (succeeded) {
+        const ScopeExit deactivate([this] { deactivate_context(); });
+        for (const CameraRenderTask &task : tasks) {
+          CameraRenderStatePtr state;
+          if (!render_task(task, state)) {
+            succeeded = false;
+            LOG_WARNING
+                << "camera render request failed; keeping the prior frame.";
+            continue;
+          }
+          if (updates->size() <= task.config.id) {
+            updates->resize(task.config.id + 1U);
+          }
+          (*updates)[task.config.id] = std::move(state);
+          ++completed_tasks;
+        }
+      }
+
+      if (!updates->empty()) {
+        std::lock_guard<std::mutex> lock(result_mutex_);
+        auto next = std::make_shared<std::vector<CameraRenderStatePtr>>(
+            latest_results_ == nullptr ? 0U : latest_results_->size());
+        if (latest_results_ != nullptr) {
+          *next = *latest_results_;
+        }
+        if (next->size() < updates->size()) {
+          next->resize(updates->size());
+        }
+        for (CameraId id = 0; id < updates->size(); ++id) {
+          if ((*updates)[id] != nullptr) {
+            (*next)[id] = std::move((*updates)[id]);
+          }
+        }
+        latest_results_ =
+            std::static_pointer_cast<const std::vector<CameraRenderStatePtr>>(
+                next);
+      }
+      {
+        std::lock_guard<std::mutex> lock(job_mutex_);
+        completed_ticket_ = ticket;
+        completed_success_ = succeeded && completed_tasks == tasks.size();
+      }
+      completion_condition_.notify_all();
+    }
+  } catch (const std::exception &) {
+    LOG_ERROR << "camera render worker threw while rendering.";
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    worker_initialization_failed_ = true;
+    stopping_ = true;
+  } catch (...) {
+    LOG_ERROR << "camera render worker threw an unknown rendering error.";
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    worker_initialization_failed_ = true;
+    stopping_ = true;
+  }
+
+  release_worker_resources();
+  running_.store(false);
+  completion_condition_.notify_all();
+}
+
+bool CameraRenderer::initialize_worker_resources() {
+  if (!create_context()) {
+    return false;
+  }
+  if (!activate_context()) {
+    destroy_context();
+    return false;
+  }
+  const ScopeExit deactivate([this] { deactivate_context(); });
+  if (!create_render_resources()) {
+    destroy_render_resources();
+    destroy_context();
+    return false;
+  }
+  return true;
+}
+
+void CameraRenderer::release_worker_resources() {
+  const bool context_active =
+      gl_context_.backend != OffscreenGlBackend::None && activate_context();
+  if (!context_active && gl_context_.backend != OffscreenGlBackend::None) {
+    LOG_ERROR << "failed to activate offscreen context during worker release.";
+  }
   destroy_render_resources();
-  if (context_is_active) {
+  if (context_active) {
     deactivate_context();
   }
   destroy_context();
   offscreen_width_ = 0;
   offscreen_height_ = 0;
-  return true;
 }
 
-bool CameraRenderer::copy_simulation_data(const mjContext &context) {
-  if (!context.valid()) {
-    LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
+bool CameraRenderer::render_task(const CameraRenderTask &task,
+                                 CameraRenderStatePtr &out) {
+  const CameraConfig &spec = task.config;
+  if (model_ == nullptr || render_data_ == nullptr) {
+    LOG_ERROR << "camera render resources are not initialized.";
     return false;
   }
-  if (!initialize(context)) {
-    return false;
-  }
-  if (!activate_context()) {
-    return false;
-  }
-  const ScopeExit deactivate([this] { deactivate_context(); });
-
-  if (render_data_ == nullptr ||
-      mj_copyData(render_data_, context.model, context.data) == nullptr) {
-    LOG_ERROR << "failed to copy MuJoCo simulation data.";
-    return false;
-  }
-  return true;
-}
-
-bool CameraRenderer::render(const mjContext &context, const CameraConfig &spec,
-                            std::uint64_t sequence, std::uint64_t timestamp,
-                            std::shared_ptr<const CameraRenderState> &out) {
-  if (!context.valid()) {
-    LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
-    return false;
-  }
-  if (!initialize(context)) {
-    return false;
-  }
-
-  int camera_id = -1;
-  double fovy_degrees = 0.0;
-  if (spec.name.empty()) {
-    LOG_ERROR << "camera component name must not be empty.";
-    return false;
-  }
-  if (spec.camera_name.empty()) {
-    LOG_ERROR << "camera name must not be empty.";
+  if (spec.name.empty() || spec.camera_name.empty()) {
+    LOG_ERROR << "camera component and MuJoCo camera names must not be empty.";
     return false;
   }
   if (spec.width <= 0 || spec.height <= 0) {
@@ -160,26 +394,19 @@ bool CameraRenderer::render(const mjContext &context, const CameraConfig &spec,
     LOG_ERROR << "camera must enable rgb or depth output.";
     return false;
   }
-  camera_id = mj_name2id(context.model, mjOBJ_CAMERA, spec.camera_name.c_str());
+  const int camera_id =
+      mj_name2id(model_, mjOBJ_CAMERA, spec.camera_name.c_str());
   if (camera_id < 0) {
     LOG_ERROR << "camera was not found in model.";
     return false;
   }
-  fovy_degrees = static_cast<double>(context.model->cam_fovy[camera_id]);
+  const double fovy_degrees = static_cast<double>(model_->cam_fovy[camera_id]);
   if (!std::isfinite(fovy_degrees) || fovy_degrees <= 0.0 ||
       fovy_degrees >= 180.0) {
     LOG_ERROR << "camera field of view must be in the range (0, 180) degrees.";
     return false;
   }
-  if (!activate_context()) {
-    return false;
-  }
-  const ScopeExit deactivate([this] { deactivate_context(); });
   if (!resize_offscreen_buffer(spec.width, spec.height)) {
-    return false;
-  }
-  if (render_data_ == nullptr) {
-    LOG_ERROR << "render data is not initialized.";
     return false;
   }
 
@@ -192,20 +419,18 @@ bool CameraRenderer::render(const mjContext &context, const CameraConfig &spec,
   }
 
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
-
   mjvCamera camera{};
   mjv_defaultCamera(&camera);
   camera.type = mjCAMERA_FIXED;
   camera.fixedcamid = camera_id;
-
   const mjrRect viewport{0, 0, spec.width, spec.height};
-  mjv_updateScene(context.model, render_data_, &option_, nullptr, &camera,
-                  mjCAT_ALL, &scene_);
+  mjv_updateScene(model_, render_data_, &option_, nullptr, &camera, mjCAT_ALL,
+                  &scene_);
   mjr_render(viewport, &scene_, &render_context_);
 
   auto state = std::make_shared<CameraRenderState>();
-  state->sequence = sequence;
-  state->timestamp = timestamp;
+  state->sequence = task.sequence;
+  state->timestamp = task.timestamp;
   state->frame_id = spec.frame_id.empty() ? spec.name : spec.frame_id;
   state->optical_frame_id =
       spec.optical_frame_id.empty() ? state->frame_id : spec.optical_frame_id;
@@ -217,7 +442,6 @@ bool CameraRenderer::render(const mjContext &context, const CameraConfig &spec,
   std::vector<float> depth_buffer;
   unsigned char *rgb_ptr = nullptr;
   float *depth_ptr = nullptr;
-
   if (spec.enable_rgb) {
     rgb_buffer.assign(pixel_count * kColorChannelCount, 0U);
     rgb_ptr = rgb_buffer.data();
@@ -237,17 +461,15 @@ bool CameraRenderer::render(const mjContext &context, const CameraConfig &spec,
     transform_rgb(rgb_buffer, state->color.width, state->color.height,
                   state->color.data);
   }
-
   if (spec.enable_depth) {
     state->depth.width = static_cast<std::uint32_t>(spec.width);
     state->depth.height = static_cast<std::uint32_t>(spec.height);
     state->depth.data.resize(depth_buffer.size());
-    if (!transform_depth(context, depth_buffer, state->depth.width,
-                         state->depth.height, state->depth.data)) {
+    if (!transform_depth(depth_buffer, state->depth.width, state->depth.height,
+                         state->depth.data)) {
       return false;
     }
   }
-
   out = std::static_pointer_cast<const CameraRenderState>(state);
   return true;
 }
@@ -256,11 +478,9 @@ bool CameraRenderer::create_context() {
   if (gl_context_.backend != OffscreenGlBackend::None) {
     return true;
   }
-
   if (config_.allow_glfw_backend && create_glfw_context()) {
     return true;
   }
-
   if (!config_.allow_egl_backend) {
     LOG_ERROR << "no usable offscreen rendering backend is available.";
     return false;
@@ -281,7 +501,6 @@ bool CameraRenderer::create_glfw_context() {
       glfw_initialized = true;
     }
   }
-
   glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
   glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
   gl_context_.window = glfwCreateWindow(
@@ -304,16 +523,11 @@ bool CameraRenderer::activate_context() {
       gl_context_.egl_display != EGL_NO_DISPLAY &&
       gl_context_.egl_context != EGL_NO_CONTEXT &&
       gl_context_.egl_surface != EGL_NO_SURFACE) {
-    if (eglMakeCurrent(static_cast<::EGLDisplay>(gl_context_.egl_display),
-                       static_cast<::EGLSurface>(gl_context_.egl_surface),
-                       static_cast<::EGLSurface>(gl_context_.egl_surface),
-                       static_cast<::EGLContext>(gl_context_.egl_context))) {
-      return true;
-    }
-    LOG_ERROR << "failed to activate EGL context.";
-    return false;
+    return eglMakeCurrent(static_cast<::EGLDisplay>(gl_context_.egl_display),
+                          static_cast<::EGLSurface>(gl_context_.egl_surface),
+                          static_cast<::EGLSurface>(gl_context_.egl_surface),
+                          static_cast<::EGLContext>(gl_context_.egl_context));
   }
-
   LOG_ERROR << "offscreen OpenGL context is not available.";
   return false;
 }
@@ -321,30 +535,25 @@ bool CameraRenderer::activate_context() {
 bool CameraRenderer::resize_offscreen_buffer(int width, int height) {
   std::size_t pixel_count = 0;
   if (!pixel_count_for(width, height, pixel_count)) {
-    LOG_ERROR << "offscreen image dimensions must be positive and not overflow "
-                 "pixel capacity.";
+    LOG_ERROR << "offscreen image dimensions must be positive.";
     return false;
   }
-  UNUSED(pixel_count);
   if (width <= offscreen_width_ && height <= offscreen_height_) {
     return true;
   }
-  const int new_width = std::max(offscreen_width_, width);
-  const int new_height = std::max(offscreen_height_, height);
-  mjr_resizeOffscreen(new_width, new_height, &render_context_);
+  mjr_resizeOffscreen(std::max(offscreen_width_, width),
+                      std::max(offscreen_height_, height), &render_context_);
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
-  offscreen_width_ = new_width;
-  offscreen_height_ = new_height;
+  offscreen_width_ = std::max(offscreen_width_, width);
+  offscreen_height_ = std::max(offscreen_height_, height);
   return true;
 }
 
-bool CameraRenderer::create_render_resources(const mjContext &context) {
-  render_data_ = mj_makeData(context.model);
-  if (render_data_ == nullptr) {
-    LOG_ERROR << "failed to allocate render data.";
+bool CameraRenderer::create_render_resources() {
+  if (model_ == nullptr) {
+    LOG_ERROR << "camera renderer model is not available.";
     return false;
   }
-
   mjv_defaultScene(&scene_);
   mjv_defaultOption(&option_);
   mjr_defaultContext(&render_context_);
@@ -352,11 +561,9 @@ bool CameraRenderer::create_render_resources(const mjContext &context) {
   for (int group = 0; group < mjNGROUP; ++group) {
     option_.sitegroup[group] = 0;
   }
-
-  mjv_makeScene(context.model, &scene_, config_.max_scene_geometries);
-  mjr_makeContext(context.model, &render_context_, kFontScale);
+  mjv_makeScene(model_, &scene_, config_.max_scene_geometries);
+  mjr_makeContext(model_, &render_context_, kFontScale);
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
-  initialized_ = true;
   return true;
 }
 
@@ -364,19 +571,15 @@ CameraRenderIntrinsics
 CameraRenderer::compute_intrinsics(double fovy_degrees, std::uint32_t width,
                                    std::uint32_t height) const {
   CameraRenderIntrinsics intrinsics;
-  if (width == 0 || height == 0) {
+  if (width == 0U || height == 0U) {
     return intrinsics;
   }
-
-  const double aspect =
-      static_cast<double>(width) / static_cast<double>(height);
+  const double aspect = static_cast<double>(width) / height;
   const double fovy_radians = fovy_degrees * kPi / 180.0;
-  intrinsics.fy =
-      static_cast<double>(height) / (2.0 * std::tan(fovy_radians / 2.0));
+  intrinsics.fy = height / (2.0 * std::tan(fovy_radians / 2.0));
   const double fovx_radians =
       2.0 * std::atan(aspect * std::tan(fovy_radians / 2.0));
-  intrinsics.fx =
-      static_cast<double>(width) / (2.0 * std::tan(fovx_radians / 2.0));
+  intrinsics.fx = width / (2.0 * std::tan(fovx_radians / 2.0));
   intrinsics.cx = (static_cast<double>(width) - 1.0) / 2.0;
   intrinsics.cy = (static_cast<double>(height) - 1.0) / 2.0;
   intrinsics.k = {intrinsics.fx, 0.0, intrinsics.cx, 0.0, intrinsics.fy,
@@ -399,14 +602,17 @@ void CameraRenderer::transform_rgb(const std::vector<std::uint8_t> &source,
   }
 }
 
-bool CameraRenderer::transform_depth(const mjContext &context,
-                                     const std::vector<float> &source,
+bool CameraRenderer::transform_depth(const std::vector<float> &source,
                                      std::uint32_t width, std::uint32_t height,
                                      std::vector<float> &dest) const {
-  const float near = static_cast<float>(context.model->vis.map.znear *
-                                        context.model->stat.extent);
-  const float far = static_cast<float>(context.model->vis.map.zfar *
-                                       context.model->stat.extent);
+  if (model_ == nullptr) {
+    LOG_ERROR << "camera renderer model is not available.";
+    return false;
+  }
+  const float near =
+      static_cast<float>(model_->vis.map.znear * model_->stat.extent);
+  const float far =
+      static_cast<float>(model_->vis.map.zfar * model_->stat.extent);
   if (!std::isfinite(near) || !std::isfinite(far) || near <= 0.0F ||
       far <= near) {
     LOG_ERROR << "MuJoCo camera depth range must satisfy 0 < near < far.";
@@ -417,7 +623,6 @@ bool CameraRenderer::transform_depth(const mjContext &context,
     LOG_ERROR << "camera depth buffer has an unexpected size.";
     return false;
   }
-
   const float depth_scale = 1.0F - near / far;
   for (std::uint32_t row = 0; row < height; ++row) {
     for (std::uint32_t column = 0; column < width; ++column) {
@@ -447,7 +652,6 @@ bool CameraRenderer::create_egl_context() {
     LOG_ERROR << "failed to acquire EGL display.";
     return false;
   }
-
   EGLint major = 0;
   EGLint minor = 0;
   if (!eglInitialize(static_cast<::EGLDisplay>(gl_context_.egl_display), &major,
@@ -456,7 +660,6 @@ bool CameraRenderer::create_egl_context() {
     destroy_egl_context();
     return false;
   }
-
   const EGLint config_attribs[] = {
       EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT, EGL_RED_SIZE,   kEglColorBits,
       EGL_GREEN_SIZE,      kEglColorBits,   EGL_BLUE_SIZE,  kEglColorBits,
@@ -476,7 +679,6 @@ bool CameraRenderer::create_egl_context() {
     destroy_egl_context();
     return false;
   }
-
   gl_context_.egl_context =
       eglCreateContext(static_cast<::EGLDisplay>(gl_context_.egl_display),
                        egl_config, EGL_NO_CONTEXT, nullptr);
@@ -485,7 +687,6 @@ bool CameraRenderer::create_egl_context() {
     destroy_egl_context();
     return false;
   }
-
   const EGLint pbuffer_attribs[] = {EGL_WIDTH, kHiddenContextWidth, EGL_HEIGHT,
                                     kHiddenContextHeight, EGL_NONE};
   gl_context_.egl_surface = eglCreatePbufferSurface(
@@ -496,7 +697,6 @@ bool CameraRenderer::create_egl_context() {
     destroy_egl_context();
     return false;
   }
-
   gl_context_.backend = OffscreenGlBackend::Egl;
   return true;
 }
@@ -519,15 +719,8 @@ void CameraRenderer::destroy_context() {
 }
 
 void CameraRenderer::destroy_render_resources() {
-  if (initialized_) {
-    mjv_freeScene(&scene_);
-    mjr_freeContext(&render_context_);
-    initialized_ = false;
-  }
-  if (render_data_ != nullptr) {
-    mj_deleteData(render_data_);
-    render_data_ = nullptr;
-  }
+  mjv_freeScene(&scene_);
+  mjr_freeContext(&render_context_);
   mjv_defaultScene(&scene_);
   mjv_defaultOption(&option_);
   mjr_defaultContext(&render_context_);
@@ -544,7 +737,6 @@ void CameraRenderer::destroy_egl_context() {
   if (gl_context_.egl_display == EGL_NO_DISPLAY) {
     return;
   }
-
   const auto display = static_cast<::EGLDisplay>(gl_context_.egl_display);
   UNUSED(
       eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));

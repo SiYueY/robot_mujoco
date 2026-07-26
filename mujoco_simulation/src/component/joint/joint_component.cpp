@@ -166,7 +166,6 @@ bool JointComponent::update(const mjContext &context) {
   }
 
   auto state = std::make_shared<JointState>();
-  state->joint_name = info_.joint_name;
   state->timestamp = context.data->time;
   state->position = context.data->qpos[joint_.qpos_address];
   state->velocity = context.data->qvel[joint_.dof_address];
@@ -180,13 +179,6 @@ bool JointComponent::write(const mjContext &context,
                            const JointCommand &command) {
   if (!is_initialized()) {
     LOG_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
-    return false;
-  }
-
-  if (command.joint_name != info_.joint_name) {
-    LOG_ERROR << "joint '" << info_.joint_name
-              << "' received a command for joint '" << command.joint_name
-              << "'.";
     return false;
   }
 

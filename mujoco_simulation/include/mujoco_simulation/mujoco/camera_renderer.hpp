@@ -2,9 +2,14 @@
 
 #include <mujoco/mujoco.h>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "mujoco_simulation/component/camera/camera_data.hpp"
@@ -77,6 +82,16 @@ struct CameraRenderState {
   CameraRenderIntrinsics intrinsics;
 };
 
+struct CameraRenderTask {
+  CameraConfig config;
+  std::uint64_t sequence{0};
+  std::uint64_t timestamp{0};
+};
+
+using CameraRenderStatePtr = std::shared_ptr<const CameraRenderState>;
+using CameraRenderStates =
+    std::shared_ptr<const std::vector<CameraRenderStatePtr>>;
+
 class MUJOCO_SIMULATION_PUBLIC CameraRenderer {
 public:
   CameraRenderer();
@@ -86,21 +101,28 @@ public:
   CameraRenderer(const CameraRenderer &) = delete;
   CameraRenderer &operator=(const CameraRenderer &) = delete;
 
-  /// 创建 MuJoCo 和 OpenGL 资源；成功后重复调用不执行额外操作。
+  /// 创建双缓冲数据并启动专属渲染线程；成功后重复调用不执行额外操作。
   bool initialize(const mjContext &context);
-  /// 释放全部资源；未初始化时重复调用不执行额外操作。
+  /// 提交最新相机渲染请求；调用方必须在保护主 mjData 时调用。
+  bool submit(const mjContext &context, std::vector<CameraRenderTask> tasks);
+  /// 读取所有相机的最新完成结果。
+  bool read_results(CameraRenderStates &states) const;
+  /// 等待当前已提交批次完成，仅用于初始化和 reset。
+  bool wait_for_submitted_results();
+  /// 停止 worker 并释放全部资源；未初始化时重复调用不执行额外操作。
   bool release();
 
-  /// 复制后续渲染所使用的仿真状态。
-  bool copy_simulation_data(const mjContext &context);
-  /// 渲染一台相机；失败时不修改 out。
-  bool render(const mjContext &context, const CameraConfig &spec,
-              std::uint64_t sequence, std::uint64_t timestamp,
-              std::shared_ptr<const CameraRenderState> &out);
-
-  bool is_initialized() const noexcept { return initialized_; }
+  bool is_initialized() const noexcept { return initialized_.load(); }
+  bool is_running() const noexcept { return running_.load(); }
 
 private:
+  static constexpr auto kWorkerTimeout = std::chrono::seconds(5);
+
+  void worker_loop();
+  bool initialize_worker_resources();
+  void release_worker_resources();
+  bool render_task(const CameraRenderTask &task, CameraRenderStatePtr &out);
+
   bool create_context();
   bool create_glfw_context();
   bool create_egl_context();
@@ -111,7 +133,7 @@ private:
   bool activate_context();
   void deactivate_context();
 
-  bool create_render_resources(const mjContext &context);
+  bool create_render_resources();
   void destroy_render_resources();
   bool resize_offscreen_buffer(int width, int height);
 
@@ -121,16 +143,38 @@ private:
   void transform_rgb(const std::vector<std::uint8_t> &source,
                      std::uint32_t width, std::uint32_t height,
                      std::vector<std::uint8_t> &dest) const;
-  bool transform_depth(const mjContext &context,
-                       const std::vector<float> &source, std::uint32_t width,
+  bool transform_depth(const std::vector<float> &source, std::uint32_t width,
                        std::uint32_t height, std::vector<float> &dest) const;
+
   CameraRendererConfig config_{};
+  const mjModel *model_{nullptr};
+
+  mutable std::mutex job_mutex_;
+  std::condition_variable job_condition_;
+  std::condition_variable completion_condition_;
+  std::vector<CameraRenderTask> pending_tasks_;
+  bool pending_ready_{false};
+  std::uint64_t pending_ticket_{0};
+  std::uint64_t submitted_ticket_{0};
+  std::uint64_t completed_ticket_{0};
+  bool completed_success_{false};
+  bool worker_ready_{false};
+  bool worker_initialization_failed_{false};
+  bool stopping_{false};
+
+  mutable std::mutex result_mutex_;
+  CameraRenderStates latest_results_;
+
+  std::thread worker_thread_;
+  std::atomic<bool> initialized_{false};
+  std::atomic<bool> running_{false};
+
   OffscreenGlContext gl_context_{};
+  mjData *pending_data_{nullptr};
   mjData *render_data_{nullptr};
   mjvScene scene_{};
   mjvOption option_{};
   mjrContext render_context_{};
-  bool initialized_{false};
   int offscreen_width_{0};
   int offscreen_height_{0};
 };

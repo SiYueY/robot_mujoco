@@ -19,6 +19,7 @@ public:
   bool shutdown();
 
   bool start();
+  bool start_paused();
   bool stop();
   bool pause();
   bool resume();

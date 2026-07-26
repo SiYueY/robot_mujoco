@@ -191,11 +191,13 @@ Simulation
 - 公开读取结果统一为 `CameraState`
 - 支持离屏渲染
 - 不依赖 viewer 才能工作
+- 物理线程提交最新 `mjData` 快照，专属 worker 完成 OpenGL 渲染与图像读取
+- worker 落后时仅保留最新待渲染帧；RobotState 保留上一有效 CameraState
 
 当前不处理：
 
 - 畸变、曝光、噪声等高级相机模型
-- 独立异步发布线程
+- 独立的 CameraState 发布接口
 
 ### MobileBase
 

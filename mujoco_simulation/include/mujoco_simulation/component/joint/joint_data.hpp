@@ -2,6 +2,8 @@
 
 #include <limits>
 #include <string>
+
+#include "mujoco_simulation/component/component_id.hpp"
 namespace mujoco_simulation {
 
 // 关节类型
@@ -25,6 +27,7 @@ struct Limit {
 };
 
 struct JointInfo {
+  JointId id{kInvalidComponentId};
   std::string joint_name;                    // 关节名称
   std::string actuator_name;                 // 执行器名称
   JointType joint_type{JointType::Revolute}; // 关节类型
@@ -39,7 +42,6 @@ struct JointInfo {
 
 // 关节指令
 struct JointCommand {
-  std::string joint_name;                          // 关节名称
   JointControlMode mode{JointControlMode::Effort}; // 控制模式
   double position{0.0};                            // 位置
   double velocity{0.0};                            // 速度
@@ -50,7 +52,6 @@ struct JointCommand {
 
 // 关节状态
 struct JointState {
-  std::string joint_name;                          // 关节名称
   double timestamp{0.0};                           // seconds
   JointControlMode mode{JointControlMode::Effort}; // 控制模式
   double position{0.0};                            // 位置

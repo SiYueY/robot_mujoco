@@ -2,8 +2,7 @@
 
 #include <cstdint>
 #include <memory>
-#include <string>
-#include <unordered_map>
+#include <vector>
 
 #include "mujoco_simulation/component/camera/camera_data.hpp"
 #include "mujoco_simulation/component/imu/imu_data.hpp"
@@ -16,16 +15,7 @@ namespace mujoco_simulation {
 template <typename State> using StateSnapshot = std::shared_ptr<const State>;
 
 template <typename State>
-using StateSnapshotMap = std::unordered_map<std::string, StateSnapshot<State>>;
-
-template <typename State>
-using StateSnapshots = std::shared_ptr<const StateSnapshotMap<State>>;
-
-using JointStateMap = StateSnapshotMap<JointState>;
-using MobileBaseStateMap = StateSnapshotMap<MobileBaseState>;
-using ImuStateMap = StateSnapshotMap<ImuState>;
-using LidarStateMap = StateSnapshotMap<LidarState>;
-using CameraStateMap = StateSnapshotMap<CameraState>;
+using StateSnapshots = std::shared_ptr<const std::vector<StateSnapshot<State>>>;
 
 using JointStates = StateSnapshots<JointState>;
 using MobileBaseStates = StateSnapshots<MobileBaseState>;
@@ -44,37 +34,6 @@ struct RobotState {
   ImuStates imus;
   LidarStates lidars;
   CameraStates cameras;
-
-  bool read_state(std::string name, JointState &state) const {
-    return find(joints, name, state);
-  }
-  bool read_state(std::string name, MobileBaseState &state) const {
-    return find(mobile_bases, name, state);
-  }
-  bool read_state(std::string name, ImuState &state) const {
-    return find(imus, name, state);
-  }
-  bool read_state(std::string name, LidarState &state) const {
-    return find(lidars, name, state);
-  }
-  bool read_state(std::string name, CameraState &state) const {
-    return find(cameras, name, state);
-  }
-
-private:
-  template <typename State>
-  static bool find(const StateSnapshots<State> &states, const std::string &name,
-                   State &state) {
-    if (states == nullptr) {
-      return false;
-    }
-    const auto it = states->find(name);
-    if (it == states->end() || it->second == nullptr) {
-      return false;
-    }
-    state = *it->second;
-    return true;
-  }
 };
 
 } // namespace mujoco_simulation
