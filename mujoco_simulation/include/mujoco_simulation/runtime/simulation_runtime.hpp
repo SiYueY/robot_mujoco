@@ -7,13 +7,14 @@
 
 #include "mujoco_simulation/config/simulation_config.hpp"
 #include "mujoco_simulation/mujoco/context.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
 class Simulation;
 class SimulationRuntimeTestPeer;
 
-class SimulationRuntime {
+class MUJOCO_SIMULATION_PUBLIC SimulationRuntime {
 public:
   SimulationRuntime() = default;
   ~SimulationRuntime() = default;

@@ -7,10 +7,11 @@
 #include "mujoco_simulation/component/camera/camera_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
 #include "mujoco_simulation/mujoco/camera_renderer.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class CameraComponent : public SimulationComponent {
+class MUJOCO_SIMULATION_PUBLIC CameraComponent : public SimulationComponent {
 public:
   explicit CameraComponent(CameraConfig config);
 

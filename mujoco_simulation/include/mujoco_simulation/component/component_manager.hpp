@@ -13,10 +13,11 @@
 #include "mujoco_simulation/config/simulation_config.hpp"
 #include "mujoco_simulation/data/robot_command.hpp"
 #include "mujoco_simulation/data/robot_state.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class ComponentManager {
+class MUJOCO_SIMULATION_PUBLIC ComponentManager {
 public:
   bool init(const mjContext &context, const ComponentConfigList &components,
             CameraRenderer &camera_renderer);

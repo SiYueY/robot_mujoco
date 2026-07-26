@@ -7,10 +7,11 @@
 #include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
 #include "mujoco_simulation/data/robot_command.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class CommandBuffer {
+class MUJOCO_SIMULATION_PUBLIC CommandBuffer {
 public:
   bool write_joint_command(std::string component_name,
                            const JointCommand &command);

@@ -9,6 +9,7 @@
 
 #include "mujoco_simulation/component/camera/camera_data.hpp"
 #include "mujoco_simulation/mujoco/context.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 struct GLFWwindow;
 
@@ -76,7 +77,7 @@ struct CameraRenderState {
   CameraRenderIntrinsics intrinsics;
 };
 
-class CameraRenderer {
+class MUJOCO_SIMULATION_PUBLIC CameraRenderer {
 public:
   CameraRenderer();
   explicit CameraRenderer(CameraRendererConfig config);

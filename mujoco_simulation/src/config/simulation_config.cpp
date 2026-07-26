@@ -1,16 +1,24 @@
 #include "mujoco_simulation/config/simulation_config.hpp"
 
 #include <cmath>
+#include <exception>
+#include <filesystem>
+#include <optional>
+#include <unordered_set>
+#include <utility>
 
 #include "mujoco_simulation/component/joint/joint_data.hpp"
+#include "tinyxml2.h"
 
 namespace mujoco_simulation {
+
+namespace {
 
 using tinyxml2::XMLDocument;
 using tinyxml2::XMLElement;
 using tinyxml2::XMLNode;
 
-std::string SimulationConfigParser::trim_copy(const std::string &value) {
+std::string trim_copy(const std::string &value) {
   const std::size_t first = value.find_first_not_of(" \t\r\n");
   if (first == std::string::npos) {
     return "";
@@ -19,13 +27,12 @@ std::string SimulationConfigParser::trim_copy(const std::string &value) {
   return value.substr(first, last - first + 1);
 }
 
-std::string SimulationConfigParser::element_text(const XMLElement &element) {
+std::string element_text(const XMLElement &element) {
   const char *text = element.GetText();
   return text == nullptr ? "" : trim_copy(text);
 }
 
-bool SimulationConfigParser::parse_required_double(const XMLElement &element,
-                                                   double &out) {
+bool parse_required_double(const XMLElement &element, double &out) {
   const std::string text = element_text(element);
   if (text.empty()) {
     return false;
@@ -46,7 +53,7 @@ bool SimulationConfigParser::parse_required_double(const XMLElement &element,
   return true;
 }
 
-bool SimulationConfigParser::reject_unknown_children(
+bool reject_unknown_children(
     const XMLElement &element,
     const std::unordered_set<std::string> &allowed_names) {
   for (const XMLNode *child = element.FirstChild(); child != nullptr;
@@ -62,8 +69,7 @@ bool SimulationConfigParser::reject_unknown_children(
   return true;
 }
 
-bool SimulationConfigParser::parse_limit_axis(const XMLElement *element,
-                                              Limit &limits) {
+bool parse_limit_axis(const XMLElement *element, Limit &limits) {
   if (element == nullptr) {
     return true;
   }
@@ -83,8 +89,7 @@ bool SimulationConfigParser::parse_limit_axis(const XMLElement *element,
   return limits.min <= limits.max;
 }
 
-bool SimulationConfigParser::parse_position_config(const XMLElement *element,
-                                                   JointInfo &info) {
+bool parse_position_config(const XMLElement *element, JointInfo &info) {
   if (element == nullptr) {
     return true;
   }
@@ -106,8 +111,7 @@ bool SimulationConfigParser::parse_position_config(const XMLElement *element,
   return true;
 }
 
-bool SimulationConfigParser::parse_velocity_config(const XMLElement *element,
-                                                   JointInfo &info) {
+bool parse_velocity_config(const XMLElement *element, JointInfo &info) {
   if (element == nullptr) {
     return true;
   }
@@ -124,8 +128,7 @@ bool SimulationConfigParser::parse_velocity_config(const XMLElement *element,
   return true;
 }
 
-bool SimulationConfigParser::parse_joint_config(const XMLElement &element,
-                                                JointInfo &info) {
+bool parse_joint_config(const XMLElement &element, JointInfo &info) {
   if (!reject_unknown_children(element, {"position", "velocity", "limit"})) {
     return false;
   }
@@ -160,8 +163,8 @@ bool SimulationConfigParser::parse_joint_config(const XMLElement &element,
                           info.effort_limits);
 }
 
-bool SimulationConfigParser::parse_robot_section(
-    const XMLElement *robot, ComponentConfigList &components) {
+bool parse_robot_section(const XMLElement *robot,
+                         ComponentConfigList &components) {
   if (robot == nullptr) {
     return true;
   }
@@ -183,8 +186,9 @@ bool SimulationConfigParser::parse_robot_section(
   return true;
 }
 
-std::optional<std::filesystem::path> SimulationConfigParser::resolve_model_path(
-    const std::filesystem::path &config_path, const std::string &mjcf_path) {
+std::optional<std::filesystem::path>
+resolve_model_path(const std::filesystem::path &config_path,
+                   const std::string &mjcf_path) {
   if (mjcf_path.empty()) {
     return std::nullopt;
   }
@@ -195,6 +199,8 @@ std::optional<std::filesystem::path> SimulationConfigParser::resolve_model_path(
   }
   return resolved.lexically_normal();
 }
+
+} // namespace
 
 bool SimulationConfigParser::load_file(const std::string &path,
                                        SimulationConfig &config) const {

@@ -12,7 +12,7 @@
 - 管理 `mjModel`、`mjData` 和物理步进
 - 提供统一的 `Simulation` 顶层入口
 - 组织组件装配、周期更新、命令写入和状态读取
-- 提供 camera headless 渲染和可选 viewer
+- 提供 camera 离屏渲染和 viewer
 
 `mujoco_simulation` 不负责：
 
@@ -63,14 +63,12 @@ Simulation
 
 - `SimulationStatus`
   - 只表示仿真生命周期状态：`Uninitialized`、`Stopped`、`Running`、`Paused`、`Stopping`、`Error`
-- `ResultCode`
-  - 只表示接口调用结果：`Ok`、`InvalidArgument`、`AlreadyExists`、`InvalidState`、`FailedPrecondition`、`NotFound`、`ModelLoadFailed`、`ModelValidationFailed`、`BindingFailed`、`CommandRejected`、`RenderFailed`、`ThreadFailed`、`Timeout`、`Internal`
 
 公开接口规则：
 
-- 非值接口统一返回 `ResultCode`
+- 运行控制与命令接口统一返回 `bool`
 - typed read 统一使用 `bool + out-parameter`
-- 调用方应基于 `ResultCode` 分支，不依赖动态错误字符串
+- 调用方应基于返回值分支，不依赖动态错误字符串
 
 `Simulation` 公开的核心能力包括：
 
@@ -121,7 +119,7 @@ Simulation
 - `CommandBuffer`
   - 缓存外部线程提交的最新控制命令
 - `StateBuffer`
-  - 缓存聚合后的最新 `RobotState`，其中包含各类设备的不可变共享状态快照
+  - 每个成功的 physics step 发布最新 `RobotState`，其中包含各类设备的不可变共享状态快照
 
 缓冲接口语义统一使用 `write(...)` / `read(...)`。
 
@@ -191,7 +189,7 @@ Simulation
 - 相机对象来自 `mjOBJ_CAMERA`
 - 渲染依赖 `mjvScene` 和 `mjrContext`
 - 公开读取结果统一为 `CameraState`
-- 支持 headless 渲染
+- 支持离屏渲染
 - 不依赖 viewer 才能工作
 
 当前不处理：

@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <string>
 
-#include "mujoco_simulation/common/logging.hpp"
+#include "common/logging.hpp"
 
 namespace mujoco_simulation {
 

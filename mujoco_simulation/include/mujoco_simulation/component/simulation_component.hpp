@@ -3,10 +3,11 @@
 #include <string>
 
 #include "mujoco_simulation/mujoco/context.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class SimulationComponent {
+class MUJOCO_SIMULATION_PUBLIC SimulationComponent {
 public:
   SimulationComponent(std::string name, double update_rate);
   virtual ~SimulationComponent();

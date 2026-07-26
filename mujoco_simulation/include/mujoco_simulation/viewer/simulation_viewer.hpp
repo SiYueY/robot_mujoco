@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "mujoco_simulation/mujoco/context.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco {
 class Simulate;
@@ -19,7 +20,7 @@ namespace mujoco_simulation {
 
 // Passive MuJoCo viewer frontend. Simulation owns runtime state and drives
 // simulation stepping.
-class SimulationViewer {
+class MUJOCO_SIMULATION_PUBLIC SimulationViewer {
 public:
   SimulationViewer();
   explicit SimulationViewer(std::chrono::milliseconds timeout);

@@ -4,7 +4,7 @@
 #include <limits>
 #include <utility>
 
-#include "mujoco_simulation/common/logging.hpp"
+#include "common/logging.hpp"
 #include "mujoco_simulation/common/macro.hpp"
 #include "mujoco_simulation/common/math.hpp"
 

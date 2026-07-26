@@ -1,6 +1,6 @@
 #include "mujoco_simulation/component/component_registry.hpp"
 
-#include "mujoco_simulation/common/logging.hpp"
+#include "common/logging.hpp"
 
 namespace mujoco_simulation {
 

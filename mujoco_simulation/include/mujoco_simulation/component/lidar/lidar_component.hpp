@@ -7,10 +7,11 @@
 
 #include "mujoco_simulation/component/lidar/lidar_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class LidarComponent : public SimulationComponent {
+class MUJOCO_SIMULATION_PUBLIC LidarComponent : public SimulationComponent {
 public:
   explicit LidarComponent(LidarInfo info);
 

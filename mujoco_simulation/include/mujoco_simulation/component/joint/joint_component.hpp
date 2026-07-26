@@ -7,10 +7,11 @@
 
 #include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class JointComponent : public SimulationComponent {
+class MUJOCO_SIMULATION_PUBLIC JointComponent : public SimulationComponent {
 public:
   explicit JointComponent(JointInfo info);
 

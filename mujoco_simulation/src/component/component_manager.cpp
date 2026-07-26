@@ -3,7 +3,7 @@
 #include <utility>
 #include <vector>
 
-#include "mujoco_simulation/common/logging.hpp"
+#include "common/logging.hpp"
 #include "mujoco_simulation/common/macro.hpp"
 
 namespace mujoco_simulation {
@@ -196,6 +196,11 @@ bool ComponentManager::reset(const mjContext &context) {
     UNUSED(name);
     UNUSED(mobile_base_component->reset_schedule());
   }
+  joints_.reset();
+  mobile_bases_.reset();
+  imus_.reset();
+  lidars_.reset();
+  cameras_.reset();
   return true;
 }
 

@@ -5,8 +5,8 @@
 #include <exception>
 #include <utility>
 
+#include "common/logging.hpp"
 #include "glfw_adapter.h"
-#include "mujoco_simulation/common/logging.hpp"
 #include "simulate.h"
 
 namespace mujoco_simulation {

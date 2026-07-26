@@ -4,7 +4,7 @@
 #include <cstring>
 #include <utility>
 
-#include "mujoco_simulation/common/logging.hpp"
+#include "common/logging.hpp"
 #include "mujoco_simulation/common/macro.hpp"
 
 namespace mujoco_simulation {

@@ -8,10 +8,11 @@
 #include "mujoco_simulation/component/imu/imu_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
 #include "mujoco_simulation/mujoco/context.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class ImuComponent : public SimulationComponent {
+class MUJOCO_SIMULATION_PUBLIC ImuComponent : public SimulationComponent {
 public:
   explicit ImuComponent(ImuInfo info);
 

@@ -2,9 +2,9 @@
 
 #include <mujoco/mujoco.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,8 +22,8 @@
 #include "mujoco_simulation/data/robot_command.hpp"
 #include "mujoco_simulation/data/robot_state.hpp"
 #include "mujoco_simulation/mujoco/camera_renderer.hpp"
-#include "mujoco_simulation/result_code.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
@@ -31,11 +31,8 @@ class SimulationViewer;
 class SimulationRuntime;
 class SimulationScheduler;
 
-class Simulation {
+class MUJOCO_SIMULATION_PUBLIC Simulation {
 public:
-  using SnapshotObserver =
-      std::function<void(std::shared_ptr<const RobotState> snapshot)>;
-
   Simulation();
   ~Simulation();
 
@@ -67,22 +64,19 @@ public:
   uint64_t step() const;
   SimulationStatus status() const;
   double time() const;
-  void set_snapshot_observer(SnapshotObserver observer);
 
 private:
   static constexpr auto kDefaultViewerPeriod = std::chrono::milliseconds(16);
 
+  bool initialize_camera_renderer();
   bool initialize_scheduler();
   bool initialize_components();
   bool load_model(const ModelConfig &model_config);
   bool write_state_snapshot();
-  bool write_state_snapshot_locked(
-      std::shared_ptr<const RobotState> &published_snapshot);
+  bool write_state_snapshot_locked();
   bool update_components_for_step_locked(std::uint64_t step,
                                          double simulation_time);
-  bool build_state_snapshot_locked(
-      std::uint64_t step, double simulation_time,
-      std::shared_ptr<const RobotState> &published_snapshot);
+  bool build_state_snapshot_locked(std::uint64_t step, double simulation_time);
   // Scheduler
   bool scheduler_run_task();
   bool scheduler_write_commands();
@@ -92,16 +86,18 @@ private:
   bool start_viewer();
   bool stop_viewer();
   bool build_state_snapshot(RobotState &snapshot) const;
+  bool reset_runtime_locked(const std::string *keyframe_name);
 
   // Configuration
   SimulationConfig config_;
   // Buffer
   std::unique_ptr<CameraRenderer> camera_renderer_;
-  std::unique_ptr<CommandBuffer> command_buffer_;
-  std::unique_ptr<StateBuffer> state_buffer_;
+  CommandBuffer command_buffer_;
+  StateBuffer state_buffer_;
   // Runtime
   std::unique_ptr<SimulationRuntime> runtime_;
-  mutable std::mutex runtime_mutex_;
+  mutable std::mutex lifecycle_mutex_;
+  mutable std::mutex mujoco_mutex_;
   // Scheduler
   std::unique_ptr<SimulationScheduler> scheduler_;
   // Component
@@ -110,11 +106,9 @@ private:
   std::unique_ptr<SimulationViewer> viewer_;
   mutable std::mutex viewer_mutex_;
   std::chrono::steady_clock::time_point next_sync_time_{};
-  bool runtime_failed_{false};
-  std::uint64_t step_{0};
+  std::atomic<bool> runtime_failed_{false};
+  std::atomic<std::uint64_t> step_{0};
   std::uint64_t sequence_{0};
-  // Snapshot Observer
-  SnapshotObserver snapshot_observer_;
 };
 
 } // namespace mujoco_simulation

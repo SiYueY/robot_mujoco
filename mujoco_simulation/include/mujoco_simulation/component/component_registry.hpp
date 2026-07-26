@@ -10,10 +10,11 @@
 #include "mujoco_simulation/component/lidar/lidar_component.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_component.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class ComponentRegistry {
+class MUJOCO_SIMULATION_PUBLIC ComponentRegistry {
 public:
   bool add(std::unique_ptr<SimulationComponent> component);
   void clear();

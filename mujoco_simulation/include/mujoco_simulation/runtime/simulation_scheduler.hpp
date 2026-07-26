@@ -8,10 +8,11 @@
 #include <thread>
 
 #include "mujoco_simulation/simulation_status.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class SimulationScheduler {
+class MUJOCO_SIMULATION_PUBLIC SimulationScheduler {
 public:
   bool initialize();
   bool register_task(std::function<bool()> task);

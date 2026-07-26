@@ -104,18 +104,17 @@ Simulation
   - `bool read_state(std::string, CameraState&)`
   - `bool read_state(std::string, LidarState&)`
   - `bool read_state(std::string, MobileBaseState&)`
-- 查询与快照通知
+- 查询状态
   - `uint64_t step() const`
   - `double time() const`
   - `SimulationStatus status() const`
-  - `void set_snapshot_observer(SnapshotObserver)`
 
 内部约束：
 
 - `mjModel / mjData` 保持单写线程原则
 - `ComponentManager` 负责组件更新、命令分发和状态汇总
 - `CommandBuffer / StateBuffer` 统一采用 `write(...) / read(...)` 语义
-  - `StateBuffer` 原子发布 `RobotState` 指针；组件状态（包括相机）以不可变共享快照聚合
+  - 每个成功的 physics step 都向 `StateBuffer` 原子发布一个 `RobotState`；组件状态（包括相机）以不可变共享快照聚合
 
 ## 错误返回模型
 
@@ -127,9 +126,6 @@ Simulation
   - 定义在 `simulation_status.hpp`，表达生命周期状态：`Uninitialized`、`Stopped`、
     `Running`、`Paused`、`Stopping`、`Error`
   - 通过 `Simulation::status()` 查询；viewer 或 scheduler 任务失败时可报告 `Error`
-- `ResultCode`
-  - `result_code.hpp` 中保留了该枚举定义，但当前 `Simulation` 的公开接口不返回
-    `ResultCode`，调用方不应将其作为这些接口的返回约定
 
 `SimulationConfigParser::load_file(...)` 当前遵循如下返回约定：
 
@@ -152,12 +148,8 @@ Simulation
   - `JointInfo`、`ImuInfo`、`CameraConfig`、`LidarInfo` 与 `MobileBaseInfo` 的变体列表
 - `camera_renderer`
   - 离屏渲染资源配置
-- `render_mode`
-  - `RenderMode::Headless` 或 `RenderMode::Viewer`
 - `viewer_startup_timeout`
   - viewer 启动等待超时
-
-`parse_render_mode(...)` 接受字符串 `headless` 或 `viewer`，并返回相应的 `RenderMode`。
 
 此外，`SimulationConfigParser::load_file(const std::string&, SimulationConfig&)`
 提供 `robot_mujoco.xml -> SimulationConfig` 的解析路径：
@@ -169,20 +161,18 @@ Simulation
 - `<mjcf>` 相对路径相对 `robot_mujoco.xml` 所在目录解析
 - 当前不解析：
   - `initial_keyframe`
-  - `render_mode`
   - `viewer_update_rate`
   - imu / camera / lidar / mobile base
 
-当前 `render_mode` 的含义：
-
-- `RenderMode::Headless`
-  - 只跑物理步进，不启动 viewer
-- `RenderMode::Viewer`
-  - 启动 viewer，并以独立频率同步显示；camera 不再依赖 viewer 渲染资源
-  - `stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会按当前配置自动重建 viewer
+`Simulation` 初始化时启动 viewer，并以独立频率同步显示；Camera 不依赖 viewer 的渲染
+资源。`stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会自动重建
+viewer。
 
 `reset()` 复位到默认 MuJoCo 数据状态；`reset(std::string keyframe_name)` 复位到指定
-keyframe。两者均直接返回底层复位操作的成功状态。
+keyframe。两者均执行完整重置事务：运行态 scheduler 会先停止，随后复位 MuJoCo
+runtime、清空旧命令、复位并立即更新组件采样、重置 step/sequence，并发布新的状态
+快照。Viewer 模式会立即同步显示；任一步失败会使 reset 返回 `false` 并使运行时进入
+错误状态。成功后恢复调用前的 Running 状态；Paused 和 Stopped 状态保持不变。
 
 ## 设备层能力
 
@@ -198,8 +188,8 @@ keyframe。两者均直接返回底层复位操作的成功状态。
 
 ### 设备层的几个关键边界
 
-- `Camera` 当前支持独立的 headless 渲染
-  - camera 读取不再要求 `render_mode=viewer`
+- `Camera` 当前支持独立的离屏渲染
+  - camera 读取不依赖 viewer 显示
 - `Joint` 当前是单关节、单标量接口
   - 不适合直接承载 `ball` / `free` 这类多自由度 joint
 - `Lidar` 当前输出的是 `LaserScan`
@@ -225,9 +215,9 @@ Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer
 
 对 `Simulation` 而言，viewer 是可恢复的运行时资源：
 
-- `initialize(render_mode=viewer)` 会创建 viewer
+- `initialize(...)` 会创建 viewer
 - `stop()` 会停止 scheduler 并销毁当前 viewer
-- 后续再次 `start()` 时，如果当前仍是 `RenderMode::Viewer`，会自动重新创建 viewer
+- 后续再次 `start()` 时会自动重新创建 viewer
 
 ## 目录结构
 
@@ -236,9 +226,8 @@ mujoco_simulation/
 ├── include/mujoco_simulation/
 │   ├── simulation.hpp               # 对外主入口
 │   ├── simulation_status.hpp         # 生命周期状态
-│   ├── result_code.hpp                # 当前未被 Simulation API 返回的结果枚举
 │   ├── buffer/                       # CommandBuffer / StateBuffer
-│   ├── common/                       # 日志、数学和通用辅助类型
+│   ├── common/                       # 数学和通用辅助类型
 │   ├── component/                    # 组件基类、管理器及设备类型
 │   ├── config/                       # SimulationConfig 与 XML 解析器
 │   ├── data/                         # RobotCommand / RobotState
@@ -261,7 +250,7 @@ mujoco_simulation/
 
 ## 构建与依赖
 
-这是一个 `ament_cmake` 包，当前主要依赖：
+这是一个独立的 Linux C++17 库，当前主要依赖：
 
 - `glfw3`
 - `OpenGL`
@@ -269,8 +258,7 @@ mujoco_simulation/
 
 核心库当前不再直接依赖 `hardware_interface`、`rclcpp` 或 `sensor_msgs`；这些 ROS 2 相关依赖保留在上层 `robot_mujoco_ros2` 适配层。
 
-构建时直接通过 `find_package(mujoco CONFIG)` 解析 MuJoCo。
-路径解析规则为：
+构建时不调用 `find_package(mujoco)`；MuJoCo 的路径解析规则为：
 
 - 如果设置了环境变量 `MUJOCO_ROOT`，优先使用它
 - 否则默认使用 `/opt/mujoco-3.9.0`
@@ -278,15 +266,30 @@ mujoco_simulation/
 例如：
 
 ```bash
-export MUJOCO_ROOT=/opt/mujoco-3.9.0
-colcon build --packages-select mujoco_simulation
+export MUJOCO_ROOT=/opt//opt/mujoco-3.9.0
+cmake -S mujoco_simulation -B build/mujoco_simulation \\
+  -DMUJOCO_SIMULATION_BUILD_SHARED=ON
+cmake --build build/mujoco_simulation
+cmake --install build/mujoco_simulation --prefix /desired/install/prefix
 ```
 
-在工作区中通常这样构建：
+可选构建开关为：
 
-```bash
-colcon build --packages-select mujoco_simulation
+- `MUJOCO_SIMULATION_BUILD_SHARED`：构建 shared（默认）或 static 库；
+- `MUJOCO_SIMULATION_BUILD_TESTS`：包含 `tests/`；
+- `MUJOCO_SIMULATION_BUILD_EXAMPLES`：包含 `examples/`；
+- `MUJOCO_SIMULATION_INSTALL`：生成安装规则（默认开启）；
+- `MUJOCO_SIMULATION_ENABLE_ASAN`：为库启用 AddressSanitizer。
+
+安装后，下游工程只需：
+
+```cmake
+find_package(mujoco_simulation REQUIRED)
+target_link_libraries(app PRIVATE mujoco_simulation::mujoco_simulation)
 ```
+
+下游同样需要通过 `MUJOCO_ROOT`（或默认 `/opt/mujoco-3.9.0`）提供 MuJoCo；OpenGL、EGL、
+GLFW 和线程依赖会由包配置自动发现。
 
 ## 典型集成方式
 
@@ -308,7 +311,7 @@ ros2_control
 3. 它把 joint、imu、camera、lidar、mobile base 一次性写入 `SimulationConfig.components`
 4. 它在 `read()` / `write()` 周期里转发状态和命令
 
-当前 ROS 侧控制服务与传感器发布已经由 `robot_mujoco_ros2::SimulationRosBridge` 提供，统一由 `robot_mujoco_ros2` 包内部接线到 `ResultCode` 风格控制回调。当前控制服务包括：
+当前 ROS 侧控制服务与传感器发布已经由 `robot_mujoco_ros2::SimulationRosBridge` 提供，统一由 `robot_mujoco_ros2` 包内部接线到 `bool` 风格控制回调。当前控制服务包括：
 
 - `/start`
 - `/stop`
@@ -347,7 +350,7 @@ ros2_control
 
 截至当前实现，使用时需要特别注意：
 
-- camera 已支持独立 headless 渲染
+- camera 已支持独立离屏渲染
   - 但当前仍以 RGB / depth 采样为主，还没有扩展到 segmentation / object id 等更复杂渲染输出
 - joint 抽象目前偏向 1-DoF 控制接口
 - lidar 依赖传感器命名规则

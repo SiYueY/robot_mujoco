@@ -4,10 +4,11 @@
 #include <string>
 
 #include "mujoco_simulation/data/robot_state.hpp"
+#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
-class StateBuffer {
+class MUJOCO_SIMULATION_PUBLIC StateBuffer {
 public:
   void write(std::shared_ptr<const RobotState> snapshot);
 

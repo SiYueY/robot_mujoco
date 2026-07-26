@@ -339,7 +339,6 @@ robot_mujoco负责：
 当前未解析：
 
 - `initial_keyframe`
-- `render_mode`
 - `viewer_update_rate`
 - imu / camera / lidar / mobile base
 - 任何未在本文档中列出的扩展标签

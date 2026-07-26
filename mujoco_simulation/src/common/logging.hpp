@@ -1,8 +1,5 @@
 #pragma once
 
-// This header is only available to mujoco_simulation build targets. The
-// Easylogging++ sources are intentionally not installed as part of the public
-// package interface.
 #include "easylogging++.h"
 
 // 统一日志前缀和函数定位；ELPP_FUNC 在 GCC/Clang 下包含类方法签名。
