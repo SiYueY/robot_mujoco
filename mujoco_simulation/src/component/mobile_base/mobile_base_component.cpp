@@ -36,10 +36,11 @@ bool MobileBaseComponent::init(const mjContext& context) {
   }
 
   command_ = {};
-  state_ = {};
-  state_.mobile_base_name = info_.mobile_base_name;
-  state_.base_frame_id = info_.base_frame_id;
-  state_.odom_frame_id = info_.odom_frame_id;
+  working_state_ = {};
+  working_state_.mobile_base_name = info_.mobile_base_name;
+  working_state_.base_frame_id = info_.base_frame_id;
+  working_state_.odom_frame_id = info_.odom_frame_id;
+  state_ = std::make_shared<MobileBaseState>(working_state_);
   reset_odometry();
   initialized_ = true;
   return true;
@@ -62,6 +63,7 @@ bool MobileBaseComponent::reset(const mjContext& context) {
   }
   command_ = {};
   reset_odometry();
+  state_ = std::make_shared<MobileBaseState>(working_state_);
   return true;
 }
 
@@ -84,7 +86,8 @@ bool MobileBaseComponent::update(const mjContext& context) {
   if (!update_ground_truth_pose(*context.data)) {
     return false;
   }
-  state_.timestamp = context.data->time;
+  working_state_.timestamp = context.data->time;
+  state_ = std::make_shared<MobileBaseState>(working_state_);
   return true;
 }
 
@@ -115,13 +118,22 @@ bool MobileBaseComponent::write(const mjContext& context, const MobileBaseComman
   return true;
 }
 
-bool MobileBaseComponent::read(const mjContext& context, MobileBaseState& state) const {
-  UNUSED(context);
+bool MobileBaseComponent::read_state(std::shared_ptr<const MobileBaseState>& state) const {
   if (!is_initialized()) {
     LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
     return false;
   }
   state = state_;
+  return state != nullptr;
+}
+
+bool MobileBaseComponent::read(const mjContext& context, MobileBaseState& state) const {
+  UNUSED(context);
+  std::shared_ptr<const MobileBaseState> snapshot;
+  if (!read_state(snapshot)) {
+    return false;
+  }
+  state = *snapshot;
   return true;
 }
 
@@ -193,10 +205,12 @@ bool MobileBaseComponent::update_mecanum_state(const mjContext& context) {
   Vector4d wheel_angular{};
   for (std::size_t wheel_index = 0; wheel_index < MecanumWheelCount; ++wheel_index) {
     wheel_angular[wheel_index] = context.data->qvel[mecanum_wheels_[wheel_index].dof_address];
-    state_.wheel_linear[wheel_index] = info_.mecanum_info.wheel_radius * wheel_angular[wheel_index];
+    working_state_.wheel_linear[wheel_index] =
+        info_.mecanum_info.wheel_radius * wheel_angular[wheel_index];
   }
-  mecanum_kinematics_->forward(wheel_angular, state_.base_linear, state_.base_angular);
-  state_.wheel_angular = wheel_angular;
+  mecanum_kinematics_->forward(wheel_angular, working_state_.base_linear,
+                               working_state_.base_angular);
+  working_state_.wheel_angular = wheel_angular;
   return true;
 }
 
@@ -377,12 +391,12 @@ double MobileBaseComponent::clamp_force_limits(const mjContext& context, const m
 }
 
 void MobileBaseComponent::reset_odometry() {
-  state_.pose = {0.0, 0.0, 0.0};
-  state_.base_linear = {0.0, 0.0, 0.0};
-  state_.base_angular = {0.0, 0.0, 0.0};
-  state_.wheel_linear = {};
-  state_.wheel_angular = {};
-  state_.timestamp = 0.0;
+  working_state_.pose = {0.0, 0.0, 0.0};
+  working_state_.base_linear = {0.0, 0.0, 0.0};
+  working_state_.base_angular = {0.0, 0.0, 0.0};
+  working_state_.wheel_linear = {};
+  working_state_.wheel_angular = {};
+  working_state_.timestamp = 0.0;
 }
 
 bool MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
@@ -392,7 +406,7 @@ bool MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
   }
   const mjtNum* xpos = data.xpos + 3 * base_body_id_;
   const mjtNum* xmat = data.xmat + 9 * base_body_id_;
-  state_.pose = {
+  working_state_.pose = {
       static_cast<double>(xpos[0]), static_cast<double>(xpos[1]),
       wrap_angle(std::atan2(static_cast<double>(xmat[3]), static_cast<double>(xmat[0])))};
   return true;

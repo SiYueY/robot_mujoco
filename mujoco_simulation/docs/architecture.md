@@ -32,7 +32,7 @@ Simulation
   -> ComponentManager
     -> SimulationComponent
       -> Joint / Imu / Lidar / Camera / MobileBase
-  -> CommandBuffer / StateBuffer / CameraBuffer
+  -> CommandBuffer / StateBuffer
   -> CameraRenderer
   -> SimulationViewer
 ```
@@ -55,7 +55,7 @@ Simulation
 - viewer render thread
   - 只负责 viewer 渲染与被动同步
 - external caller threads
-  - 只写 `CommandBuffer`、读取 `StateBuffer / CameraBuffer`、提交控制请求
+  - 只写 `CommandBuffer`、读取 `StateBuffer`、提交控制请求
 
 ## 当前公开接口约定
 
@@ -121,9 +121,7 @@ Simulation
 - `CommandBuffer`
   - 缓存外部线程提交的最新控制命令
 - `StateBuffer`
-  - 缓存聚合后的最新 `RobotState`
-- `CameraBuffer`
-  - 缓存各 camera 的最新 `CameraState`
+  - 缓存聚合后的最新 `RobotState`，其中包含各类设备的不可变共享状态快照
 
 缓冲接口语义统一使用 `write(...)` / `read(...)`。
 
@@ -135,9 +133,7 @@ Simulation
 这两份文档包含提议架构；本页仍以当前已实现行为为准。
 
 - `StateBuffer`
-  - 通过原子发布 `shared_ptr<const RobotState>` 共享最新快照
-- `CameraBuffer`
-  - 按 camera 名字保存不可变 `CameraState` 指针，缩短锁持有时间
+  - 通过原子发布 `shared_ptr<const RobotState>` 共享最新快照；未更新组件复用已有状态快照
 
 ## 设备当前实现语义
 

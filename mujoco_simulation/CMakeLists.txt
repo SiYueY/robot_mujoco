@@ -102,7 +102,6 @@ target_include_directories(mujoco_simulation_headers INTERFACE
 add_library(mujoco_simulation_buffer STATIC
   src/buffer/command_buffer.cpp
   src/buffer/state_buffer.cpp
-  src/buffer/camera_buffer.cpp
 )
 target_link_libraries(mujoco_simulation_buffer PUBLIC
   mujoco_simulation_headers
@@ -137,7 +136,7 @@ target_link_libraries(mujoco_simulation_runtime PUBLIC
 set_target_properties(mujoco_simulation_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(mujoco_simulation_camera STATIC
-  src/component/camera/camera_renderer.cpp
+  src/mujoco/camera_renderer.cpp
 )
 target_link_libraries(mujoco_simulation_camera PUBLIC
   mujoco_simulation_headers
@@ -322,13 +321,6 @@ if(BUILD_TESTING)
   )
   if(TARGET test_lidar_component)
     target_link_libraries(test_lidar_component ${PROJECT_NAME})
-  endif()
-
-  ament_add_gtest(test_camera_buffer
-    test/unit/test_camera_buffer.cpp
-  )
-  if(TARGET test_camera_buffer)
-    target_link_libraries(test_camera_buffer ${PROJECT_NAME})
   endif()
 
   ament_add_gtest(test_state_buffer

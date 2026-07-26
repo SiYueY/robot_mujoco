@@ -126,12 +126,13 @@ bool ImuComponent::init(const mjContext& context) {
   }
 
   sequence_ = 0;
-  state_ = {};
-  state_.frame_id = info_.frame_id;
-  state_.orientation = {0.0, 0.0, 0.0, 1.0};
-  state_.orientation_covariance = info_.orientation_covariance;
-  state_.angular_velocity_covariance = info_.angular_velocity_covariance;
-  state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
+  auto state = std::make_shared<ImuState>();
+  state->frame_id = info_.frame_id;
+  state->orientation = {0.0, 0.0, 0.0, 1.0};
+  state->orientation_covariance = info_.orientation_covariance;
+  state->angular_velocity_covariance = info_.angular_velocity_covariance;
+  state->linear_acceleration_covariance = info_.linear_acceleration_covariance;
+  state_ = std::move(state);
   initialized_ = true;
   return true;
 }
@@ -144,12 +145,13 @@ bool ImuComponent::reset(const mjContext& context) {
   }
 
   sequence_ = 0;
-  state_ = {};
-  state_.frame_id = info_.frame_id;
-  state_.orientation = {0.0, 0.0, 0.0, 1.0};
-  state_.orientation_covariance = info_.orientation_covariance;
-  state_.angular_velocity_covariance = info_.angular_velocity_covariance;
-  state_.linear_acceleration_covariance = info_.linear_acceleration_covariance;
+  auto state = std::make_shared<ImuState>();
+  state->frame_id = info_.frame_id;
+  state->orientation = {0.0, 0.0, 0.0, 1.0};
+  state->orientation_covariance = info_.orientation_covariance;
+  state->angular_velocity_covariance = info_.angular_velocity_covariance;
+  state->linear_acceleration_covariance = info_.linear_acceleration_covariance;
+  state_ = std::move(state);
   return true;
 }
 
@@ -159,29 +161,40 @@ bool ImuComponent::update(const mjContext& context) {
     return false;
   }
 
-  state_.sequence = ++sequence_;
-  state_.timestamp = context.data->time;
+  auto state = std::make_shared<ImuState>(*state_);
+  state->sequence = ++sequence_;
+  state->timestamp = context.data->time;
   const double* sensor_data = context.data->sensordata;
-  state_.orientation[0] = sensor_data[imu_.framequat_address + 1];
-  state_.orientation[1] = sensor_data[imu_.framequat_address + 2];
-  state_.orientation[2] = sensor_data[imu_.framequat_address + 3];
-  state_.orientation[3] = sensor_data[imu_.framequat_address];
+  state->orientation[0] = sensor_data[imu_.framequat_address + 1];
+  state->orientation[1] = sensor_data[imu_.framequat_address + 2];
+  state->orientation[2] = sensor_data[imu_.framequat_address + 3];
+  state->orientation[3] = sensor_data[imu_.framequat_address];
   for (int index = 0; index < 3; ++index) {
-    state_.angular_velocity[index] = sensor_data[imu_.gyro_address + index];
-    state_.linear_acceleration[index] = sensor_data[imu_.accelerometer_address + index];
+    state->angular_velocity[index] = sensor_data[imu_.gyro_address + index];
+    state->linear_acceleration[index] = sensor_data[imu_.accelerometer_address + index];
   }
+  state_ = std::move(state);
 
   return true;
 }
 
-bool ImuComponent::read(const mjContext& context, ImuState& state) const {
-  UNUSED(context);
+bool ImuComponent::read_state(std::shared_ptr<const ImuState>& state) const {
   if (!initialized_) {
     LOG_ERROR << "imu '" << info_.name << "' is not initialized.";
     return false;
   }
 
   state = state_;
+  return state != nullptr;
+}
+
+bool ImuComponent::read(const mjContext& context, ImuState& state) const {
+  UNUSED(context);
+  std::shared_ptr<const ImuState> snapshot;
+  if (!read_state(snapshot)) {
+    return false;
+  }
+  state = *snapshot;
   return true;
 }
 

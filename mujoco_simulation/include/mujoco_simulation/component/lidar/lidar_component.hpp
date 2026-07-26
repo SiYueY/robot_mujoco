@@ -18,6 +18,7 @@ class LidarComponent : public SimulationComponent {
   bool reset(const mjContext& context) override;
   bool update(const mjContext& context) override;
 
+  bool read_state(std::shared_ptr<const LidarState>& state) const;
   bool read(const mjContext& context, LidarState& state) const;
 
   const LidarInfo& info() const noexcept { return info_; }
@@ -31,7 +32,7 @@ class LidarComponent : public SimulationComponent {
  private:
   LidarInfo info_;
   std::vector<int> beam_addresses_;
-  LidarState state_{};
+  std::shared_ptr<const LidarState> state_;
   std::uint64_t sequence_{0};
   bool initialized_{false};
 };

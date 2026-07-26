@@ -4,21 +4,18 @@
 
 #include <chrono>
 #include <condition_variable>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 
-#include "mujoco_simulation/common/mj_type.hpp"
+#include "mujoco_simulation/mujoco/context.hpp"
 
 namespace mujoco {
 class Simulate;
 }  // namespace mujoco
 
 namespace mujoco_simulation {
-
-class SimulationViewerTestPeer;
 
 // Passive MuJoCo viewer frontend. Simulation owns runtime state and drives simulation stepping.
 class SimulationViewer {
@@ -40,42 +37,40 @@ class SimulationViewer {
   bool is_ready() const;
 
  private:
+  // Viewer 状态
   enum class ViewerState {
-    Stopped,
-    Starting,
-    Ready,
-    Stopping,
-    Failed,
+    Stopped,   // 已停止
+    Starting,  // 启动中
+    Ready,     // 已就绪
+    Stopping,  // 停止中
+    Failed,    // 失败
   };
 
-  using SimulateHandle = std::unique_ptr<mujoco::Simulate, void (*)(mujoco::Simulate*)>;
-  using RenderThreadEntry =
-      std::function<void(SimulationViewer&, mjModel*, mjData*, const std::string&)>;
-
-  friend class SimulationViewerTestPeer;
-
-  static void delete_simulate(mujoco::Simulate* simulate);
-  void mark_ready();
-  void record_async_failure();
+  void set_ready();
+  void set_failed();
   void finish_render_thread();
-  void request_stop_locked();
+  void set_stop();
   void join_render_thread();
-  void cleanup_stopped_state();
-  void stop_impl();
-  void render_thread_main(mjModel* model, mjData* data, std::string displayed_filename);
+  void cleanup();
+  void stop_viewer();
+  void render_task(const mjContext& context, std::string displayed_filename);
 
   std::chrono::milliseconds startup_timeout_{5000};
-  const mjModel* model_{nullptr};
-  mjData* data_{nullptr};
+
+  // Camera
   mjvCamera camera_{};
   mjvOption visual_options_{};
   mjvPerturb perturb_{};
-  SimulateHandle simulate_;
-  RenderThreadEntry render_thread_entry_;
+
+  // Simulation
+  std::unique_ptr<mujoco::Simulate> simulate_;
+  // 渲染线程
   std::thread render_thread_;
   std::condition_variable cv_;
   mutable std::mutex lifecycle_mutex_;
   mutable std::mutex mutex_;
+
+  // Viewer state
   ViewerState state_{ViewerState::Stopped};
 };
 

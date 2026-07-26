@@ -11,16 +11,14 @@
 
 namespace mujoco_simulation {
 
-void SimulationViewer::delete_simulate(mujoco::Simulate* simulate) { delete simulate; }
-
 SimulationViewer::SimulationViewer() : SimulationViewer(std::chrono::milliseconds{5000}) {}
 
 SimulationViewer::SimulationViewer(std::chrono::milliseconds startup_timeout)
-    : startup_timeout_(startup_timeout), simulate_(nullptr, &SimulationViewer::delete_simulate) {}
+    : startup_timeout_(startup_timeout) {}
 
 SimulationViewer::~SimulationViewer() { stop(); }
 
-void SimulationViewer::mark_ready() {
+void SimulationViewer::set_ready() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (state_ == ViewerState::Starting) {
@@ -30,7 +28,7 @@ void SimulationViewer::mark_ready() {
   cv_.notify_all();
 }
 
-void SimulationViewer::record_async_failure() {
+void SimulationViewer::set_failed() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (simulate_ != nullptr) {
@@ -55,7 +53,7 @@ void SimulationViewer::finish_render_thread() {
   cv_.notify_all();
 }
 
-void SimulationViewer::request_stop_locked() {
+void SimulationViewer::set_stop() {
   if (state_ != ViewerState::Stopped) {
     state_ = ViewerState::Stopping;
   }
@@ -77,48 +75,38 @@ void SimulationViewer::join_render_thread() {
   render_thread.join();
 }
 
-void SimulationViewer::cleanup_stopped_state() {
+void SimulationViewer::cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
   simulate_.reset();
-  model_ = nullptr;
-  data_ = nullptr;
   state_ = ViewerState::Stopped;
   cv_.notify_all();
 }
 
-void SimulationViewer::stop_impl() {
+void SimulationViewer::stop_viewer() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    request_stop_locked();
+    set_stop();
   }
   join_render_thread();
-  cleanup_stopped_state();
+  cleanup();
 }
 
-void SimulationViewer::render_thread_main(mjModel* model, mjData* data,
-                                          std::string displayed_filename) {
+void SimulationViewer::render_task(const mjContext& context, std::string displayed_filename) {
   try {
-    if (render_thread_entry_) {
-      render_thread_entry_(*this, model, data, displayed_filename);
-      finish_render_thread();
-      return;
-    }
-    if (model == nullptr || data == nullptr) {
+    if (!context.valid()) {
       LOG_ERROR << "viewer runtime became invalid.";
-      record_async_failure();
+      set_failed();
       return;
     }
 
-    auto simulate =
-        SimulateHandle(new mujoco::Simulate(std::make_unique<mujoco::GlfwAdapter>(), &camera_,
-                                            &visual_options_, &perturb_, true),
-                       delete_simulate);
+    auto simulate = std::make_unique<mujoco::Simulate>(std::make_unique<mujoco::GlfwAdapter>(),
+                                                       &camera_, &visual_options_, &perturb_, true);
     simulate->exitrequest.store(false);
 
     {
       const ::mujoco::MutexLock simulate_lock(simulate->mtx);
-      simulate->mnew_ = model;
-      simulate->dnew_ = data;
+      simulate->mnew_ = const_cast<mjModel*>(context.model);
+      simulate->dnew_ = context.data;
       std::strncpy(simulate->filename, displayed_filename.c_str(), sizeof(simulate->filename) - 1);
       simulate->filename[sizeof(simulate->filename) - 1] = '\0';
       simulate->loadrequest = 1;
@@ -131,22 +119,22 @@ void SimulationViewer::render_thread_main(mjModel* model, mjData* data,
       }
       simulate_ = std::move(simulate);
     }
-    mark_ready();
+    set_ready();
 
     simulate_->RenderLoop();
     finish_render_thread();
   } catch (const std::exception&) {
     LOG_ERROR << "viewer render thread failed.";
-    record_async_failure();
+    set_failed();
   } catch (...) {
     LOG_ERROR << "viewer render thread failed.";
-    record_async_failure();
+    set_failed();
   }
 }
 
 bool SimulationViewer::start(const mjContext& context, const std::string& displayed_filename) {
   if (!context.valid()) {
-    LOG_ERROR << "viewer requires a valid MuJoCo context.";
+    LOG_ERROR << "failed to start simulation viewer, context is invalid.";
     return false;
   }
 
@@ -158,10 +146,8 @@ bool SimulationViewer::start(const mjContext& context, const std::string& displa
     }
   }
 
-  stop_impl();
+  stop_viewer();
 
-  const mjModel* model = context.model;
-  mjData* data = context.data;
   try {
     mjv_defaultCamera(&camera_);
     mjv_defaultOption(&visual_options_);
@@ -169,20 +155,17 @@ bool SimulationViewer::start(const mjContext& context, const std::string& displa
     {
       std::lock_guard<std::mutex> lock(mutex_);
       state_ = ViewerState::Starting;
-      model_ = model;
-      data_ = data;
     }
 
-    std::thread render_thread([this, model, data, displayed_filename]() {
-      render_thread_main(const_cast<mjModel*>(model), data, displayed_filename);
-    });
+    std::thread render_thread(
+        [this, &context, displayed_filename]() { render_task(context, displayed_filename); });
     {
       std::lock_guard<std::mutex> lock(mutex_);
       render_thread_ = std::move(render_thread);
     }
   } catch (const std::exception&) {
     LOG_ERROR << "failed to start viewer render thread.";
-    cleanup_stopped_state();
+    cleanup();
     return false;
   }
 
@@ -198,14 +181,14 @@ bool SimulationViewer::start(const mjContext& context, const std::string& displa
     if (!completed) {
       LOG_ERROR << "viewer startup timed out.";
     }
-    stop_impl();
+    stop_viewer();
   }
   return ready;
 }
 
 void SimulationViewer::stop() {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
-  stop_impl();
+  stop_viewer();
 }
 
 bool SimulationViewer::sync(bool state_only) {

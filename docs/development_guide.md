@@ -10,7 +10,7 @@
 
 - `mujoco_simulation`
   - MuJoCo 仿真运行时内核（纯 C++，不依赖 ROS）。
-  - 负责模型加载（`ModelRuntime`）、仿真调度（`SimulationScheduler`）、组件管理（`ComponentManager`）、缓冲区（`CommandBuffer` / `StateBuffer` / `CameraBuffer`）、相机渲染（`CameraRenderer`）以及 viewer。
+  - 负责模型加载（`ModelRuntime`）、仿真调度（`SimulationScheduler`）、组件管理（`ComponentManager`）、缓冲区（`CommandBuffer` / `StateBuffer`）、相机渲染（`CameraRenderer`）以及 viewer。
   - 通过 `Status` / `Result<T>` 暴露统一的错误处理接口。
 - `mujoco_simulation_ros`
   - ROS bridge 包。
@@ -38,7 +38,6 @@ ros2_control controller manager
       -> component::ComponentManager    (Joint / Imu / Camera / Lidar / MobileBase 组件)
       -> buffer::CommandBuffer          (命令缓冲、超时处理)
       -> buffer::StateBuffer            (状态快照发布/读取)
-      -> buffer::CameraBuffer           (相机采样缓冲)
       -> CameraRenderer                 (离屏 OpenGL 渲染)
       -> Viewer                         (交互式可视化，可选)
 ```
@@ -61,7 +60,7 @@ Simulation 的 SnapshotObserver 回调
 - **观测链**：`SimulationScheduler` 在每步物理仿真后触发传感器采样；snapshot observer 回调负责将 IMU/Lidar 状态和 Camera 采样通过 `SimulationRosBridge` 发布为 ROS 消息。
 - **服务链**：`SimulationRosBridge` 对外暴露 start/stop/pause/resume/load_keyframe/reset 六个 ROS service；service 回调通过 `Status` 回调链转发到 `Simulation` 公开 API。
 
-`mujoco_simulation::Simulation` 是运行时中心：它持有 `ModelRuntime`（模型生命周期）、`SimulationScheduler`（调度与物理线程）、`ComponentManager`（组件注册表）、`CommandBuffer` / `StateBuffer` / `CameraBuffer`（数据缓冲）、`CameraRenderer`（渲染）以及可选的 `Viewer`。`mujoco_hardware` 只通过公开接口与它交互，不直接操作 MuJoCo 原生结构。
+`mujoco_simulation::Simulation` 是运行时中心：它持有 `ModelRuntime`（模型生命周期）、`SimulationScheduler`（调度与物理线程）、`ComponentManager`（组件注册表）、`CommandBuffer` / `StateBuffer`（数据缓冲）、`CameraRenderer`（渲染）以及可选的 `Viewer`。`mujoco_hardware` 只通过公开接口与它交互，不直接操作 MuJoCo 原生结构。
 
 ## 3. `mujoco_simulation_ros`：ROS Bridge 层
 
@@ -178,7 +177,6 @@ IMU / Camera / Lidar / MobileBase 采用相同模式 —— 持有 `mujoco_simul
 - `ComponentManager`：组件注册表与读写调度。
 - `CommandBuffer`：带超时策略的命令缓冲。
 - `StateBuffer`：线程安全的状态快照发布/读取。
-- `CameraBuffer`：相机采样的共享指针缓冲。
 - `CameraRenderer`：独立的离屏 OpenGL 渲染上下文（支持 headless camera）。
 - `Viewer`（可选）：交互式可视化。
 
@@ -248,7 +246,6 @@ class SensorComponent : public SimulationComponent {
 
 - **`CommandBuffer`**：线程安全的命令缓冲。`set_joint_command()` / `set_mobile_base_command()` 从任意线程调用；`snapshot()` 在 scheduler 线程中调用。支持可配置的命令超时策略（KeepLast / ZeroCommand / HoldPosition）。
 - **`StateBuffer`**：线程安全的状态快照缓冲。scheduler 线程通过 `publish()` 写入新快照；调用方线程通过 `read()` 获取共享指针。基于 `shared_ptr` 实现免拷贝的零等待读取。
-- **`CameraBuffer`**：相机采样专用缓冲，管理 `CameraSample` 共享指针的生命周期。
 
 ### 5.6 `CameraRenderer`：独立渲染上下文
 
@@ -391,7 +388,6 @@ RoboCasa YAML config
 | `mjData*` | Scheduler 线程（唯一写者）；调用方不直接访问 | 单写者保证 |
 | `CommandBuffer` | ros2_control 线程（写）+ Scheduler 线程（读） | 内部 mutex |
 | `StateBuffer` | Scheduler 线程（写）+ ros2_control 线程（读） | 内部 mutex + shared_ptr |
-| `CameraBuffer` | Scheduler 线程（写）+ ros2_control 线程（读） | 内部 mutex + shared_ptr |
 | `SimulationScheduler` 状态 | 多线程 | 内部 mutex + condition_variable |
 | `SimulationRosBridge::sim_time_ns_` | clock 线程（写）+ ros2_control 线程（写） | `std::atomic<int64_t>` |
 
@@ -522,7 +518,7 @@ struct MjContext {
 
 ### 8.7 `Impl` / Pimpl 消除 ✅ 已完成
 
-`Simulation` 不再使用 Pimpl 模式。`ModelRuntime`、`SimulationScheduler`、`ComponentManager`、`CommandBuffer`、`StateBuffer`、`CameraBuffer`、`CameraRenderer`、`Viewer` 均作为 `Simulation` 的直接成员或 `unique_ptr` 成员。
+`Simulation` 不再使用 Pimpl 模式。`ModelRuntime`、`SimulationScheduler`、`ComponentManager`、`CommandBuffer`、`StateBuffer`、`CameraRenderer`、`Viewer` 均作为 `Simulation` 的直接成员或 `unique_ptr` 成员。
 
 ### 8.8 `render_hardware_manager` 消除 ✅ 已完成
 

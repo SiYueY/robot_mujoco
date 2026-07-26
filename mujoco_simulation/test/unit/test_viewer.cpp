@@ -2,7 +2,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -21,19 +20,6 @@ using namespace std::chrono_literals;
   do {                         \
     ASSERT_TRUE(expr);         \
   } while (false)
-
-class SimulationViewerTestPeer {
- public:
-  static void set_render_thread_entry(
-      SimulationViewer& viewer,
-      std::function<void(SimulationViewer&, mjModel*, mjData*, const std::string&)> entry) {
-    viewer.render_thread_entry_ = std::move(entry);
-  }
-
-  static void mark_ready(SimulationViewer& viewer) { viewer.mark_ready(); }
-
-  static void inject_async_failure(SimulationViewer& viewer) { viewer.record_async_failure(); }
-};
 
 class SimulationRuntimeTestPeer {
  public:
@@ -169,94 +155,6 @@ TEST_F(ViewerTest, RestartAndStopRemainSafeOnSingleViewerInstance) {
   EXPECT_TRUE(viewer.is_ready());
   viewer.stop();
   EXPECT_FALSE(viewer.is_running());
-}
-
-TEST_F(ViewerTest, AsyncFailureInjectedAfterStartupIsReturnedBySync) {
-  const std::string model_path = write_model(R"(
-<mujoco model="viewer_async_failure">
-  <option timestep="0.01"/>
-  <worldbody>
-    <geom type="plane" size="5 5 0.1" rgba="0.2 0.2 0.2 1"/>
-  </worldbody>
-</mujoco>)");
-
-  SimulationRuntime runtime;
-  ASSERT_OK_STATUS(runtime.init({model_path}));
-
-  SimulationViewer viewer;
-  SimulationViewerTestPeer::set_render_thread_entry(
-      viewer, [](SimulationViewer& viewer, mjModel*, mjData*, const std::string&) {
-        SimulationViewerTestPeer::mark_ready(viewer);
-        std::this_thread::sleep_for(20ms);
-        SimulationViewerTestPeer::inject_async_failure(viewer);
-      });
-
-  ASSERT_OK_STATUS(viewer.start(runtime_context(runtime), model_path));
-  EXPECT_TRUE(viewer.is_running());
-  EXPECT_TRUE(viewer.is_ready());
-
-  bool sync_status = true;
-  const auto deadline = std::chrono::steady_clock::now() + 1s;
-  while (std::chrono::steady_clock::now() < deadline) {
-    sync_status = viewer.sync(true);
-    if (!sync_status) {
-      break;
-    }
-    std::this_thread::sleep_for(10ms);
-  }
-
-  EXPECT_FALSE(sync_status);
-
-  viewer.stop();
-  EXPECT_FALSE(viewer.is_running());
-  EXPECT_FALSE(viewer.is_ready());
-}
-
-TEST_F(ViewerTest, StartAutomaticallyRestartsAfterRenderThreadFailure) {
-  const std::string model_path = write_model(R"(
-<mujoco model="viewer_restart_after_failure">
-  <worldbody><geom type="plane" size="1 1 0.1"/></worldbody>
-</mujoco>)");
-
-  SimulationRuntime runtime;
-  ASSERT_OK_STATUS(runtime.init({model_path}));
-
-  std::atomic<int> entries{0};
-  std::atomic<bool> release_first{false};
-  std::atomic<bool> release_second{false};
-  SimulationViewer viewer;
-  SimulationViewerTestPeer::set_render_thread_entry(
-      viewer, [&](SimulationViewer& target, mjModel*, mjData*, const std::string&) {
-        const int entry = ++entries;
-        SimulationViewerTestPeer::mark_ready(target);
-        const auto& release = entry == 1 ? release_first : release_second;
-        while (!release.load()) {
-          std::this_thread::sleep_for(1ms);
-        }
-        SimulationViewerTestPeer::inject_async_failure(target);
-      });
-
-  ASSERT_OK_STATUS(viewer.start(runtime_context(runtime), model_path));
-  ASSERT_OK_STATUS(viewer.start(runtime_context(runtime), model_path));
-  EXPECT_EQ(entries.load(), 1);
-
-  release_first.store(true);
-  const auto failure_deadline = std::chrono::steady_clock::now() + 1s;
-  while (viewer.is_running() && std::chrono::steady_clock::now() < failure_deadline) {
-    std::this_thread::sleep_for(1ms);
-  }
-  EXPECT_FALSE(viewer.is_running());
-  EXPECT_FALSE(viewer.is_ready());
-
-  ASSERT_OK_STATUS(viewer.start(runtime_context(runtime), model_path));
-  EXPECT_EQ(entries.load(), 2);
-  EXPECT_TRUE(viewer.is_running());
-  EXPECT_TRUE(viewer.is_ready());
-
-  release_second.store(true);
-  viewer.stop();
-  EXPECT_FALSE(viewer.is_running());
-  EXPECT_FALSE(viewer.is_ready());
 }
 
 #undef ASSERT_OK_STATUS

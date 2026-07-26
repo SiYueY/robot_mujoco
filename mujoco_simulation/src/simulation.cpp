@@ -62,7 +62,6 @@ bool Simulation::shutdown() {
       scheduler_.reset();
     }
     camera_renderer_.reset();
-    camera_buffer_.reset();
     state_buffer_.reset();
     command_buffer_.reset();
     component_manager_.clear();
@@ -204,11 +203,11 @@ bool Simulation::read_state(std::string imu_name, ImuState& out) const {
 
 bool Simulation::read_state(std::string camera_name, CameraState& out) const {
   std::lock_guard<std::mutex> lock(runtime_mutex_);
-  CameraBuffer* camera_buffer = camera_buffer_.get();
-  if (camera_buffer == nullptr) {
+  StateBuffer* state_buffer = state_buffer_.get();
+  if (state_buffer == nullptr) {
     return false;
   }
-  return camera_buffer->read(camera_name, out);
+  return state_buffer->read_camera_state(camera_name, out);
 }
 
 bool Simulation::read_state(std::string lidar_name, LidarState& out) const {
@@ -269,7 +268,6 @@ void Simulation::set_snapshot_observer(SnapshotObserver observer) {
 }
 
 bool Simulation::initialize_scheduler() {
-  camera_buffer_ = std::make_unique<CameraBuffer>();
   camera_renderer_ = std::make_unique<CameraRenderer>(config_.camera_renderer);
   command_buffer_ = std::make_unique<CommandBuffer>();
   state_buffer_ = std::make_unique<StateBuffer>();
@@ -311,7 +309,8 @@ bool Simulation::initialize_components() {
       return false;
     }
     const mjContext& context = runtime_->context();
-    if (!component_manager_.init(context, config_.components)) {
+    if (camera_renderer_ == nullptr ||
+        !component_manager_.init(context, config_.components, *camera_renderer_)) {
       return false;
     }
     const double simulation_time = runtime_->time();
@@ -376,7 +375,7 @@ bool Simulation::update_components_for_step_locked(std::uint64_t step, double si
     return false;
   }
   const mjContext& context = runtime_->context();
-  return component_manager_.update(context, camera_renderer_.get(), camera_buffer_.get());
+  return component_manager_.update(context);
 }
 
 bool Simulation::write_state_snapshot() {

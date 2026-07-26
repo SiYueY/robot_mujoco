@@ -137,7 +137,7 @@ bool JointComponent::reset(const mjContext& context) {
   }
   data.ctrl[joint_.actuator_id] = 0.0;
   command_ = {};
-  state_ = {};
+  state_.reset();
   return true;
 }
 
@@ -147,11 +147,14 @@ bool JointComponent::update(const mjContext& context) {
     return false;
   }
 
-  state_.joint_name = info_.joint_name;
-  state_.timestamp = context.data->time;
-  state_.position = context.data->qpos[joint_.qpos_address];
-  state_.velocity = context.data->qvel[joint_.dof_address];
-  state_.effort = context.data->qfrc_actuator[joint_.dof_address];
+  auto state = std::make_shared<JointState>();
+  state->joint_name = info_.joint_name;
+  state->timestamp = context.data->time;
+  state->position = context.data->qpos[joint_.qpos_address];
+  state->velocity = context.data->qvel[joint_.dof_address];
+  state->effort = context.data->qfrc_actuator[joint_.dof_address];
+  state->mode = command_.mode;
+  state_ = std::move(state);
   return true;
 }
 
@@ -191,17 +194,25 @@ bool JointComponent::write(const mjContext& context, const JointCommand& command
   }
 
   command_ = command;
-  state_.mode = command.mode;
   return true;
 }
 
-bool JointComponent::read(const mjContext& context, JointState& state) const {
-  UNUSED(context);
+bool JointComponent::read_state(std::shared_ptr<const JointState>& state) const {
   if (!is_initialized()) {
     LOG_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
     return false;
   }
   state = state_;
+  return state != nullptr;
+}
+
+bool JointComponent::read(const mjContext& context, JointState& state) const {
+  UNUSED(context);
+  std::shared_ptr<const JointState> snapshot;
+  if (!read_state(snapshot)) {
+    return false;
+  }
+  state = *snapshot;
   return true;
 }
 

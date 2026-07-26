@@ -6,9 +6,11 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <thread>
 
+#include "mujoco_simulation/mujoco/camera_renderer.hpp"
 #include "mujoco_simulation/simulation.hpp"
 
 namespace mujoco_simulation {
@@ -89,6 +91,13 @@ TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
                                                     .enable_depth = true}}};
   ASSERT_TRUE(simulation.initialize(config));
 
+  std::shared_ptr<const RobotState> snapshot;
+  ASSERT_TRUE(simulation.read_state(snapshot));
+  ASSERT_NE(snapshot->cameras, nullptr);
+  const auto camera_snapshot = snapshot->cameras->find("front_camera");
+  ASSERT_NE(camera_snapshot, snapshot->cameras->end());
+  ASSERT_NE(camera_snapshot->second, nullptr);
+
   CameraState state;
   ASSERT_TRUE(simulation.read_state("front_camera", state));
   ASSERT_EQ(state.image.width, 160U);
@@ -103,6 +112,7 @@ TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
 
   EXPECT_EQ(state.frame_id, "camera_link");
   EXPECT_EQ(state.optical_frame_id, "camera_optical_frame");
+  EXPECT_EQ(camera_snapshot->second->image.data, state.image.data);
 
   const auto pixel = [&](std::size_t row, std::size_t column, std::size_t channel) -> std::uint8_t {
     return state.image.data[(row * state.image.width + column) * 3U + channel];
@@ -118,7 +128,8 @@ TEST_F(CameraRenderingTest, HeadlessCameraRendersColorDepthAndIntrinsics) {
   EXPECT_NEAR(bottom_depth, 0.98F, 0.05F);
 
   const double aspect = 160.0 / 120.0;
-  const double fovy_radians = 45.0 * M_PI / 180.0;
+  constexpr double kPi = 3.14159265358979323846;
+  const double fovy_radians = 45.0 * kPi / 180.0;
   const double fy = 120.0 / (2.0 * std::tan(fovy_radians / 2.0));
   const double fovx_radians = 2.0 * std::atan(aspect * std::tan(fovy_radians / 2.0));
   const double fx = 160.0 / (2.0 * std::tan(fovx_radians / 2.0));
@@ -210,6 +221,55 @@ TEST_F(CameraRenderingTest, CameraInitializationReportsRenderFailedWhenNoBackend
                                                     .enable_rgb = true,
                                                     .enable_depth = false}}};
   EXPECT_FALSE(simulation.initialize(config));
+}
+
+TEST_F(CameraRenderingTest, RendererLifecycleIsIdempotent) {
+  const std::string model_path = write_model(R"(
+<mujoco model="camera_renderer_lifecycle">
+  <worldbody>
+    <camera name="cam" pos="1 0 0" xyaxes="0 1 0 0 0 1" fovy="45"/>
+  </worldbody>
+</mujoco>)");
+
+  char error[1024] = {};
+  mjContext context(mj_loadXML(model_path.c_str(), nullptr, error, sizeof(error)), nullptr);
+  ASSERT_NE(context.model, nullptr) << error;
+  context.data = mj_makeData(context.model);
+  ASSERT_NE(context.data, nullptr);
+
+  CameraRenderer renderer;
+  EXPECT_TRUE(renderer.initialize(context));
+  EXPECT_TRUE(renderer.initialize(context));
+  EXPECT_TRUE(renderer.release());
+  EXPECT_TRUE(renderer.release());
+}
+
+TEST_F(CameraRenderingTest, RendererRejectsInvalidConfigurationAndPreservesOutputOnFailure) {
+  const std::string model_path = write_model(R"(
+<mujoco model="camera_renderer_failure">
+  <worldbody>
+    <camera name="cam" pos="1 0 0" xyaxes="0 1 0 0 0 1" fovy="45"/>
+  </worldbody>
+</mujoco>)");
+
+  char error[1024] = {};
+  mjContext context(mj_loadXML(model_path.c_str(), nullptr, error, sizeof(error)), nullptr);
+  ASSERT_NE(context.model, nullptr) << error;
+  context.data = mj_makeData(context.model);
+  ASSERT_NE(context.data, nullptr);
+
+  CameraRenderer invalid_renderer(CameraRendererConfig{.max_scene_geometries = 0});
+  EXPECT_FALSE(invalid_renderer.initialize(context));
+
+  CameraRenderer renderer;
+  ASSERT_TRUE(renderer.initialize(context));
+  auto expected = std::make_shared<CameraRenderState>();
+  expected->sequence = 42;
+  std::shared_ptr<const CameraRenderState> output = expected;
+  const CameraConfig invalid_spec{
+      .name = "front_camera", .camera_name = "cam", .height = 0, .width = 160, .enable_rgb = true};
+  EXPECT_FALSE(renderer.render(context, invalid_spec, 1, 2, output));
+  EXPECT_EQ(output, expected);
 }
 
 #undef ASSERT_OK_STATUS

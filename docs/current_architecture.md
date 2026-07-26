@@ -28,7 +28,7 @@ ros2_control controller manager
       -> runtime::ModelRuntime
       -> runtime::SimulationScheduler
       -> component::ComponentManager
-      -> buffer::CommandBuffer / StateBuffer / CameraBuffer
+      -> buffer::CommandBuffer / StateBuffer
 
 MuJoCoHardwareInterface
   -> robot_mujoco_ros2::SimulationRosBridge
@@ -67,7 +67,7 @@ controller command
 SimulationScheduler worker
   -> ComponentManager::read_* / sample_sensors()
   -> StateBuffer publish snapshot
-  -> CameraBuffer publish shared CameraSample
+  -> StateBuffer publish shared CameraState snapshot
 
 MuJoCoHardwareInterface::read()
   -> Simulation::read_state(snapshot)

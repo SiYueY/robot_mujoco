@@ -10,11 +10,11 @@
 #include <vector>
 
 #include "mujoco_simulation/component/camera/camera_data.hpp"
-#include "mujoco_simulation/component/camera/camera_renderer_config.hpp"
 #include "mujoco_simulation/component/imu/imu_data.hpp"
 #include "mujoco_simulation/component/joint/joint_data.hpp"
 #include "mujoco_simulation/component/lidar/lidar_data.hpp"
 #include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
+#include "mujoco_simulation/mujoco/camera_renderer.hpp"
 #include "tinyxml2.h"
 
 namespace mujoco_simulation {

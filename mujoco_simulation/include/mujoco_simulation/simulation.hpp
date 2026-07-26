@@ -9,12 +9,10 @@
 #include <mutex>
 #include <string>
 
-#include "mujoco_simulation/buffer/camera_buffer.hpp"
 #include "mujoco_simulation/buffer/command_buffer.hpp"
 #include "mujoco_simulation/buffer/state_buffer.hpp"
 #include "mujoco_simulation/component/camera/camera_component.hpp"
 #include "mujoco_simulation/component/camera/camera_data.hpp"
-#include "mujoco_simulation/component/camera/camera_renderer.hpp"
 #include "mujoco_simulation/component/component_manager.hpp"
 #include "mujoco_simulation/component/imu/imu_data.hpp"
 #include "mujoco_simulation/component/joint/joint_data.hpp"
@@ -23,6 +21,7 @@
 #include "mujoco_simulation/config/simulation_config.hpp"
 #include "mujoco_simulation/data/robot_command.hpp"
 #include "mujoco_simulation/data/robot_state.hpp"
+#include "mujoco_simulation/mujoco/camera_renderer.hpp"
 #include "mujoco_simulation/result_code.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
 
@@ -93,7 +92,6 @@ class Simulation {
   // Configuration
   SimulationConfig config_;
   // Buffer
-  std::unique_ptr<CameraBuffer> camera_buffer_;
   std::unique_ptr<CameraRenderer> camera_renderer_;
   std::unique_ptr<CommandBuffer> command_buffer_;
   std::unique_ptr<StateBuffer> state_buffer_;

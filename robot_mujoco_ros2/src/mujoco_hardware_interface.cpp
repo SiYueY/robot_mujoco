@@ -261,32 +261,44 @@ mujoco_simulation::ResultCode MuJoCoHardwareInterface::update_runtime_state() {
 mujoco_simulation::ResultCode MuJoCoHardwareInterface::update_runtime_state_from_snapshot(
     const mujoco_simulation::RobotState& snapshot) {
   for (auto& joint : config_.joints) {
-    const auto it = snapshot.joints.find(joint.name);
-    if (it == snapshot.joints.end()) {
+    if (snapshot.joints == nullptr) {
       return mujoco_simulation::ResultCode::NotFound;
     }
-    joint.state = it->second;
+    const auto it = snapshot.joints->find(joint.name);
+    if (it == snapshot.joints->end() || it->second == nullptr) {
+      return mujoco_simulation::ResultCode::NotFound;
+    }
+    joint.state = *it->second;
   }
   for (auto& imu : config_.imus) {
-    const auto it = snapshot.imus.find(imu.name);
-    if (it == snapshot.imus.end()) {
+    if (snapshot.imus == nullptr) {
       return mujoco_simulation::ResultCode::NotFound;
     }
-    imu.state = it->second;
+    const auto it = snapshot.imus->find(imu.name);
+    if (it == snapshot.imus->end() || it->second == nullptr) {
+      return mujoco_simulation::ResultCode::NotFound;
+    }
+    imu.state = *it->second;
   }
   for (auto& lidar : config_.lidars) {
-    const auto it = snapshot.lidars.find(lidar.name);
-    if (it == snapshot.lidars.end()) {
+    if (snapshot.lidars == nullptr) {
       return mujoco_simulation::ResultCode::NotFound;
     }
-    lidar.state = it->second;
+    const auto it = snapshot.lidars->find(lidar.name);
+    if (it == snapshot.lidars->end() || it->second == nullptr) {
+      return mujoco_simulation::ResultCode::NotFound;
+    }
+    lidar.state = *it->second;
   }
   for (auto& mobile_base : config_.mobile_bases) {
-    const auto it = snapshot.mobile_bases.find(mobile_base.name);
-    if (it == snapshot.mobile_bases.end()) {
+    if (snapshot.mobile_bases == nullptr) {
       return mujoco_simulation::ResultCode::NotFound;
     }
-    mobile_base.state = it->second;
+    const auto it = snapshot.mobile_bases->find(mobile_base.name);
+    if (it == snapshot.mobile_bases->end() || it->second == nullptr) {
+      return mujoco_simulation::ResultCode::NotFound;
+    }
+    mobile_base.state = *it->second;
   }
   return mujoco_simulation::ResultCode::Ok;
 }
@@ -310,31 +322,40 @@ mujoco_simulation::ResultCode MuJoCoHardwareInterface::publish_snapshot_to_chann
   publish_bundle_.sim_time = stamp;
   for (std::size_t index = 0; index < config_.imus.size(); ++index) {
     const auto& imu = config_.imus[index];
-    const auto it = snapshot->imus.find(imu.name);
-    if (it == snapshot->imus.end()) {
+    if (snapshot->imus == nullptr) {
       return mujoco_simulation::ResultCode::NotFound;
     }
-    copy_imu_state_rt(it->second, &publish_imu_states_[index]);
+    const auto it = snapshot->imus->find(imu.name);
+    if (it == snapshot->imus->end() || it->second == nullptr) {
+      return mujoco_simulation::ResultCode::NotFound;
+    }
+    copy_imu_state_rt(*it->second, &publish_imu_states_[index]);
     publish_bundle_.imus[index].publisher_index = index;
     copy_imu_state_rt(publish_imu_states_[index], &publish_bundle_.imus[index].state);
   }
   for (std::size_t index = 0; index < config_.cameras.size(); ++index) {
     const auto& camera = config_.cameras[index];
-    mujoco_simulation::CameraState state;
-    if (!simulation_->read_state(camera.name, state)) {
+    if (snapshot->cameras == nullptr) {
       return mujoco_simulation::ResultCode::NotFound;
     }
-    publish_camera_states_[index] = std::move(state);
+    const auto it = snapshot->cameras->find(camera.name);
+    if (it == snapshot->cameras->end() || it->second == nullptr) {
+      return mujoco_simulation::ResultCode::NotFound;
+    }
+    publish_camera_states_[index] = *it->second;
     publish_bundle_.cameras[index].publisher_index = index;
     publish_bundle_.cameras[index].state = &publish_camera_states_[index];
   }
   for (std::size_t index = 0; index < config_.lidars.size(); ++index) {
     const auto& lidar = config_.lidars[index];
-    const auto it = snapshot->lidars.find(lidar.name);
-    if (it == snapshot->lidars.end()) {
+    if (snapshot->lidars == nullptr) {
       return mujoco_simulation::ResultCode::NotFound;
     }
-    if (!copy_lidar_state_rt(it->second, &publish_lidar_states_[index]) ||
+    const auto it = snapshot->lidars->find(lidar.name);
+    if (it == snapshot->lidars->end() || it->second == nullptr) {
+      return mujoco_simulation::ResultCode::NotFound;
+    }
+    if (!copy_lidar_state_rt(*it->second, &publish_lidar_states_[index]) ||
         !copy_lidar_state_rt(publish_lidar_states_[index], &publish_bundle_.lidars[index].state)) {
       return mujoco_simulation::ResultCode::FailedPrecondition;
     }

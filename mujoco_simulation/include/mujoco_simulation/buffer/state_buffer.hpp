@@ -19,6 +19,8 @@ class StateBuffer {
 
   bool read_imu_state(std::string name, ImuState& out) const;
 
+  bool read_camera_state(std::string name, CameraState& out) const;
+
   bool read_lidar_state(std::string name, LidarState& out) const;
 
   void clear();

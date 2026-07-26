@@ -34,6 +34,14 @@ bool StateBuffer::read_imu_state(std::string name, ImuState& out) const {
   return snapshot->read_state(name, out);
 }
 
+bool StateBuffer::read_camera_state(std::string name, CameraState& out) const {
+  const std::shared_ptr<const RobotState> snapshot = read();
+  if (snapshot == nullptr) {
+    return false;
+  }
+  return snapshot->read_state(name, out);
+}
+
 bool StateBuffer::read_lidar_state(std::string name, LidarState& out) const {
   const std::shared_ptr<const RobotState> snapshot = read();
   if (snapshot == nullptr) {

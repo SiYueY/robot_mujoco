@@ -5,9 +5,9 @@
 #include <memory>
 #include <string>
 
-#include "mujoco_simulation/common/mj_type.hpp"
 #include "mujoco_simulation/component/imu/imu_data.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
+#include "mujoco_simulation/mujoco/context.hpp"
 
 namespace mujoco_simulation {
 
@@ -19,6 +19,7 @@ class ImuComponent : public SimulationComponent {
   bool reset(const mjContext& context) override;
   bool update(const mjContext& context) override;
 
+  bool read_state(std::shared_ptr<const ImuState>& state) const;
   bool read(const mjContext& context, ImuState& state) const;
 
   const ImuInfo& info() const noexcept { return info_; }
@@ -36,7 +37,7 @@ class ImuComponent : public SimulationComponent {
   mjImu imu_{};
   std::uint64_t sequence_{0};
   // Imu 状态
-  ImuState state_{};
+  std::shared_ptr<const ImuState> state_;
   // 初始化标志
   bool initialized_{false};
 };

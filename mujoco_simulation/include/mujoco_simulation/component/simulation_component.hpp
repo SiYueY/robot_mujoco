@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "mujoco_simulation/common/mj_type.hpp"
+#include "mujoco_simulation/mujoco/context.hpp"
 
 namespace mujoco_simulation {
 

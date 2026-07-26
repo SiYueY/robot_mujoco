@@ -7,7 +7,8 @@
 #include "mujoco_simulation/common/macro.hpp"
 
 namespace mujoco_simulation {
-bool ComponentManager::init(const mjContext& context, const ComponentConfigList& components) {
+bool ComponentManager::init(const mjContext& context, const ComponentConfigList& components,
+                            CameraRenderer& camera_renderer) {
   if (!context.valid()) {
     LOG_ERROR << "component manager requires a valid MuJoCo context.";
     return false;
@@ -49,7 +50,8 @@ bool ComponentManager::init(const mjContext& context, const ComponentConfigList&
   }
   for (const ComponentConfig& component : components) {
     if (const auto* camera = std::get_if<CameraConfig>(&component)) {
-      if (!register_component(context, std::make_unique<CameraComponent>(*camera))) {
+      if (!register_component(context, std::make_unique<CameraComponent>(*camera),
+                              camera_renderer)) {
         clear();
         return false;
       }
@@ -59,7 +61,14 @@ bool ComponentManager::init(const mjContext& context, const ComponentConfigList&
   return true;
 }
 
-void ComponentManager::clear() { component_registry.clear(); }
+void ComponentManager::clear() {
+  component_registry.clear();
+  joints_.reset();
+  mobile_bases_.reset();
+  imus_.reset();
+  lidars_.reset();
+  cameras_.reset();
+}
 
 bool ComponentManager::register_component(const mjContext& context,
                                           JointComponent::UniquePtr joint) {
@@ -74,12 +83,16 @@ bool ComponentManager::register_component(const mjContext& context,
 }
 
 bool ComponentManager::register_component(const mjContext& context,
-                                          CameraComponent::UniquePtr camera) {
+                                          CameraComponent::UniquePtr camera,
+                                          CameraRenderer& camera_renderer) {
   if (camera == nullptr) {
     LOG_ERROR << "camera must not be null.";
     return false;
   }
   if (!camera->init(context)) {
+    return false;
+  }
+  if (!camera->configure_rendering(camera_renderer)) {
     return false;
   }
   return component_registry.add(std::move(camera));
@@ -178,8 +191,7 @@ bool ComponentManager::reset(const mjContext& context) {
   return true;
 }
 
-bool ComponentManager::update(const mjContext& context, CameraRenderer* camera_renderer,
-                              CameraBuffer* camera_buffer) {
+bool ComponentManager::update(const mjContext& context) {
   if (!context.valid()) {
     LOG_ERROR << "component manager requires a valid MuJoCo context.";
     return false;
@@ -228,11 +240,7 @@ bool ComponentManager::update(const mjContext& context, CameraRenderer* camera_r
   }
 
   if (!due_cameras.empty()) {
-    if (camera_renderer == nullptr || camera_buffer == nullptr) {
-      LOG_ERROR << "camera update requires camera_renderer and camera_buffer.";
-      return false;
-    }
-    if (!camera_renderer->copy_simulation_data(*context.model, *context.data)) {
+    if (!due_cameras.front()->prepare_rendering(context)) {
       LOG_ERROR << "failed to copy simulation data for camera rendering.";
       return false;
     }
@@ -259,12 +267,67 @@ bool ComponentManager::update(const mjContext& context, CameraRenderer* camera_r
     }
   }
   for (CameraComponent* camera_component : due_cameras) {
-    if (!camera_component->configure_rendering(camera_renderer, camera_buffer)) {
-      return false;
-    }
     if (!camera_component->update(context)) {
       return false;
     }
+  }
+
+  if (!due_joints.empty()) {
+    auto states = std::make_shared<JointStateMap>(joints_ == nullptr ? JointStateMap{} : *joints_);
+    for (JointComponent* component : due_joints) {
+      std::shared_ptr<const JointState> state;
+      if (!component->read_state(state)) {
+        return false;
+      }
+      (*states)[component->name()] = std::move(state);
+    }
+    joints_ = std::move(states);
+  }
+  if (!due_mobile_bases.empty()) {
+    auto states = std::make_shared<MobileBaseStateMap>(
+        mobile_bases_ == nullptr ? MobileBaseStateMap{} : *mobile_bases_);
+    for (MobileBaseComponent* component : due_mobile_bases) {
+      std::shared_ptr<const MobileBaseState> state;
+      if (!component->read_state(state)) {
+        return false;
+      }
+      (*states)[component->name()] = std::move(state);
+    }
+    mobile_bases_ = std::move(states);
+  }
+  if (!due_imus.empty()) {
+    auto states = std::make_shared<ImuStateMap>(imus_ == nullptr ? ImuStateMap{} : *imus_);
+    for (ImuComponent* component : due_imus) {
+      std::shared_ptr<const ImuState> state;
+      if (!component->read_state(state)) {
+        return false;
+      }
+      (*states)[component->name()] = std::move(state);
+    }
+    imus_ = std::move(states);
+  }
+  if (!due_lidars.empty()) {
+    auto states = std::make_shared<LidarStateMap>(lidars_ == nullptr ? LidarStateMap{} : *lidars_);
+    for (LidarComponent* component : due_lidars) {
+      std::shared_ptr<const LidarState> state;
+      if (!component->read_state(state)) {
+        return false;
+      }
+      (*states)[component->name()] = std::move(state);
+    }
+    lidars_ = std::move(states);
+  }
+  if (!due_cameras.empty()) {
+    auto states =
+        std::make_shared<CameraStateMap>(cameras_ == nullptr ? CameraStateMap{} : *cameras_);
+    for (CameraComponent* component : due_cameras) {
+      std::shared_ptr<const CameraState> state;
+      if (!component->read_state(state)) {
+        return false;
+      }
+      (*states)[component->name()] = std::move(state);
+    }
+    cameras_ = std::move(states);
   }
   return true;
 }
@@ -302,87 +365,11 @@ bool ComponentManager::read_state(const mjContext& context, RobotState& snapshot
     LOG_ERROR << "component manager requires a valid MuJoCo context.";
     return false;
   }
-  if (!read_state(context, snapshot.joints)) {
-    return false;
-  }
-  if (!read_state(context, snapshot.mobile_bases)) {
-    return false;
-  }
-  if (!read_state(context, snapshot.imus)) {
-    return false;
-  }
-  return read_state(context, snapshot.lidars);
-}
-
-bool ComponentManager::read_state(const mjContext& context, JointStates& states) const {
-  if (!context.valid()) {
-    LOG_ERROR << "component manager requires a valid MuJoCo context.";
-    return false;
-  }
-  JointStates snapshot;
-  snapshot.reserve(component_registry.joints().size());
-  for (const auto& [name, joint_component] : component_registry.joints()) {
-    JointState state;
-    if (!joint_component->read(context, state)) {
-      return false;
-    }
-    snapshot.emplace(name, std::move(state));
-  }
-  states = std::move(snapshot);
-  return true;
-}
-
-bool ComponentManager::read_state(const mjContext& context, ImuStates& states) const {
-  if (!context.valid()) {
-    LOG_ERROR << "component manager requires a valid MuJoCo context.";
-    return false;
-  }
-  ImuStates snapshot;
-  snapshot.reserve(component_registry.imus().size());
-  for (const auto& [name, imu_component] : component_registry.imus()) {
-    ImuState state;
-    if (!imu_component->read(context, state)) {
-      return false;
-    }
-    snapshot.emplace(name, std::move(state));
-  }
-  states = std::move(snapshot);
-  return true;
-}
-
-bool ComponentManager::read_state(const mjContext& context, LidarStates& states) const {
-  if (!context.valid()) {
-    LOG_ERROR << "component manager requires a valid MuJoCo context.";
-    return false;
-  }
-  LidarStates snapshot;
-  snapshot.reserve(component_registry.lidars().size());
-  for (const auto& [name, lidar_component] : component_registry.lidars()) {
-    LidarState state;
-    if (!lidar_component->read(context, state)) {
-      return false;
-    }
-    snapshot.emplace(name, std::move(state));
-  }
-  states = std::move(snapshot);
-  return true;
-}
-
-bool ComponentManager::read_state(const mjContext& context, MobileBaseStates& states) const {
-  if (!context.valid()) {
-    LOG_ERROR << "component manager requires a valid MuJoCo context.";
-    return false;
-  }
-  MobileBaseStates snapshot;
-  snapshot.reserve(component_registry.mobile_bases().size());
-  for (const auto& [name, mobile_base_component] : component_registry.mobile_bases()) {
-    MobileBaseState state;
-    if (!mobile_base_component->read(context, state)) {
-      return false;
-    }
-    snapshot.emplace(name, std::move(state));
-  }
-  states = std::move(snapshot);
+  snapshot.joints = joints_;
+  snapshot.mobile_bases = mobile_bases_;
+  snapshot.imus = imus_;
+  snapshot.lidars = lidars_;
+  snapshot.cameras = cameras_;
   return true;
 }
 

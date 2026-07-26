@@ -61,7 +61,7 @@ bool try_read_state(StateLease& out) const;
 
 动态模式可选择扩展池，但扩展必须在新快照版本上完成。旧快照及其变长存储须在所有 reader 释放后回收。
 
-CameraBuffer 不属于 `RobotState`，但图像、depth 和 lidar scan 都是同类问题：动态模式可以增长；有界实时模式必须预分配上界，并将超过上界视为失败或丢弃。
+图像、depth 和 lidar scan 都属于可变长状态载荷。当前 `RobotState` 通过不可变共享组件快照复用未变化载荷；有界实时模式仍必须预分配上界，并将超过上界视为失败或丢弃。
 
 ## 6. 基准与验收
 

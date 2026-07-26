@@ -36,7 +36,7 @@ Simulation
   -> ComponentManager
     -> Joint / Imu / Camera / Lidar / MobileBase
   -> SimulationScheduler
-  -> CommandBuffer / StateBuffer / CameraBuffer
+  -> CommandBuffer / StateBuffer
   -> CameraRenderer
   -> SimulationViewer
     -> mjModel / mjData
@@ -121,9 +121,8 @@ Simulation
 
 - `mjModel / mjData` 保持单写线程原则
 - `ComponentManager` 负责组件更新、命令分发和状态汇总
-- `CommandBuffer / StateBuffer / CameraBuffer` 统一采用 `write(...) / read(...)` 语义
-  - `StateBuffer` 以原子发布 `RobotState` 指针为主
-  - `CameraBuffer` 以每个 camera 的不可变状态指针为主，避免在锁内复制大对象
+- `CommandBuffer / StateBuffer` 统一采用 `write(...) / read(...)` 语义
+  - `StateBuffer` 原子发布 `RobotState` 指针；组件状态（包括相机）以不可变共享快照聚合
 
 ## 错误返回模型
 
@@ -197,7 +196,7 @@ reset 当前公开接口为：
 
 ## 设备层能力
 
-设备对象现在统一由 [`ComponentManager`](./include/mujoco_simulation/component/component_manager.hpp) 管理；`CameraRenderer` 和 `CameraBuffer` 只作为 Camera 组件采样时依赖的运行时资源，当前支持以下几类：
+设备对象现在统一由 [`ComponentManager`](./include/mujoco_simulation/component/component_manager.hpp) 管理；`CameraRenderer` 是 Camera 组件共享的图像生成资源，当前支持以下几类：
 
 | 设备 | 作用 | 当前实现特点 |
 | --- | --- | --- |
@@ -250,7 +249,7 @@ mujoco_simulation/
 │   │   └── simulation_config.hpp
 │   ├── result_code.hpp              # 接口返回结果码
 │   ├── runtime/                     # SimulationRuntime / SimulationScheduler
-│   ├── buffer/                      # CommandBuffer / StateBuffer / CameraBuffer
+│   ├── buffer/                      # CommandBuffer / StateBuffer
 │   ├── component/                   # 组件抽象与按类型分组的组件实现
 │   │   ├── joint/ imu/ lidar/       # 统一为 *_data.hpp + *_component.hpp
 │   │   ├── camera/                  # camera_data + component，加独立 renderer 子系统头

@@ -4,10 +4,9 @@
 
 #include <memory>
 
-#include "mujoco_simulation/buffer/camera_buffer.hpp"
 #include "mujoco_simulation/component/camera/camera_data.hpp"
-#include "mujoco_simulation/component/camera/camera_renderer.hpp"
 #include "mujoco_simulation/component/simulation_component.hpp"
+#include "mujoco_simulation/mujoco/camera_renderer.hpp"
 
 namespace mujoco_simulation {
 
@@ -18,7 +17,9 @@ class CameraComponent : public SimulationComponent {
   bool init(const mjContext& context) override;
   bool reset(const mjContext& context) override;
   bool update(const mjContext& context) override;
-  bool configure_rendering(CameraRenderer* renderer, CameraBuffer* buffer);
+  bool configure_rendering(CameraRenderer& renderer);
+  bool prepare_rendering(const mjContext& context);
+  bool read_state(std::shared_ptr<const CameraState>& state) const;
 
   const CameraConfig& config() const noexcept { return config_; }
 
@@ -36,7 +37,7 @@ class CameraComponent : public SimulationComponent {
   double fovy_degrees_{0.0};
   std::uint64_t sample_sequence_{0};
   CameraRenderer* camera_renderer_{nullptr};
-  CameraBuffer* camera_buffer_{nullptr};
+  std::shared_ptr<const CameraState> state_;
 };
 
 }  // namespace mujoco_simulation

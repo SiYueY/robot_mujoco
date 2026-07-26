@@ -43,37 +43,39 @@ CameraInfo camera_info_from_intrinsics(const CameraRenderIntrinsics& intrinsics,
   return info;
 }
 
-CameraState camera_state_from_render_state(const CameraRenderState& render_state) {
-  CameraState state;
-  state.sequence = render_state.sequence;
-  state.timestamp = render_state.timestamp;
-  state.frame_id = render_state.frame_id;
-  state.optical_frame_id = render_state.optical_frame_id;
-  state.image.timestamp = render_state.timestamp;
-  state.image.frame_id =
+std::shared_ptr<const CameraState> camera_state_from_render_state(
+    const CameraRenderState& render_state) {
+  auto state = std::make_shared<CameraState>();
+  state->sequence = render_state.sequence;
+  state->timestamp = render_state.timestamp;
+  state->frame_id = render_state.frame_id;
+  state->optical_frame_id = render_state.optical_frame_id;
+  state->image.timestamp = render_state.timestamp;
+  state->image.frame_id =
       render_state.optical_frame_id.empty() ? render_state.frame_id : render_state.optical_frame_id;
-  state.image.width = render_state.color.width;
-  state.image.height = render_state.color.height;
-  state.image.encoding = "rgb8";
-  state.image.step = render_state.color.step;
-  state.image.data = render_state.color.data;
+  state->image.width = render_state.color.width;
+  state->image.height = render_state.color.height;
+  state->image.encoding = "rgb8";
+  state->image.step = render_state.color.step;
+  state->image.data = render_state.color.data;
 
-  state.depth_image.timestamp = render_state.timestamp;
-  state.depth_image.frame_id =
+  state->depth_image.timestamp = render_state.timestamp;
+  state->depth_image.frame_id =
       render_state.optical_frame_id.empty() ? render_state.frame_id : render_state.optical_frame_id;
-  state.depth_image.width = render_state.depth.width;
-  state.depth_image.height = render_state.depth.height;
-  state.depth_image.encoding = "32FC1";
-  state.depth_image.step = render_state.depth.width * static_cast<std::uint32_t>(sizeof(float));
-  state.depth_image.data.resize(render_state.depth.data.size() * sizeof(float));
-  std::memcpy(state.depth_image.data.data(), render_state.depth.data.data(),
-              state.depth_image.data.size());
+  state->depth_image.width = render_state.depth.width;
+  state->depth_image.height = render_state.depth.height;
+  state->depth_image.encoding = "32FC1";
+  state->depth_image.step = render_state.depth.width * static_cast<std::uint32_t>(sizeof(float));
+  state->depth_image.data.resize(render_state.depth.data.size() * sizeof(float));
+  std::memcpy(state->depth_image.data.data(), render_state.depth.data.data(),
+              state->depth_image.data.size());
 
   const std::uint32_t info_width =
       render_state.color.width != 0U ? render_state.color.width : render_state.depth.width;
   const std::uint32_t info_height =
       render_state.color.height != 0U ? render_state.color.height : render_state.depth.height;
-  state.camera_info = camera_info_from_intrinsics(render_state.intrinsics, info_width, info_height);
+  state->camera_info =
+      camera_info_from_intrinsics(render_state.intrinsics, info_width, info_height);
   return state;
 }
 
@@ -119,14 +121,22 @@ bool CameraComponent::reset(const mjContext& context) {
   return true;
 }
 
-bool CameraComponent::configure_rendering(CameraRenderer* renderer, CameraBuffer* buffer) {
-  if (renderer == nullptr || buffer == nullptr) {
-    LOG_ERROR << "renderer and buffer must not be null.";
+bool CameraComponent::configure_rendering(CameraRenderer& renderer) {
+  camera_renderer_ = &renderer;
+  return true;
+}
+
+bool CameraComponent::prepare_rendering(const mjContext& context) {
+  if (camera_renderer_ == nullptr) {
+    LOG_ERROR << "rendering must be configured before update.";
     return false;
   }
-  camera_renderer_ = renderer;
-  camera_buffer_ = buffer;
-  return true;
+  return camera_renderer_->copy_simulation_data(context);
+}
+
+bool CameraComponent::read_state(std::shared_ptr<const CameraState>& state) const {
+  state = state_;
+  return state != nullptr;
 }
 
 bool CameraComponent::update(const mjContext& context) {
@@ -134,7 +144,7 @@ bool CameraComponent::update(const mjContext& context) {
     LOG_ERROR << "camera must be bound before update.";
     return false;
   }
-  if (camera_renderer_ == nullptr || camera_buffer_ == nullptr) {
+  if (camera_renderer_ == nullptr) {
     LOG_ERROR << "rendering must be configured before update.";
     return false;
   }
@@ -142,11 +152,11 @@ bool CameraComponent::update(const mjContext& context) {
   const std::uint64_t timestamp =
       context.data->time <= 0.0 ? 0 : static_cast<std::uint64_t>(context.data->time * 1.0e9);
   std::shared_ptr<const CameraRenderState> rendered;
-  if (!camera_renderer_->render(*context.model, config_, ++sample_sequence_, timestamp, rendered)) {
+  if (!camera_renderer_->render(context, config_, ++sample_sequence_, timestamp, rendered)) {
     LOG_ERROR << "camera render failed.";
     return false;
   }
-  camera_buffer_->write(config_.name, camera_state_from_render_state(*rendered));
+  state_ = camera_state_from_render_state(*rendered);
   return true;
 }
 

@@ -19,6 +19,7 @@ class JointComponent : public SimulationComponent {
   bool update(const mjContext& context) override;
 
   bool write(const mjContext& context, const JointCommand& command);
+  bool read_state(std::shared_ptr<const JointState>& state) const;
   bool read(const mjContext& context, JointState& state) const;
 
   const JointInfo& info() const noexcept { return info_; }
@@ -53,7 +54,7 @@ class JointComponent : public SimulationComponent {
   // 最新关节指令
   JointCommand command_{};
   // 最新关节状态
-  JointState state_{};
+  std::shared_ptr<const JointState> state_;
   // 初始化标志
   bool initialized_{false};
 };

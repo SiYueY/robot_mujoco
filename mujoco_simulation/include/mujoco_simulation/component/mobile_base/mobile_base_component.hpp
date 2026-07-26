@@ -23,6 +23,7 @@ class MobileBaseComponent : public SimulationComponent {
   bool update(const mjContext& context) override;
 
   bool write(const mjContext& context, const MobileBaseCommand& command);
+  bool read_state(std::shared_ptr<const MobileBaseState>& state) const;
   bool read(const mjContext& context, MobileBaseState& state) const;
 
   const MobileBaseInfo& info() const noexcept { return info_; }
@@ -60,8 +61,9 @@ class MobileBaseComponent : public SimulationComponent {
   MobileBaseInfo info_;
   // 最新移动底盘指令
   MobileBaseCommand command_;
-  // 最新移动底盘状态
-  MobileBaseState state_;
+  // 供本次更新构建的移动底盘状态，以及已发布的不可变快照。
+  MobileBaseState working_state_;
+  std::shared_ptr<const MobileBaseState> state_;
   // 初始化标志
   bool initialized_{false};
 

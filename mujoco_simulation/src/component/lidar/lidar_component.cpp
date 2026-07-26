@@ -86,15 +86,16 @@ bool LidarComponent::init(const mjContext& context) {
   }
 
   sequence_ = 0;
-  state_ = {};
-  state_.frame_id = info_.frame_id;
-  state_.angle_min = info_.angle_min;
-  state_.angle_max = info_.angle_max;
-  state_.angle_increment = info_.angle_increment;
-  state_.range_min = info_.range_min;
-  state_.range_max = info_.range_max;
-  state_.ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
-  state_.intensities.assign(beam_addresses_.size(), 0.0);
+  auto state = std::make_shared<LidarState>();
+  state->frame_id = info_.frame_id;
+  state->angle_min = info_.angle_min;
+  state->angle_max = info_.angle_max;
+  state->angle_increment = info_.angle_increment;
+  state->range_min = info_.range_min;
+  state->range_max = info_.range_max;
+  state->ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
+  state->intensities.assign(beam_addresses_.size(), 0.0);
+  state_ = std::move(state);
   initialized_ = true;
   return true;
 }
@@ -107,15 +108,16 @@ bool LidarComponent::reset(const mjContext& context) {
   }
 
   sequence_ = 0;
-  state_ = {};
-  state_.frame_id = info_.frame_id;
-  state_.angle_min = info_.angle_min;
-  state_.angle_max = info_.angle_max;
-  state_.angle_increment = info_.angle_increment;
-  state_.range_min = info_.range_min;
-  state_.range_max = info_.range_max;
-  state_.ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
-  state_.intensities.assign(beam_addresses_.size(), 0.0);
+  auto state = std::make_shared<LidarState>();
+  state->frame_id = info_.frame_id;
+  state->angle_min = info_.angle_min;
+  state->angle_max = info_.angle_max;
+  state->angle_increment = info_.angle_increment;
+  state->range_min = info_.range_min;
+  state->range_max = info_.range_max;
+  state->ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
+  state->intensities.assign(beam_addresses_.size(), 0.0);
+  state_ = std::move(state);
   return true;
 }
 
@@ -125,32 +127,50 @@ bool LidarComponent::update(const mjContext& context) {
     return false;
   }
 
-  state_.sequence = ++sequence_;
-  state_.timestamp = context.data->time;
-  state_.frame_id = info_.frame_id;
-  state_.scan_time =
+  auto state = std::make_shared<LidarState>();
+  state->sequence = ++sequence_;
+  state->timestamp = context.data->time;
+  state->frame_id = info_.frame_id;
+  state->angle_min = info_.angle_min;
+  state->angle_max = info_.angle_max;
+  state->angle_increment = info_.angle_increment;
+  state->range_min = info_.range_min;
+  state->range_max = info_.range_max;
+  state->scan_time =
       info_.update_rate > 0.0 ? 1.0 / info_.update_rate : context.model->opt.timestep;
-  state_.time_increment = 0.0;
+  state->time_increment = 0.0;
+  state->ranges.resize(beam_addresses_.size());
+  state->intensities.resize(beam_addresses_.size());
 
   for (std::size_t beam_index = 0; beam_index < beam_addresses_.size(); ++beam_index) {
     const double range = context.data->sensordata[beam_addresses_[beam_index]];
-    state_.ranges[beam_index] =
+    state->ranges[beam_index] =
         (!std::isfinite(range) || range < info_.range_min || range > info_.range_max)
             ? std::numeric_limits<double>::infinity()
             : range;
-    state_.intensities[beam_index] = 0.0;
+    state->intensities[beam_index] = 0.0;
   }
+  state_ = std::move(state);
 
   return true;
 }
 
-bool LidarComponent::read(const mjContext& context, LidarState& state) const {
-  UNUSED(context);
+bool LidarComponent::read_state(std::shared_ptr<const LidarState>& state) const {
   if (!initialized_) {
     LOG_ERROR << "lidar '" << info_.name << "' is not initialized.";
     return false;
   }
   state = state_;
+  return state != nullptr;
+}
+
+bool LidarComponent::read(const mjContext& context, LidarState& state) const {
+  UNUSED(context);
+  std::shared_ptr<const LidarState> snapshot;
+  if (!read_state(snapshot)) {
+    return false;
+  }
+  state = *snapshot;
   return true;
 }
 
