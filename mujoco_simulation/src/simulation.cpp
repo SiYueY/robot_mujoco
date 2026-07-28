@@ -41,9 +41,14 @@ bool Simulation::initialize(const SimulationConfig &config) {
     LOG_ERROR << "simulation is already initialized.";
     return false;
   }
-  if (!std::isfinite(config.scheduler.viewer_update_rate) ||
-      config.scheduler.viewer_update_rate <= 0.0) {
-    LOG_ERROR << "viewer update rate must be finite and positive.";
+  if (!std::isfinite(config.scheduler.physics_period) ||
+      config.scheduler.physics_period <= 0.0) {
+    LOG_ERROR << "physics period must be finite and positive.";
+    return false;
+  }
+  if (!std::isfinite(config.scheduler.viewer_period) ||
+      config.scheduler.viewer_period <= 0.0) {
+    LOG_ERROR << "viewer period must be finite and positive.";
     return false;
   }
   config_ = config;
@@ -68,6 +73,18 @@ bool Simulation::initialize(const SimulationConfig &config) {
   };
   if (!load_model(config.model)) {
     LOG_ERROR << "failed to load the simulation model.";
+    cleanup();
+    return false;
+  }
+  bool physics_period_applied = false;
+  {
+    std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
+    physics_period_applied =
+        runtime_ != nullptr &&
+        runtime_->set_timestep(config_.scheduler.physics_period);
+  }
+  if (!physics_period_applied) {
+    LOG_ERROR << "failed to apply the configured physics period.";
     cleanup();
     return false;
   }
@@ -97,9 +114,8 @@ bool Simulation::initialize(const SimulationConfig &config) {
     return false;
   }
   if (!start_viewer()) {
-    LOG_ERROR << "failed to start the simulation viewer.";
-    cleanup();
-    return false;
+    LOG_WARNING
+        << "failed to start the simulation viewer; continuing without it.";
   }
   return true;
 }
@@ -141,8 +157,8 @@ bool Simulation::start() {
   }
   if (needs_viewer) {
     if (!start_viewer()) {
-      LOG_ERROR << "failed to restart the simulation viewer.";
-      return false;
+      LOG_WARNING
+          << "failed to restart the simulation viewer; continuing without it.";
     }
   }
   if (component_manager_.has_cameras()) {
@@ -190,7 +206,6 @@ bool Simulation::stop() {
     component_manager_.clear_camera_states();
   }
   command_buffer_.clear();
-  state_buffer_.clear();
   UNUSED(stop_viewer());
   return true;
 }
@@ -242,14 +257,10 @@ bool Simulation::reset_runtime_locked(const std::string *keyframe_name) {
     LOG_ERROR << "simulation scheduler is not initialized.";
     return false;
   }
-  if (previous_status == SimulationStatus::Error) {
-    LOG_ERROR << "cannot reset a simulation scheduler in the error state.";
-    return false;
-  }
-
   const bool restart_running = previous_status == SimulationStatus::Running;
   const bool restart_paused = previous_status == SimulationStatus::Paused;
-  if (restart_running || restart_paused) {
+  const bool recover_from_error = previous_status == SimulationStatus::Error;
+  if (restart_running || restart_paused || recover_from_error) {
     if (!scheduler_->stop()) {
       LOG_ERROR << "failed to stop the scheduler before reset.";
       return false;
@@ -326,35 +337,18 @@ bool Simulation::reset_runtime_locked(const std::string *keyframe_name) {
     return false;
   }
 
+  runtime_failed_.store(false);
+
   {
+    std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
     std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
-    if (viewer_ != nullptr) {
-      if (!viewer_->is_running()) {
-        LOG_ERROR << "simulation viewer is no longer running after reset.";
-        command_buffer_.clear();
-        state_buffer_.clear();
-        runtime_failed_.store(true);
-        return false;
-      }
-      if (!viewer_->is_ready()) {
-        LOG_ERROR << "simulation viewer is not ready after reset.";
-        command_buffer_.clear();
-        state_buffer_.clear();
-        runtime_failed_.store(true);
-        return false;
-      }
-      if (!viewer_->sync(false)) {
-        LOG_ERROR << "failed to synchronize the viewer after reset.";
-        command_buffer_.clear();
-        state_buffer_.clear();
-        runtime_failed_.store(true);
-        return false;
-      }
-      const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::duration<double>(1.0 /
-                                        config_.scheduler.viewer_update_rate));
-      next_sync_time_ = std::chrono::steady_clock::now() + period;
+    if (viewer_ != nullptr && runtime_ != nullptr &&
+        runtime_->is_initialized() && !viewer_->submit(runtime_->context())) {
+      LOG_WARNING << "failed to submit the reset state to the viewer.";
     }
+    const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(config_.scheduler.viewer_period));
+    next_sync_time_ = std::chrono::steady_clock::now() + period;
   }
 
   if (restart_running) {
@@ -535,7 +529,16 @@ bool Simulation::read_state(MobileBaseStates &out) const {
   return out != nullptr;
 }
 
-uint64_t Simulation::step() const { return step_.load(); }
+bool Simulation::step(std::size_t count) {
+  std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+  if (scheduler_ == nullptr) {
+    LOG_ERROR << "simulation scheduler is not initialized.";
+    return false;
+  }
+  return scheduler_->step(count);
+}
+
+uint64_t Simulation::step_count() const { return step_.load(); }
 
 SimulationStatus Simulation::status() const {
   if (runtime_failed_.load()) {
@@ -590,7 +593,8 @@ bool Simulation::initialize_scheduler() {
     return false;
   }
   auto scheduler = std::make_unique<SimulationScheduler>();
-  if (!scheduler->initialize()) {
+  if (!scheduler->initialize(
+          std::chrono::duration<double>(config_.scheduler.physics_period))) {
     LOG_ERROR << "failed to initialize the simulation scheduler.";
     return false;
   }
@@ -661,102 +665,38 @@ bool Simulation::scheduler_run_task() {
     LOG_ERROR << "simulation runtime is in the error state.";
     return false;
   }
-  if (!scheduler_write_commands()) {
-    LOG_ERROR << "failed to write commands to the simulation.";
-    return false;
+  const RobotCommand command = command_buffer_.read();
+  {
+    std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
+    if (runtime_ == nullptr) {
+      LOG_ERROR << "simulation runtime is not available.";
+      return false;
+    }
+    if (!runtime_->is_initialized()) {
+      LOG_ERROR << "simulation runtime is not initialized.";
+      return false;
+    }
+    if (!component_manager_.write_command(runtime_->context(), command)) {
+      LOG_ERROR << "component manager rejected a command snapshot.";
+      return false;
+    }
+    if (!runtime_->step()) {
+      LOG_ERROR << "MuJoCo physics step failed.";
+      return false;
+    }
+    ++step_;
+    if (!component_manager_.update(runtime_->context())) {
+      LOG_ERROR << "component manager update failed.";
+      return false;
+    }
+    if (!write_state_snapshot_locked()) {
+      LOG_ERROR << "failed to publish the simulation state.";
+      return false;
+    }
   }
-  if (!scheduler_step_physics()) {
-    LOG_ERROR << "failed to advance simulation physics.";
-    return false;
-  }
-  if (!scheduler_update_components()) {
-    LOG_ERROR << "failed to update simulation components.";
-    return false;
-  }
-  if (!write_state_snapshot()) {
-    LOG_ERROR << "failed to publish the simulation state.";
-    return false;
-  }
-  if (!scheduler_sync_viewer_if_due()) {
-    LOG_ERROR << "failed to synchronize the simulation viewer.";
-    return false;
-  }
-  return true;
-}
-
-bool Simulation::scheduler_step_physics() {
-  std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
-  if (runtime_ == nullptr) {
-    LOG_ERROR << "simulation runtime is not available.";
-    return false;
-  }
-  if (!runtime_->is_initialized()) {
-    LOG_ERROR << "simulation runtime is not initialized.";
-    return false;
-  }
-  if (!runtime_->step()) {
-    LOG_ERROR << "MuJoCo physics step failed.";
-    return false;
-  }
-  ++step_;
-  return true;
-}
-
-bool Simulation::scheduler_write_commands() {
-  const RobotCommand snapshot = command_buffer_.read();
-  std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
-  if (runtime_ == nullptr) {
-    LOG_ERROR << "simulation runtime is not available.";
-    return false;
-  }
-  if (!runtime_->is_initialized()) {
-    LOG_ERROR << "simulation runtime is not initialized.";
-    return false;
-  }
-  if (!component_manager_.write_command(runtime_->context(), snapshot)) {
-    LOG_ERROR << "component manager rejected a command snapshot.";
-    return false;
-  }
-  return true;
-}
-
-bool Simulation::scheduler_update_components() {
-  std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
-  if (runtime_ == nullptr) {
-    LOG_ERROR << "simulation runtime is not available.";
-    return false;
-  }
-  if (!runtime_->is_initialized()) {
-    LOG_ERROR << "simulation runtime is not initialized.";
-    return false;
-  }
-  if (!component_manager_.update(runtime_->context())) {
-    LOG_ERROR << "component manager update failed.";
-    return false;
-  }
-  return true;
-}
-
-bool Simulation::update_components_for_step_locked(std::uint64_t, double) {
-  if (runtime_ == nullptr) {
-    LOG_ERROR << "simulation runtime is not available.";
-    return false;
-  }
-  if (!runtime_->is_initialized()) {
-    LOG_ERROR << "simulation runtime is not initialized.";
-    return false;
-  }
-  if (!component_manager_.update(runtime_->context())) {
-    LOG_ERROR << "component manager update failed.";
-    return false;
-  }
-  return true;
-}
-
-bool Simulation::write_state_snapshot() {
-  std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
-  if (!write_state_snapshot_locked()) {
-    LOG_ERROR << "failed to build the simulation state snapshot.";
+  if (!scheduler_submit_viewer_sync_if_due()) {
+    LOG_ERROR
+        << "failed to submit a simulation viewer synchronization request.";
     return false;
   }
   return true;
@@ -816,33 +756,21 @@ bool Simulation::start_viewer() {
   return true;
 }
 
-bool Simulation::scheduler_sync_viewer_if_due() {
+bool Simulation::scheduler_submit_viewer_sync_if_due() {
   const auto now = std::chrono::steady_clock::now();
   if (now < next_sync_time_) {
     return true;
   }
-  std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
-  if (viewer_ == nullptr) {
-    return true;
-  }
-  if (!viewer_->is_running()) {
-    LOG_ERROR << "simulation viewer is no longer running.";
-    runtime_failed_.store(true);
-    return false;
-  }
-  if (!viewer_->is_ready()) {
-    LOG_ERROR << "simulation viewer is not ready.";
-    runtime_failed_.store(true);
-    return false;
-  }
-  if (!viewer_->sync(false)) {
-    LOG_ERROR << "simulation viewer synchronization failed.";
-    runtime_failed_.store(true);
-    return false;
+  {
+    std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
+    std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
+    if (viewer_ != nullptr && runtime_ != nullptr &&
+        runtime_->is_initialized() && !viewer_->submit(runtime_->context())) {
+      LOG_WARNING << "failed to submit a viewer synchronization request.";
+    }
   }
   const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::duration<double>(1.0 /
-                                    config_.scheduler.viewer_update_rate));
+      std::chrono::duration<double>(config_.scheduler.viewer_period));
   next_sync_time_ = now + period;
   return true;
 }

@@ -9,7 +9,7 @@ namespace mujoco_simulation {
 
 class MUJOCO_SIMULATION_PUBLIC SimulationComponent {
 public:
-  SimulationComponent(std::string name, double update_rate);
+  SimulationComponent(std::string name, double period);
   virtual ~SimulationComponent();
   const std::string &name() const noexcept;
   virtual bool init(const mjContext &context) = 0;
@@ -24,7 +24,7 @@ protected:
 
 private:
   std::string name_;
-  double update_rate_{0.0};
+  double period_{0.0};
   mjTime next_time_{0.0};
 };
 

@@ -65,7 +65,7 @@ camera_state_from_render_state(const CameraRenderState &render_state) {
 }
 
 CameraComponent::CameraComponent(CameraConfig config)
-    : SimulationComponent(config.name, config.update_rate),
+    : SimulationComponent(config.name, config.period),
       config_(std::move(config)) {}
 
 bool CameraComponent::init(const mjContext &context) {

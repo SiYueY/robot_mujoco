@@ -6,3 +6,27 @@ target_link_libraries(mujoco_simulation_camera_renderer_async_test PRIVATE
 add_test(
   NAME mujoco_simulation.camera_renderer_async
   COMMAND mujoco_simulation_camera_renderer_async_test)
+
+add_executable(mujoco_simulation_scheduler_realtime_test
+  simulation_scheduler_realtime_test.cpp)
+target_link_libraries(mujoco_simulation_scheduler_realtime_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.scheduler_realtime
+  COMMAND mujoco_simulation_scheduler_realtime_test)
+
+add_executable(mujoco_simulation_config_timing_test
+  simulation_config_timing_test.cpp)
+target_link_libraries(mujoco_simulation_config_timing_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.config_timing
+  COMMAND mujoco_simulation_config_timing_test)
+
+add_executable(mujoco_simulation_component_period_test
+  simulation_component_period_test.cpp)
+target_link_libraries(mujoco_simulation_component_period_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.component_period
+  COMMAND mujoco_simulation_component_period_test)

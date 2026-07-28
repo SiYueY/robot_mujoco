@@ -11,7 +11,7 @@
 namespace mujoco_simulation {
 
 JointComponent::JointComponent(JointInfo info)
-    : SimulationComponent(info.joint_name, info.update_rate),
+    : SimulationComponent(info.joint_name, info.period),
       info_(std::move(info)) {}
 
 bool JointComponent::init(const mjContext &context) {

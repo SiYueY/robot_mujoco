@@ -1,5 +1,6 @@
 #include "mujoco_simulation/runtime/simulation_scheduler.hpp"
 
+#include <cmath>
 #include <exception>
 #include <utility>
 
@@ -23,15 +24,28 @@ bool SimulationScheduler::invoke_task(const std::function<bool()> &task) {
   return false;
 }
 
-bool SimulationScheduler::initialize() {
+bool SimulationScheduler::initialize(
+    std::chrono::duration<double> physics_period) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (status_ != SimulationStatus::Uninitialized) {
     LOG_ERROR << "scheduler is already initialized.";
     return false;
   }
 
+  if (!std::isfinite(physics_period.count()) || physics_period.count() <= 0.0) {
+    LOG_ERROR << "scheduler physics period must be finite and positive.";
+    return false;
+  }
+  physics_period_ =
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          physics_period);
+  if (physics_period_ <= std::chrono::steady_clock::duration::zero()) {
+    LOG_ERROR << "scheduler physics period is below clock resolution.";
+    return false;
+  }
   task_ = {};
   stop_requested_ = false;
+  reset_timing_locked();
   status_ = SimulationStatus::Stopped;
   return true;
 }
@@ -90,6 +104,7 @@ bool SimulationScheduler::start() {
   }
 
   stop_requested_ = false;
+  reset_timing_locked();
   status_ = SimulationStatus::Running;
 
   try {
@@ -115,6 +130,7 @@ bool SimulationScheduler::start_paused() {
   }
 
   stop_requested_ = false;
+  reset_timing_locked();
   status_ = SimulationStatus::Paused;
   try {
     worker_thread_ = std::thread([this]() { worker_loop(); });
@@ -166,6 +182,8 @@ bool SimulationScheduler::pause() {
     return false;
   }
   status_ = SimulationStatus::Paused;
+  timing_reset_requested_ = true;
+  cv_.notify_all();
   return true;
 }
 
@@ -181,6 +199,7 @@ bool SimulationScheduler::resume() {
       return false;
     }
     status_ = SimulationStatus::Running;
+    reset_timing_locked();
   }
   cv_.notify_all();
   return true;
@@ -236,6 +255,8 @@ bool SimulationScheduler::execute_task_once() {
 }
 
 void SimulationScheduler::worker_loop() {
+  using Clock = std::chrono::steady_clock;
+  Clock::time_point next_deadline = Clock::now();
   try {
     while (true) {
       {
@@ -246,21 +267,34 @@ void SimulationScheduler::worker_loop() {
         if (stop_requested_) {
           break;
         }
+        if (timing_reset_requested_) {
+          next_deadline = Clock::now();
+          timing_reset_requested_ = false;
+        }
       }
 
-      SimulationStatus current_status;
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        current_status = status_;
-      }
-      if (current_status != SimulationStatus::Running) {
-        continue;
-      }
-
+      next_deadline += physics_period_;
       if (!execute_task_once()) {
         std::lock_guard<std::mutex> lock(mutex_);
         set_error_locked();
         break;
+      }
+
+      const Clock::time_point step_end = Clock::now();
+      {
+        std::unique_lock<std::mutex> lock(mutex_);
+        ++completed_steps_;
+        if (step_end >= next_deadline + physics_period_) {
+          log_deadline_miss(step_end, next_deadline);
+          next_deadline = step_end;
+        }
+        cv_.wait_until(lock, next_deadline, [this] {
+          return stop_requested_ || status_ != SimulationStatus::Running ||
+                 timing_reset_requested_;
+        });
+        if (stop_requested_) {
+          break;
+        }
       }
     }
   } catch (const std::exception &) {
@@ -283,6 +317,35 @@ void SimulationScheduler::worker_loop() {
 
 void SimulationScheduler::set_error_locked() {
   status_ = SimulationStatus::Error;
+}
+
+void SimulationScheduler::reset_timing_locked() {
+  timing_reset_requested_ = true;
+  timing_anchor_ = std::chrono::steady_clock::now();
+  last_deadline_log_ = {};
+  completed_steps_ = 0;
+  deadline_misses_ = 0;
+}
+
+void SimulationScheduler::log_deadline_miss(
+    std::chrono::steady_clock::time_point now,
+    std::chrono::steady_clock::time_point deadline) {
+  ++deadline_misses_;
+  if (last_deadline_log_ != std::chrono::steady_clock::time_point{} &&
+      now - last_deadline_log_ < std::chrono::seconds(1)) {
+    return;
+  }
+  const double wall_seconds =
+      std::chrono::duration<double>(now - timing_anchor_).count();
+  const double simulation_seconds =
+      std::chrono::duration<double>(physics_period_).count() * completed_steps_;
+  const double realtime_factor =
+      wall_seconds > 0.0 ? simulation_seconds / wall_seconds : 0.0;
+  const double lateness = std::chrono::duration<double>(now - deadline).count();
+  LOG_WARNING << "physics deadline miss: lateness=" << lateness
+              << " s, realtime_factor=" << realtime_factor
+              << ", misses=" << deadline_misses_;
+  last_deadline_log_ = now;
 }
 
 } // namespace mujoco_simulation

@@ -19,6 +19,50 @@ SimulationViewer::SimulationViewer(std::chrono::milliseconds startup_timeout)
 
 SimulationViewer::~SimulationViewer() { stop(); }
 
+bool SimulationViewer::create_viewer_data(const mjContext &context) {
+  if (!context.valid()) {
+    LOG_ERROR << "cannot create viewer data from an invalid context.";
+    return false;
+  }
+  viewer_model_ = mj_copyModel(nullptr, context.model);
+  if (viewer_model_ == nullptr) {
+    LOG_ERROR << "failed to copy the MuJoCo model for the viewer.";
+    return false;
+  }
+  viewer_data_ = mj_makeData(viewer_model_);
+  pending_data_ = mj_makeData(viewer_model_);
+  render_data_ = mj_makeData(viewer_model_);
+  if (viewer_data_ == nullptr || pending_data_ == nullptr ||
+      render_data_ == nullptr ||
+      mj_copyData(viewer_data_, viewer_model_, context.data) == nullptr ||
+      mj_copyData(pending_data_, viewer_model_, context.data) == nullptr ||
+      mj_copyData(render_data_, viewer_model_, context.data) == nullptr) {
+    LOG_ERROR << "failed to create viewer data buffers.";
+    release_viewer_data();
+    return false;
+  }
+  return true;
+}
+
+void SimulationViewer::release_viewer_data() {
+  if (pending_data_ != nullptr) {
+    mj_deleteData(pending_data_);
+    pending_data_ = nullptr;
+  }
+  if (render_data_ != nullptr) {
+    mj_deleteData(render_data_);
+    render_data_ = nullptr;
+  }
+  if (viewer_data_ != nullptr) {
+    mj_deleteData(viewer_data_);
+    viewer_data_ = nullptr;
+  }
+  if (viewer_model_ != nullptr) {
+    mj_deleteModel(viewer_model_);
+    viewer_model_ = nullptr;
+  }
+}
+
 void SimulationViewer::set_ready() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -93,10 +137,58 @@ void SimulationViewer::stop_viewer() {
   cleanup();
 }
 
-void SimulationViewer::render_task(const mjContext &context,
+bool SimulationViewer::start_sync_worker() {
+  try {
+    {
+      std::lock_guard<std::mutex> lock(sync_mutex_);
+      sync_stopping_ = false;
+      sync_pending_ = false;
+    }
+    sync_thread_ = std::thread([this] { sync_worker_loop(); });
+  } catch (const std::exception &) {
+    LOG_ERROR << "failed to start viewer synchronization worker.";
+    return false;
+  }
+  return true;
+}
+
+void SimulationViewer::stop_sync_worker() {
+  {
+    std::lock_guard<std::mutex> lock(sync_mutex_);
+    sync_stopping_ = true;
+    sync_pending_ = false;
+  }
+  sync_cv_.notify_all();
+  if (sync_thread_.joinable()) {
+    sync_thread_.join();
+  }
+}
+
+void SimulationViewer::sync_worker_loop() {
+  while (true) {
+    mjData *data = nullptr;
+    {
+      std::unique_lock<std::mutex> lock(sync_mutex_);
+      sync_cv_.wait(lock, [this] { return sync_stopping_ || sync_pending_; });
+      if (sync_stopping_) {
+        return;
+      }
+      std::swap(pending_data_, render_data_);
+      data = render_data_;
+      sync_pending_ = false;
+    }
+    if (data != nullptr && !sync_render_data(*data)) {
+      LOG_WARNING << "viewer synchronization failed; disabling viewer.";
+      stop_viewer();
+      return;
+    }
+  }
+}
+
+void SimulationViewer::render_task(const mjModel *model, mjData *data,
                                    std::string displayed_filename) {
   try {
-    if (!context.valid()) {
+    if (model == nullptr || data == nullptr) {
       LOG_ERROR << "viewer runtime became invalid.";
       set_failed();
       return;
@@ -109,8 +201,8 @@ void SimulationViewer::render_task(const mjContext &context,
 
     {
       const ::mujoco::MutexLock simulate_lock(simulate->mtx);
-      simulate->mnew_ = const_cast<mjModel *>(context.model);
-      simulate->dnew_ = context.data;
+      simulate->mnew_ = const_cast<mjModel *>(model);
+      simulate->dnew_ = data;
       std::strncpy(simulate->filename, displayed_filename.c_str(),
                    sizeof(simulate->filename) - 1);
       simulate->filename[sizeof(simulate->filename) - 1] = '\0';
@@ -152,7 +244,13 @@ bool SimulationViewer::start(const mjContext &context,
     }
   }
 
+  stop_sync_worker();
   stop_viewer();
+  release_viewer_data();
+
+  if (!create_viewer_data(context)) {
+    return false;
+  }
 
   try {
     mjv_defaultCamera(&camera_);
@@ -163,8 +261,8 @@ bool SimulationViewer::start(const mjContext &context,
       state_ = ViewerState::Starting;
     }
 
-    std::thread render_thread([this, &context, displayed_filename]() {
-      render_task(context, displayed_filename);
+    std::thread render_thread([this, displayed_filename]() {
+      render_task(viewer_model_, viewer_data_, displayed_filename);
     });
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -173,6 +271,7 @@ bool SimulationViewer::start(const mjContext &context,
   } catch (const std::exception &) {
     LOG_ERROR << "failed to start viewer render thread.";
     cleanup();
+    release_viewer_data();
     return false;
   }
 
@@ -190,31 +289,59 @@ bool SimulationViewer::start(const mjContext &context,
       LOG_ERROR << "viewer startup timed out.";
     }
     stop_viewer();
+    release_viewer_data();
+    return false;
   }
-  return ready;
+  if (!start_sync_worker()) {
+    stop_viewer();
+    release_viewer_data();
+    return false;
+  }
+  return true;
 }
 
 void SimulationViewer::stop() {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+  stop_sync_worker();
   stop_viewer();
+  release_viewer_data();
 }
 
-bool SimulationViewer::sync(bool state_only) {
+bool SimulationViewer::submit(const mjContext &context) {
+  if (!context.valid()) {
+    LOG_WARNING << "viewer synchronization request has an invalid context.";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(sync_mutex_);
+  if (sync_stopping_ || pending_data_ == nullptr || !is_ready()) {
+    return false;
+  }
+  if (mj_copyData(pending_data_, viewer_model_, context.data) == nullptr) {
+    LOG_WARNING << "failed to copy simulation data for viewer synchronization.";
+    return false;
+  }
+  sync_pending_ = true;
+  sync_cv_.notify_one();
+  return true;
+}
+
+bool SimulationViewer::sync_render_data(const mjData &data) {
   std::lock_guard<std::mutex> state_lock(mutex_);
-  if (state_ != ViewerState::Ready || simulate_ == nullptr) {
-    LOG_ERROR << "viewer is not ready.";
+  if (state_ != ViewerState::Ready || simulate_ == nullptr ||
+      viewer_data_ == nullptr || viewer_model_ == nullptr) {
     return false;
   }
 
   try {
     std::unique_lock<std::recursive_mutex> simulate_lock(simulate_->mtx);
     if (simulate_->exitrequest.load()) {
-      LOG_ERROR << "viewer render loop has stopped.";
       return false;
     }
-    simulate_->Sync(state_only);
+    if (mj_copyData(viewer_data_, viewer_model_, &data) == nullptr) {
+      return false;
+    }
+    simulate_->Sync(false);
   } catch (const std::exception &) {
-    LOG_ERROR << "viewer synchronization failed.";
     return false;
   }
   return true;

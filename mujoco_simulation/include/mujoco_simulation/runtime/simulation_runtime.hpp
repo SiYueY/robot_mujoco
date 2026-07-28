@@ -30,6 +30,7 @@ public:
   bool step();
   bool step(std::size_t count);
   bool forward();
+  bool set_timestep(double timestep);
   bool reset();
   bool reset(std::string keyframe_name);
 

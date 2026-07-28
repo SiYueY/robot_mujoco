@@ -73,28 +73,21 @@ public:
   bool read_state(LidarStates &states) const;
   bool read_state(MobileBaseStates &states) const;
 
-  uint64_t step() const;
+  bool step(std::size_t count = 1);
+  uint64_t step_count() const;
   SimulationStatus status() const;
   double time() const;
 
 private:
-  static constexpr auto kDefaultViewerPeriod = std::chrono::milliseconds(16);
-
   bool initialize_camera_renderer();
   bool initialize_scheduler();
   bool initialize_components();
   bool load_model(const ModelConfig &model_config);
-  bool write_state_snapshot();
   bool write_state_snapshot_locked();
-  bool update_components_for_step_locked(std::uint64_t step,
-                                         double simulation_time);
   bool build_state_snapshot_locked(std::uint64_t step, double simulation_time);
   // Scheduler
   bool scheduler_run_task();
-  bool scheduler_write_commands();
-  bool scheduler_update_components();
-  bool scheduler_step_physics();
-  bool scheduler_sync_viewer_if_due();
+  bool scheduler_submit_viewer_sync_if_due();
   bool start_viewer();
   bool stop_viewer();
   bool build_state_snapshot(RobotState &snapshot) const;

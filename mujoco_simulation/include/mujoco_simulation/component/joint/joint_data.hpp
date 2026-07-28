@@ -37,7 +37,7 @@ struct JointInfo {
   Limit position_limits;                     // 位置限制
   Limit velocity_limits;                     // 速度限制
   Limit effort_limits;                       // 力矩限制
-  double update_rate{0.0};                   // 更新频率
+  double period{0.0}; // 更新周期，单位：秒；0 表示每物理步
 };
 
 // 关节指令

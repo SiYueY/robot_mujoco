@@ -8,8 +8,7 @@
 
 namespace mujoco_simulation {
 ImuComponent::ImuComponent(ImuInfo info)
-    : SimulationComponent(info.name, info.update_rate), info_(std::move(info)) {
-}
+    : SimulationComponent(info.name, info.period), info_(std::move(info)) {}
 
 bool ImuComponent::init(const mjContext &context) {
   initialized_ = false;

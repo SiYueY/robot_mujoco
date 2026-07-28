@@ -12,7 +12,7 @@ struct LidarInfo {
   LidarId id{kInvalidComponentId};
   std::string name;
   std::string frame_id;
-  double update_rate{10.0};
+  double period{1.0 / 10.0}; // seconds
   std::string sensor_prefix;
   double angle_min{0.0};
   double angle_max{0.0};

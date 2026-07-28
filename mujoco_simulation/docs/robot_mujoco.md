@@ -331,7 +331,17 @@ robot_mujoco负责：
 
 - 根节点 `<robot_mujoco>`
 - `<mujoco><mjcf>...</mjcf></mujoco>`
-- `<robot>` 下的多个 `<joint name="...">`
+- 必需的实时调度配置：
+  ```xml
+  <simulation>
+    <physics period="0.001"/>
+    <viewer period="0.0166666667"/>
+  </simulation>
+  ```
+  `physics.period` 覆盖 MJCF timestep，并同时作为固定 1.0 实时因子的墙钟物理周期。
+- `<robot>` 下的 Joint、IMU、Camera、Lidar、MobileBase 配置；每个组件具有显式 `id` 与类型内唯一名称
+  - 各组件可选使用 `period="秒"` 指定采样周期；`period="0"` 表示每个 physics step 更新。
+    正周期必须是 `physics.period` 的整数倍且不短于它。`update_rate`（Hz）已删除且会被拒绝。
 - `<position><stiffness>` / `<position><damping>`
 - `<velocity><damping>`
 - `<limit><position|velocity|effort><min|max>`
@@ -339,8 +349,7 @@ robot_mujoco负责：
 当前未解析：
 
 - `initial_keyframe`
-- `viewer_update_rate`
-- imu / camera / lidar / mobile base
+- realtime factor、无节流运行模式、命令延迟与命令超时
 - 任何未在本文档中列出的扩展标签
 
 未支持的元素会直接报错，不会静默忽略。

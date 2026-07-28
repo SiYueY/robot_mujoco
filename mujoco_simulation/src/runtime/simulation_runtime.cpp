@@ -1,5 +1,6 @@
 #include "mujoco_simulation/runtime/simulation_runtime.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <string>
 
@@ -141,6 +142,20 @@ bool SimulationRuntime::forward() {
   }
   mj_forward(context_.model, context_.data);
   return true;
+}
+
+bool SimulationRuntime::set_timestep(double timestep) {
+  if (!is_initialized()) {
+    LOG_ERROR << "model runtime is not loaded.";
+    return false;
+  }
+  if (!std::isfinite(timestep) || timestep <= 0.0) {
+    LOG_ERROR << "MuJoCo timestep must be finite and positive.";
+    return false;
+  }
+  mjModel *model = const_cast<mjModel *>(context_.model);
+  model->opt.timestep = timestep;
+  return forward();
 }
 
 bool SimulationRuntime::reset() {

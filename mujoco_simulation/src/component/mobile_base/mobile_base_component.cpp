@@ -11,7 +11,7 @@
 namespace mujoco_simulation {
 
 MobileBaseComponent::MobileBaseComponent(MobileBaseInfo info)
-    : SimulationComponent(info.mobile_base_name, info.update_rate),
+    : SimulationComponent(info.mobile_base_name, info.period),
       info_(std::move(info)) {}
 
 bool MobileBaseComponent::init(const mjContext &context) {

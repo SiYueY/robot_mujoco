@@ -33,8 +33,9 @@ public:
 
   bool start(const mjContext &context, const std::string &displayed_filename);
   void stop();
-
-  bool sync(bool state_only);
+  // Copies the current simulation data into a capacity-one latest-only mailbox.
+  // The caller must serialize access to context.data.
+  bool submit(const mjContext &context);
   bool is_running() const;
   bool is_ready() const;
 
@@ -55,7 +56,14 @@ private:
   void join_render_thread();
   void cleanup();
   void stop_viewer();
-  void render_task(const mjContext &context, std::string displayed_filename);
+  void release_viewer_data();
+  bool create_viewer_data(const mjContext &context);
+  bool start_sync_worker();
+  void stop_sync_worker();
+  void sync_worker_loop();
+  bool sync_render_data(const mjData &data);
+  void render_task(const mjModel *model, mjData *data,
+                   std::string displayed_filename);
 
   std::chrono::milliseconds startup_timeout_{5000};
 
@@ -71,6 +79,16 @@ private:
   std::condition_variable cv_;
   mutable std::mutex lifecycle_mutex_;
   mutable std::mutex mutex_;
+
+  std::mutex sync_mutex_;
+  std::condition_variable sync_cv_;
+  std::thread sync_thread_;
+  bool sync_stopping_{false};
+  bool sync_pending_{false};
+  mjModel *viewer_model_{nullptr};
+  mjData *viewer_data_{nullptr};
+  mjData *pending_data_{nullptr};
+  mjData *render_data_{nullptr};
 
   // Viewer state
   ViewerState state_{ViewerState::Stopped};

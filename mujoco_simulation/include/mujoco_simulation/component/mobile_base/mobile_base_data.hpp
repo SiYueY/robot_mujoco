@@ -41,7 +41,7 @@ struct MobileBaseInfo {
   MecanumInfo mecanum_info;
   MecanumWheelInfo mecanum_wheels;
 
-  double update_rate{0.0};
+  double period{0.0}; // seconds; 0 means every physics step.
 };
 
 // ROS2 Twist:

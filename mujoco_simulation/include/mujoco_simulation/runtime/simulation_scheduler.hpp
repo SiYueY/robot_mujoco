@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -14,7 +15,7 @@ namespace mujoco_simulation {
 
 class MUJOCO_SIMULATION_PUBLIC SimulationScheduler {
 public:
-  bool initialize();
+  bool initialize(std::chrono::duration<double> physics_period);
   bool register_task(std::function<bool()> task);
   bool shutdown();
 
@@ -32,6 +33,9 @@ private:
   bool execute_task_once();
   void worker_loop();
   void set_error_locked();
+  void reset_timing_locked();
+  void log_deadline_miss(std::chrono::steady_clock::time_point now,
+                         std::chrono::steady_clock::time_point deadline);
 
   // Task
   std::function<bool()> task_;
@@ -42,8 +46,15 @@ private:
   // Simulation state
   SimulationStatus status_{SimulationStatus::Uninitialized};
   bool stop_requested_{false};
+  bool timing_reset_requested_{false};
+  std::chrono::steady_clock::duration physics_period_{};
+  std::chrono::steady_clock::time_point timing_anchor_{};
+  std::chrono::steady_clock::time_point last_deadline_log_{};
+  std::uint64_t completed_steps_{0};
+  std::uint64_t deadline_misses_{0};
 
   std::mutex execution_mutex_;
 };
 
 } // namespace mujoco_simulation
+#include <chrono>

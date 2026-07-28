@@ -11,8 +11,7 @@
 namespace mujoco_simulation {
 
 LidarComponent::LidarComponent(LidarInfo info)
-    : SimulationComponent(info.name, info.update_rate), info_(std::move(info)) {
-}
+    : SimulationComponent(info.name, info.period), info_(std::move(info)) {}
 
 bool LidarComponent::init(const mjContext &context) {
   initialized_ = false;
@@ -149,8 +148,8 @@ bool LidarComponent::update(const mjContext &context) {
   state->angle_increment = info_.angle_increment;
   state->range_min = info_.range_min;
   state->range_max = info_.range_max;
-  state->scan_time = info_.update_rate > 0.0 ? 1.0 / info_.update_rate
-                                             : context.model->opt.timestep;
+  state->scan_time =
+      info_.period > 0.0 ? info_.period : context.model->opt.timestep;
   state->time_increment = 0.0;
   state->ranges.resize(beam_addresses_.size());
   state->intensities.resize(beam_addresses_.size());

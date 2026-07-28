@@ -2,6 +2,8 @@
 
 `mujoco_simulation`  MuJoCo 仿真运行时内核，其定位不是“完整的 ROS 2 仿真应用”，而是可复用的底层库，负责把 MuJoCo 的 `mjModel` / `mjData`、物理步进、viewer 和各类仿真设备封装成稳定的 C++ 接口，供上层模块复用。
 
+它以固定 1.0 实时因子按 `std::chrono::steady_clock` 推进物理仿真，目标是复现真实机器人控制系统的周期与时序；仿真过载时记录 deadline miss 并重新对齐，不高速补跑历史物理步。
+
 ## 参考项目
 
 `mujoco_simulation` 模块定位和实现思路参考以下项目：
@@ -46,8 +48,8 @@ Simulation
   - 唯一连续推进 `mjModel / mjData` 的线程
 - camera render worker thread
   - 只读取物理线程复制的私有 `mjData`，执行离屏渲染和图像转换
-- viewer render thread
-  - 只负责被动渲染与 viewer 同步
+- viewer render thread 与 viewer sync worker
+  - 使用 viewer 私有的 `mjModel` / `mjData` 副本；物理线程仅提交 latest-only 状态副本
 - external caller threads
   - 只负责写命令、读 buffer、提交 lifecycle/reset 请求
 
@@ -111,7 +113,8 @@ Simulation
   - 按 `JointId`、`ImuId`、`CameraId`、`LidarId`、`MobileBaseId` 的单组件读取重载
   - 按组件类型读取完整稀疏状态数组的重载
 - 查询状态
-  - `uint64_t step() const`
+  - `bool step(std::size_t count = 1)`
+  - `uint64_t step_count() const`
   - `double time() const`
   - `SimulationStatus status() const`
 
@@ -149,11 +152,15 @@ Simulation
   - `initial_keyframe` 非空时，初始化会按名称复位到对应 MuJoCo keyframe；找不到
     keyframe 会导致初始化失败
 - `scheduler`
-  - `viewer_update_rate` 为 viewer 同步频率，`Simulation::initialize()` 要求其大于零
+  - `physics_period` 同时定义 MuJoCo timestep 与墙钟物理调度周期
+  - `viewer_period` 定义 Viewer latest-only 同步请求周期
 - `components`
   - `JointInfo`、`ImuInfo`、`CameraConfig`、`LidarInfo` 与 `MobileBaseInfo` 的变体列表
   - 每个组件必须提供类型内唯一的显式 ID；ID 直接作为状态、命令和组件 vector 的下标
   - 空洞为保留槽位，默认允许范围是 `0..256`；`max_component_id` 可配置
+  - 所有组件以 `period`（秒）配置采样周期；`period="0"` 表示每个 physics step 更新。
+    正周期必须是 `physics.period` 的整数倍，且不得短于该物理周期。
+    旧的 `update_rate`（Hz）属性不受支持。
 - `camera_renderer`
   - 离屏渲染资源配置
 - `viewer_startup_timeout`
@@ -166,7 +173,17 @@ Simulation
 - 所有组件 XML 元素都必须包含 `id` 与 `name` 属性；根元素可设置
   `max_component_id`。
 - `<mjcf>` 相对路径相对 `robot_mujoco.xml` 所在目录解析
-- `initial_keyframe` 与 `viewer_update_rate` 仍通过 C++ `SimulationConfig` 配置。
+- `initial_keyframe` 仍通过 C++ `SimulationConfig` 配置。
+- XML 必须提供：
+  ```xml
+  <simulation>
+    <physics period="0.001"/>
+    <viewer period="0.0166666667"/>
+  </simulation>
+  ```
+  `physics.period` 会覆盖 MJCF 中的 timestep，固定实时因子为 1.0。
+  组件可选使用 `period="秒"` 属性；Joint、IMU、MobileBase 未配置时每物理步更新，
+  Camera 与 Lidar 默认分别为 `1 / 30` 秒和 `1 / 10` 秒。
 
 `Simulation` 初始化时启动 viewer，并以独立频率同步显示；Camera 不依赖 viewer 的渲染
 资源。`stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会自动重建
@@ -175,8 +192,14 @@ viewer。
 `reset()` 复位到默认 MuJoCo 数据状态；`reset(std::string keyframe_name)` 复位到指定
 keyframe。两者均执行完整重置事务：运行态 scheduler 会先停止，随后复位 MuJoCo
 runtime、清空旧命令、复位并立即更新组件采样、重置 step/sequence，并发布新的状态
-快照。Viewer 模式会立即同步显示；任一步失败会使 reset 返回 `false` 并使运行时进入
-错误状态。成功后恢复调用前的 Running 状态；Paused 和 Stopped 状态保持不变。
+快照。Viewer 模式会异步提交 reset 后的显示状态；MuJoCo runtime 或组件失败会使
+reset 返回 `false` 并进入错误状态，Viewer 故障仅禁用可视化。成功后恢复调用前的
+Running 状态；Paused 和 Stopped 状态保持不变。Error 状态可通过 `reset()` 恢复为
+Stopped，前提是完整重置事务成功。
+
+`stop()` 停止 scheduler、Camera worker 与 Viewer，并清空命令；最后发布的
+`RobotState` 保留，仍可通过 `read_state(...)` 查询。只有 `shutdown()` 会清空状态
+快照并释放 runtime 资源。
 
 ## 设备层能力
 
@@ -213,9 +236,9 @@ viewer 相关代码位于 [`src/viewer`](./src/viewer)。
 
 这里的 viewer 是“被动渲染前端”：
 
-- `Simulation` 持有真正的 `mjModel` / `mjData`
+- `Simulation` 持有真正的 `mjModel` / `mjData`；Viewer 使用私有副本
 - 物理步进仍然由 `Simulation` 驱动
-- `SimulationViewer` 只负责渲染和状态同步
+- `SimulationViewer` 只负责渲染和异步状态同步；GUI 卡顿、关闭或同步失败不影响物理仿真
 
 Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer 的渲染资源。
 

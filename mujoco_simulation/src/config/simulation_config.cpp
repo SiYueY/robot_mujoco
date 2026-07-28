@@ -136,7 +136,8 @@ bool parse_joint(const XMLElement &element, ComponentId maximum,
   if (!allowed(element, {"position", "velocity", "limit"}) ||
       !id(element, maximum, info.id) ||
       !required(element, "name", info.joint_name) ||
-      !number(element, "update_rate", info.update_rate))
+      element.Attribute("update_rate") != nullptr ||
+      !number(element, "period", info.period))
     return false;
   info.actuator_name = info.joint_name;
   const char *actuator = element.Attribute("actuator");
@@ -211,7 +212,8 @@ bool parse_components(const XMLElement *robot, ComponentId maximum,
         !required(*e, "framequat_sensor", v.framequat_sensor_name) ||
         !required(*e, "gyro_sensor", v.gyro_sensor_name) ||
         !required(*e, "accelerometer_sensor", v.accelerometer_sensor_name) ||
-        !number(*e, "update_rate", v.update_rate) ||
+        e->Attribute("update_rate") != nullptr ||
+        !number(*e, "period", v.period) ||
         !number_array(*e, "orientation_covariance", v.orientation_covariance) ||
         !number_array(*e, "angular_velocity_covariance",
                       v.angular_velocity_covariance) ||
@@ -228,7 +230,8 @@ bool parse_components(const XMLElement *robot, ComponentId maximum,
         !required(*e, "frame_id", v.frame_id) ||
         !required(*e, "camera_name", v.camera_name) ||
         !required(*e, "optical_frame_id", v.optical_frame_id) ||
-        !number(*e, "update_rate", v.update_rate) ||
+        e->Attribute("update_rate") != nullptr ||
+        !number(*e, "period", v.period) ||
         e->QueryIntAttribute("width", &v.width) != tinyxml2::XML_SUCCESS ||
         e->QueryIntAttribute("height", &v.height) != tinyxml2::XML_SUCCESS ||
         !unique_entry(v, camera_ids, camera_names, v.name))
@@ -243,7 +246,8 @@ bool parse_components(const XMLElement *robot, ComponentId maximum,
     if (!id(*e, maximum, v.id) || !required(*e, "name", v.name) ||
         !required(*e, "frame_id", v.frame_id) ||
         !required(*e, "sensor_prefix", v.sensor_prefix) ||
-        !number(*e, "update_rate", v.update_rate) ||
+        e->Attribute("update_rate") != nullptr ||
+        !number(*e, "period", v.period) ||
         !number(*e, "angle_min", v.angle_min, true) ||
         !number(*e, "angle_max", v.angle_max, true) ||
         !number(*e, "angle_increment", v.angle_increment, true) ||
@@ -259,7 +263,8 @@ bool parse_components(const XMLElement *robot, ComponentId maximum,
     if (!allowed(*e, {"wheel"}) || !id(*e, maximum, v.id) ||
         !required(*e, "name", v.mobile_base_name) ||
         !required(*e, "base_body", v.base_body_name) ||
-        !number(*e, "update_rate", v.update_rate) ||
+        e->Attribute("update_rate") != nullptr ||
+        !number(*e, "period", v.period) ||
         !unique_entry(v, base_ids, base_names, v.mobile_base_name))
       return false;
     const char *base = e->Attribute("base_frame_id");
@@ -289,6 +294,22 @@ bool parse_components(const XMLElement *robot, ComponentId maximum,
   }
   return true;
 }
+bool parse_simulation(const XMLElement *simulation, SchedulerConfig &config) {
+  if (simulation == nullptr || !allowed(*simulation, {"physics", "viewer"})) {
+    return false;
+  }
+  const XMLElement *physics = simulation->FirstChildElement("physics");
+  const XMLElement *viewer = simulation->FirstChildElement("viewer");
+  if (physics == nullptr || viewer == nullptr ||
+      physics->NextSiblingElement("physics") != nullptr ||
+      viewer->NextSiblingElement("viewer") != nullptr ||
+      !number(*physics, "period", config.physics_period, true) ||
+      !number(*viewer, "period", config.viewer_period, true) ||
+      config.physics_period <= 0.0 || config.viewer_period <= 0.0) {
+    return false;
+  }
+  return true;
+}
 std::optional<std::filesystem::path> resolve(const std::filesystem::path &file,
                                              const std::string &model) {
   if (model.empty())
@@ -307,7 +328,7 @@ bool SimulationConfigParser::load_file(const std::string &path,
     return false;
   const XMLElement *root = document.RootElement();
   if (root == nullptr || std::string(root->Name()) != "robot_mujoco" ||
-      !allowed(*root, {"mujoco", "robot"}))
+      !allowed(*root, {"mujoco", "robot", "simulation"}))
     return false;
   SimulationConfig parsed;
   if (const char *max = root->Attribute("max_component_id")) {
@@ -331,6 +352,12 @@ bool SimulationConfigParser::load_file(const std::string &path,
   if (!model)
     return false;
   parsed.model.model_path = model->string();
+  const XMLElement *simulation = root->FirstChildElement("simulation");
+  if (simulation == nullptr ||
+      simulation->NextSiblingElement("simulation") != nullptr ||
+      !parse_simulation(simulation, parsed.scheduler)) {
+    return false;
+  }
   if (!parse_components(root->FirstChildElement("robot"),
                         parsed.max_component_id, parsed.components))
     return false;

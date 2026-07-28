@@ -21,7 +21,7 @@ struct ImuInfo {
   Vector9d angular_velocity_covariance{};
   Vector9d linear_acceleration_covariance{};
 
-  double update_rate{0.0};
+  double period{0.0}; // seconds; 0 means every physics step.
 };
 
 // ROS2 Imu:

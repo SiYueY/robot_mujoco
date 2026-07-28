@@ -27,7 +27,8 @@ struct ModelConfig {
 };
 
 struct SchedulerConfig {
-  double viewer_update_rate{60.0};
+  double physics_period{0.001};
+  double viewer_period{1.0 / 60.0};
 };
 
 struct SimulationConfig {

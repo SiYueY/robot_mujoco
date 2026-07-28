@@ -13,7 +13,7 @@ struct CameraConfig {
   CameraId id{kInvalidComponentId};
   std::string name;
   std::string frame_id;
-  double update_rate{30.0};
+  double period{1.0 / 30.0}; // seconds
   std::string camera_name;
   std::string optical_frame_id;
 
