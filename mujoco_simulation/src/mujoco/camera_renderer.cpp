@@ -9,6 +9,7 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <unordered_set>
 #include <utility>
 
 #include "common/logging.hpp"
@@ -57,7 +58,10 @@ bool pixel_count_for(int width, int height, std::size_t &pixel_count) {
 
 CameraRenderer::CameraRenderer() : CameraRenderer(CameraRendererConfig{}) {}
 
-CameraRenderer::CameraRenderer(CameraRendererConfig config) : config_(config) {}
+CameraRenderer::CameraRenderer(CameraRendererConfig config) : config_(config) {
+  if (config_.completed_ticket_history == 0U)
+    config_.completed_ticket_history = 1U;
+}
 
 CameraRenderer::~CameraRenderer() { UNUSED(release()); }
 
@@ -89,8 +93,8 @@ bool CameraRenderer::initialize(const mjContext &context) {
     pending_ready_ = false;
     pending_ticket_ = 0;
     submitted_ticket_ = 0;
-    completed_ticket_ = 0;
-    completed_success_ = false;
+    expired_through_ticket_ = 0;
+    completed_results_.clear();
     worker_ready_ = false;
     worker_initialization_failed_ = false;
     stopping_ = false;
@@ -123,42 +127,62 @@ bool CameraRenderer::initialize(const mjContext &context) {
   return true;
 }
 
-bool CameraRenderer::submit(const mjContext &context,
-                            std::vector<CameraRenderTask> tasks) {
+std::optional<CameraRenderTicket>
+CameraRenderer::submit(const mjContext &context,
+                       std::vector<CameraRenderTask> tasks) {
   if (tasks.empty()) {
-    return true;
+    return CameraRenderTicket{};
   }
   if (!context.valid()) {
     LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
-    return false;
+    return std::nullopt;
   }
   if (!initialized_.load() || !running_.load()) {
     LOG_ERROR << "camera renderer is not initialized.";
-    return false;
+    return std::nullopt;
   }
+  std::unordered_set<CameraId> ids;
   for (const CameraRenderTask &task : tasks) {
-    if (task.config.id == kInvalidComponentId) {
-      LOG_ERROR << "camera render task id is invalid.";
-      return false;
+    if (task.config.id == kInvalidComponentId ||
+        task.config.id > config_.max_camera_id ||
+        !ids.insert(task.config.id).second) {
+      LOG_ERROR
+          << "camera render task id is invalid, outside range, or duplicated.";
+      return std::nullopt;
     }
   }
+  CameraRenderTicket ticket;
   {
     std::lock_guard<std::mutex> lock(job_mutex_);
     if (stopping_ || pending_data_ == nullptr) {
       LOG_WARNING << "camera renderer is stopping; dropped render request.";
-      return false;
+      return std::nullopt;
     }
     if (mj_copyData(pending_data_, context.model, context.data) == nullptr) {
       LOG_ERROR
           << "failed to copy MuJoCo simulation data for camera rendering.";
-      return false;
+      return std::nullopt;
+    }
+    if (pending_ready_) {
+      CameraBatchResult superseded;
+      superseded.ticket = pending_ticket_;
+      for (const CameraRenderTask &pending : pending_tasks_)
+        superseded.statuses.push_back(
+            {pending.config.id, false, "render request was superseded"});
+      completed_results_[superseded.ticket] = std::move(superseded);
+      while (completed_results_.size() > config_.completed_ticket_history) {
+        expired_through_ticket_ = completed_results_.begin()->first;
+        completed_results_.erase(completed_results_.begin());
+      }
     }
     pending_tasks_ = std::move(tasks);
     pending_ticket_ = ++submitted_ticket_;
+    ticket.value = pending_ticket_;
     pending_ready_ = true;
   }
+  completion_condition_.notify_all();
   job_condition_.notify_one();
-  return true;
+  return ticket;
 }
 
 bool CameraRenderer::read_results(CameraRenderStates &states) const {
@@ -167,23 +191,36 @@ bool CameraRenderer::read_results(CameraRenderStates &states) const {
   return states != nullptr;
 }
 
-bool CameraRenderer::wait_for_submitted_results() {
+bool CameraRenderer::wait(CameraRenderTicket requested,
+                          CameraBatchResult *result) {
   std::unique_lock<std::mutex> lock(job_mutex_);
-  const std::uint64_t ticket = submitted_ticket_;
+  const std::uint64_t ticket = requested.value;
   if (ticket == 0) {
     return true;
   }
+  if (ticket > submitted_ticket_) {
+    LOG_ERROR << "camera render ticket was not submitted by this renderer.";
+    return false;
+  }
+  if (ticket <= expired_through_ticket_) {
+    LOG_ERROR << "camera render ticket has expired.";
+    return false;
+  }
   const bool completed =
       completion_condition_.wait_for(lock, kWorkerTimeout, [this, ticket] {
-        return stopping_ || completed_ticket_ >= ticket ||
+        return stopping_ ||
+               completed_results_.find(ticket) != completed_results_.end() ||
                worker_initialization_failed_;
       });
   if (!completed || stopping_ || worker_initialization_failed_ ||
-      completed_ticket_ < ticket) {
+      completed_results_.find(ticket) == completed_results_.end()) {
     LOG_ERROR << "camera render worker did not complete the submitted frame.";
     return false;
   }
-  if (!completed_success_) {
+  const CameraBatchResult &batch = completed_results_.at(ticket);
+  if (result != nullptr)
+    *result = batch;
+  if (!batch.all_succeeded) {
     LOG_ERROR << "camera render worker failed to render the submitted frame.";
     return false;
   }
@@ -226,8 +263,8 @@ bool CameraRenderer::release() {
     pending_ready_ = false;
     pending_ticket_ = 0;
     submitted_ticket_ = 0;
-    completed_ticket_ = 0;
-    completed_success_ = false;
+    expired_through_ticket_ = 0;
+    completed_results_.clear();
     worker_ready_ = false;
     worker_initialization_failed_ = false;
     stopping_ = false;
@@ -277,7 +314,8 @@ void CameraRenderer::worker_loop() {
       }
 
       auto updates = std::make_shared<std::vector<CameraRenderStatePtr>>();
-      std::size_t completed_tasks = 0;
+      CameraBatchResult batch;
+      batch.ticket = ticket;
       bool succeeded = activate_context();
       if (!succeeded) {
         LOG_ERROR << "failed to activate the camera render context.";
@@ -286,8 +324,10 @@ void CameraRenderer::worker_loop() {
         const ScopeExit deactivate([this] { deactivate_context(); });
         for (const CameraRenderTask &task : tasks) {
           CameraRenderStatePtr state;
-          if (!render_task(task, state)) {
+          std::string error;
+          if (!render_task(task, state, &error)) {
             succeeded = false;
+            batch.statuses.push_back({task.config.id, false, std::move(error)});
             LOG_WARNING
                 << "camera render request failed; keeping the prior frame.";
             continue;
@@ -296,8 +336,12 @@ void CameraRenderer::worker_loop() {
             updates->resize(task.config.id + 1U);
           }
           (*updates)[task.config.id] = std::move(state);
-          ++completed_tasks;
+          batch.statuses.push_back({task.config.id, true, ""});
         }
+      } else {
+        for (const CameraRenderTask &task : tasks)
+          batch.statuses.push_back(
+              {task.config.id, false, "failed to activate render context"});
       }
 
       if (!updates->empty()) {
@@ -321,8 +365,17 @@ void CameraRenderer::worker_loop() {
       }
       {
         std::lock_guard<std::mutex> lock(job_mutex_);
-        completed_ticket_ = ticket;
-        completed_success_ = succeeded && completed_tasks == tasks.size();
+        batch.all_succeeded =
+            succeeded &&
+            std::all_of(batch.statuses.begin(), batch.statuses.end(),
+                        [](const CameraRenderTaskStatus &status) {
+                          return status.succeeded;
+                        });
+        completed_results_[ticket] = std::move(batch);
+        while (completed_results_.size() > config_.completed_ticket_history) {
+          expired_through_ticket_ = completed_results_.begin()->first;
+          completed_results_.erase(completed_results_.begin());
+        }
       }
       completion_condition_.notify_all();
     }
@@ -376,38 +429,44 @@ void CameraRenderer::release_worker_resources() {
 }
 
 bool CameraRenderer::render_task(const CameraRenderTask &task,
-                                 CameraRenderStatePtr &out) {
+                                 CameraRenderStatePtr &out,
+                                 std::string *error) {
+  const auto fail = [error](const char *message) {
+    if (error != nullptr)
+      *error = message;
+    return false;
+  };
   const CameraConfig &spec = task.config;
   if (model_ == nullptr || render_data_ == nullptr) {
     LOG_ERROR << "camera render resources are not initialized.";
-    return false;
+    return fail("camera render resources are not initialized");
   }
   if (spec.name.empty() || spec.camera_name.empty()) {
     LOG_ERROR << "camera component and MuJoCo camera names must not be empty.";
-    return false;
+    return fail("camera component and MuJoCo camera names must not be empty");
   }
   if (spec.width <= 0 || spec.height <= 0) {
     LOG_ERROR << "camera width and height must be positive.";
-    return false;
+    return fail("camera width and height must be positive");
   }
   if (!spec.enable_rgb && !spec.enable_depth) {
     LOG_ERROR << "camera must enable rgb or depth output.";
-    return false;
+    return fail("camera must enable RGB or depth output");
   }
   const int camera_id =
       mj_name2id(model_, mjOBJ_CAMERA, spec.camera_name.c_str());
   if (camera_id < 0) {
     LOG_ERROR << "camera was not found in model.";
-    return false;
+    return fail("camera was not found in the MuJoCo model");
   }
   const double fovy_degrees = static_cast<double>(model_->cam_fovy[camera_id]);
   if (!std::isfinite(fovy_degrees) || fovy_degrees <= 0.0 ||
       fovy_degrees >= 180.0) {
     LOG_ERROR << "camera field of view must be in the range (0, 180) degrees.";
-    return false;
+    return fail("camera field of view must be in (0, 180) degrees");
   }
   if (!resize_offscreen_buffer(spec.width, spec.height)) {
-    return false;
+    return fail("failed to resize the offscreen render buffer");
   }
 
   std::size_t pixel_count = 0;
@@ -415,7 +474,7 @@ bool CameraRenderer::render_task(const CameraRenderTask &task,
       pixel_count >
           std::numeric_limits<std::size_t>::max() / kColorChannelCount) {
     LOG_ERROR << "camera image dimensions exceed the supported pixel capacity.";
-    return false;
+    return fail("camera image dimensions exceed supported pixel capacity");
   }
 
   mjr_setBuffer(mjFB_OFFSCREEN, &render_context_);
@@ -467,7 +526,7 @@ bool CameraRenderer::render_task(const CameraRenderTask &task,
     state->depth.data.resize(depth_buffer.size());
     if (!transform_depth(depth_buffer, state->depth.width, state->depth.height,
                          state->depth.data)) {
-      return false;
+      return fail("failed to transform the camera depth image");
     }
   }
   out = std::static_pointer_cast<const CameraRenderState>(state);
@@ -489,17 +548,11 @@ bool CameraRenderer::create_context() {
 }
 
 bool CameraRenderer::create_glfw_context() {
-  static std::mutex mutex;
-  static bool glfw_initialized = false;
-  {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (!glfw_initialized) {
-      if (glfwInit() == GLFW_FALSE) {
-        LOG_WARNING << "failed to initialize GLFW; trying EGL.";
-        return false;
-      }
-      glfw_initialized = true;
-    }
+  // GLFW is process-lifetime state. This module never terminates it because
+  // the unmodified vendored viewer owns the process-exit termination hook.
+  if (glfwInit() == GLFW_FALSE) {
+    LOG_WARNING << "failed to initialize GLFW; trying EGL.";
+    return false;
   }
   glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
   glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);

@@ -1,15 +1,15 @@
-# CommandBuffer 并发与实时性能设计
+# CommandBus 并发与实时性能设计
 
-本文档将 `CommandBuffer` 抽象为通用的 **latest-command exchange** 问题：多个调用方提交控制目标，单个 scheduler 在物理步进前取得可应用的最新命令集合。
+本文档将 `CommandBus` 抽象为通用的 **latest-command exchange** 问题：多个调用方提交控制目标，单个 scheduler 在物理步进前取得可应用的最新命令集合。
 
 本文描述设计取舍，不代表所有提议均已实现。
 
 ## 1. 语义边界
 
-`CommandBuffer` 不是历史命令 FIFO。它的核心语义是 latest-wins：
+`CommandBus` 不是历史命令 FIFO。它的核心语义是 latest-wins：
 
 - 单组件写入覆盖该组件的最近命令。
-- 批量 `RobotCommand` 写入完整替换命令集合。
+- 批量 `CommandBatch<T>` 仅覆盖 `T` 通道中有值的槽位。
 - `clear()` 清空命令集合。
 - scheduler 在一个物理周期内只应用每个组件的最终有效命令。
 
@@ -18,7 +18,7 @@
 ```cpp
 write_command(name, JointCommand)
 write_command(name, MobileBaseCommand)
-write_command(RobotCommand)
+write_commands(CommandBatch<JointCommand>)
 ```
 
 批量入口是优化机会，不是对调用方的强制要求。
@@ -35,7 +35,10 @@ write_command(RobotCommand)
 
 ## 3. 当前通用瓶颈
 
-使用 mutex 保护 `unordered_map` 的方案简单安全，但 scheduler 每步复制整个命令 map 时会产生以下成本：
+当前实现使用 mutex 保护通道注册与发布。通道写入以 copy-on-write 生成
+不可变槽位快照；scheduler 只在 sequence 改变时取得新的类型擦除快照。
+因此未更新周期不会复制完整命令数组。后续若需要有界实时路径，应以基准数据
+决定是否引入 frame queue，而不与当前 latest-wins 协议混合。
 
 - map 节点和 bucket 分配、复制与析构；
 - 字符串哈希和名称查找；

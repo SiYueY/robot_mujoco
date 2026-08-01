@@ -32,7 +32,7 @@ Simulation
   -> ComponentManager
     -> SimulationComponent
       -> Joint / Imu / Lidar / Camera / MobileBase
-  -> CommandBuffer / StateBuffer
+  -> CommandBus / StateBuffer
   -> CameraRenderer
   -> SimulationViewer
 ```
@@ -55,7 +55,7 @@ Simulation
 - viewer render thread
   - 只负责 viewer 渲染与被动同步
 - external caller threads
-  - 只写 `CommandBuffer`、读取 `StateBuffer`、提交控制请求
+  - 只写 `CommandBus`、读取 `StateBuffer`、提交控制请求
 
 ## 当前公开接口约定
 
@@ -116,7 +116,7 @@ Simulation
 
 缓冲层职责：
 
-- `CommandBuffer`
+- `CommandBus`
   - 缓存外部线程提交的最新控制命令
 - `StateBuffer`
   - 每个成功的 physics step 发布最新 `RobotState`，其中包含各类设备的不可变共享状态快照
@@ -125,7 +125,7 @@ Simulation
 
 缓冲层的并发模型、动态拓扑和确定性实时性能取舍见：
 
-- [CommandBuffer 并发与实时性能设计](./command_buffer_realtime_design.md)
+- [CommandBus 并发与实时性能设计](./command_buffer.md)
 - [StateBuffer 并发与实时性能设计](./state_buffer_realtime_design.md)
 
 这两份文档包含提议架构；本页仍以当前已实现行为为准。

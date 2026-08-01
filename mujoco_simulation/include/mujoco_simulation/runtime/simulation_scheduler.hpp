@@ -47,6 +47,7 @@ private:
   SimulationStatus status_{SimulationStatus::Uninitialized};
   bool stop_requested_{false};
   bool timing_reset_requested_{false};
+  bool worker_task_executing_{false};
   std::chrono::steady_clock::duration physics_period_{};
   std::chrono::steady_clock::time_point timing_anchor_{};
   std::chrono::steady_clock::time_point last_deadline_log_{};

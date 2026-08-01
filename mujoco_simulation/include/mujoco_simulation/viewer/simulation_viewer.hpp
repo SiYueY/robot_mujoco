@@ -18,6 +18,8 @@ class Simulate;
 
 namespace mujoco_simulation {
 
+class Simulation;
+
 // Passive MuJoCo viewer frontend. Simulation owns runtime state and drives
 // simulation stepping.
 class MUJOCO_SIMULATION_PUBLIC SimulationViewer {
@@ -31,15 +33,40 @@ public:
   SimulationViewer(SimulationViewer &&) = delete;
   SimulationViewer &operator=(SimulationViewer &&) = delete;
 
+  bool prepare(const mjContext &context);
+  bool start(const std::string &displayed_filename);
   bool start(const mjContext &context, const std::string &displayed_filename);
   void stop();
-  // Copies the current simulation data into a capacity-one latest-only mailbox.
-  // The caller must serialize access to context.data.
   bool submit(const mjContext &context);
   bool is_running() const;
   bool is_ready() const;
 
 private:
+  // Simulation is the only owner allowed to split capture and enqueue across
+  // the MuJoCo and viewer locks. The lease always returns its mjData buffer.
+  class ViewerSnapshot {
+  public:
+    ViewerSnapshot();
+    ~ViewerSnapshot();
+    ViewerSnapshot(ViewerSnapshot &&) noexcept;
+    ViewerSnapshot &operator=(ViewerSnapshot &&) noexcept;
+    ViewerSnapshot(const ViewerSnapshot &) = delete;
+    ViewerSnapshot &operator=(const ViewerSnapshot &) = delete;
+
+    explicit operator bool() const noexcept;
+
+  private:
+    struct Lease;
+    explicit ViewerSnapshot(std::unique_ptr<Lease> lease);
+    std::unique_ptr<Lease> lease_;
+    friend class SimulationViewer;
+  };
+
+  // Copies the current simulation data into a capacity-one latest-only mailbox.
+  // The caller must serialize access to context.data.
+  bool capture_snapshot(const mjContext &context, ViewerSnapshot &snapshot);
+  bool submit(ViewerSnapshot &&snapshot);
+  friend class Simulation;
   // Viewer 状态
   enum class ViewerState {
     Stopped,  // 已停止
@@ -87,8 +114,9 @@ private:
   bool sync_pending_{false};
   mjModel *viewer_model_{nullptr};
   mjData *viewer_data_{nullptr};
-  mjData *pending_data_{nullptr};
-  mjData *render_data_{nullptr};
+  struct SnapshotPool;
+  std::shared_ptr<SnapshotPool> snapshot_pool_;
+  std::unique_ptr<ViewerSnapshot::Lease> pending_snapshot_;
 
   // Viewer state
   ViewerState state_{ViewerState::Stopped};

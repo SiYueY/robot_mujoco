@@ -1,10 +1,13 @@
 #include "mujoco_simulation/simulation.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "common/logging.hpp"
 #include "mujoco_simulation/common/macro.hpp"
@@ -16,18 +19,24 @@ namespace mujoco_simulation {
 
 namespace {
 
-template <typename Info, typename NameGetter>
-bool find_component_id(const ComponentConfigList &components,
-                       const std::string &name, NameGetter name_getter,
-                       ComponentId &id) {
+template <typename Info>
+CommandChannelLayout command_valid_ids(const ComponentConfigList &components) {
+  ComponentId largest_id = 0;
+  bool found = false;
   for (const ComponentConfig &component : components) {
     const Info *info = std::get_if<Info>(&component);
-    if (info != nullptr && name_getter(*info) == name) {
-      id = info->id;
-      return true;
+    if (info != nullptr) {
+      largest_id = std::max(largest_id, info->id);
+      found = true;
     }
   }
-  return false;
+  CommandChannelLayout valid_ids(found ? largest_id + 1U : 0U, 0U);
+  for (const ComponentConfig &component : components) {
+    const Info *info = std::get_if<Info>(&component);
+    if (info != nullptr)
+      valid_ids[info->id] = 1U;
+  }
+  return valid_ids;
 }
 
 } // namespace
@@ -41,18 +50,16 @@ bool Simulation::initialize(const SimulationConfig &config) {
     LOG_ERROR << "simulation is already initialized.";
     return false;
   }
-  if (!std::isfinite(config.scheduler.physics_period) ||
-      config.scheduler.physics_period <= 0.0) {
-    LOG_ERROR << "physics period must be finite and positive.";
-    return false;
-  }
-  if (!std::isfinite(config.scheduler.viewer_period) ||
-      config.scheduler.viewer_period <= 0.0) {
-    LOG_ERROR << "viewer period must be finite and positive.";
+  ConfigError config_error;
+  if (!SimulationConfigValidator::validate(config, &config_error)) {
+    LOG_ERROR << "invalid simulation configuration: " << config_error.message;
     return false;
   }
   config_ = config;
-  command_buffer_.clear();
+  clear_name_indexes();
+  has_applied_command_ = false;
+  applied_command_ = {};
+  command_bus_.shutdown();
   state_buffer_.clear();
   const auto cleanup = [this] {
     if (scheduler_ != nullptr) {
@@ -70,6 +77,10 @@ bool Simulation::initialize(const SimulationConfig &config) {
     runtime_failed_.store(false);
     step_.store(0);
     sequence_ = 0;
+    command_bus_.shutdown();
+    clear_name_indexes();
+    has_applied_command_ = false;
+    applied_command_ = {};
   };
   if (!load_model(config.model)) {
     LOG_ERROR << "failed to load the simulation model.";
@@ -113,7 +124,7 @@ bool Simulation::initialize(const SimulationConfig &config) {
     cleanup();
     return false;
   }
-  if (!start_viewer()) {
+  if (config_.viewer_enabled && !start_viewer()) {
     LOG_WARNING
         << "failed to start the simulation viewer; continuing without it.";
   }
@@ -139,8 +150,11 @@ bool Simulation::shutdown() {
     step_.store(0);
     sequence_ = 0;
   }
-  command_buffer_.clear();
+  command_bus_.shutdown();
   state_buffer_.clear();
+  clear_name_indexes();
+  has_applied_command_ = false;
+  applied_command_ = {};
   return true;
 }
 
@@ -151,39 +165,60 @@ bool Simulation::start() {
     return false;
   }
   bool needs_viewer = false;
-  {
+  bool viewer_started_here = false;
+  bool camera_started_here = false;
+  const auto rollback_started_resources = [this, &viewer_started_here,
+                                           &camera_started_here] {
+    if (camera_started_here && camera_renderer_ != nullptr) {
+      UNUSED(camera_renderer_->release());
+    }
+    if (viewer_started_here) {
+      UNUSED(stop_viewer());
+    }
+  };
+  if (config_.viewer_enabled) {
     std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
     needs_viewer = viewer_ == nullptr;
   }
   if (needs_viewer) {
-    if (!start_viewer()) {
+    if (start_viewer()) {
+      viewer_started_here = true;
+    } else {
       LOG_WARNING
           << "failed to restart the simulation viewer; continuing without it.";
     }
   }
+  bool camera_start_failed = false;
   if (component_manager_.has_cameras()) {
     std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
     if (runtime_ == nullptr) {
       LOG_ERROR << "simulation runtime is not available.";
-      return false;
+      camera_start_failed = true;
     }
-    if (!runtime_->is_initialized()) {
+    if (!camera_start_failed && !runtime_->is_initialized()) {
       LOG_ERROR << "simulation runtime is not initialized.";
-      return false;
+      camera_start_failed = true;
     }
-    if (camera_renderer_ == nullptr) {
+    if (!camera_start_failed && camera_renderer_ == nullptr) {
       LOG_ERROR << "camera renderer is not available.";
-      return false;
+      camera_start_failed = true;
     }
-    if (!camera_renderer_->is_initialized()) {
+    if (!camera_start_failed && !camera_renderer_->is_initialized()) {
       if (!camera_renderer_->initialize(runtime_->context())) {
         LOG_ERROR << "failed to restart the camera render worker.";
-        return false;
+        camera_start_failed = true;
+      } else {
+        camera_started_here = true;
       }
     }
   }
+  if (camera_start_failed) {
+    rollback_started_resources();
+    return false;
+  }
   if (!scheduler_->start()) {
     LOG_ERROR << "failed to start the simulation scheduler.";
+    rollback_started_resources();
     return false;
   }
   return true;
@@ -205,7 +240,7 @@ bool Simulation::stop() {
     std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
     component_manager_.clear_camera_states();
   }
-  command_buffer_.clear();
+  command_bus_.clear();
   UNUSED(stop_viewer());
   return true;
 }
@@ -252,6 +287,13 @@ bool Simulation::reset_runtime_locked(const std::string *keyframe_name) {
     LOG_ERROR << "simulation must be initialized before reset.";
     return false;
   }
+  const auto fail_reset = [this] {
+    // A failed reset never destroys the last observable state. Commands are
+    // discarded because their targets may no longer match the runtime.
+    command_bus_.clear();
+    runtime_failed_.store(true);
+    return false;
+  };
   const SimulationStatus previous_status = scheduler_->status();
   if (previous_status == SimulationStatus::Uninitialized) {
     LOG_ERROR << "simulation scheduler is not initialized.";
@@ -263,14 +305,14 @@ bool Simulation::reset_runtime_locked(const std::string *keyframe_name) {
   if (restart_running || restart_paused || recover_from_error) {
     if (!scheduler_->stop()) {
       LOG_ERROR << "failed to stop the scheduler before reset.";
-      return false;
+      return fail_reset();
     }
   }
 
   if (camera_renderer_ != nullptr) {
     if (!camera_renderer_->release()) {
       LOG_ERROR << "failed to stop the camera render worker before reset.";
-      return false;
+      return fail_reset();
     }
   }
 
@@ -293,8 +335,7 @@ bool Simulation::reset_runtime_locked(const std::string *keyframe_name) {
     }
 
     if (succeeded) {
-      command_buffer_.clear();
-      state_buffer_.clear();
+      command_bus_.clear();
       step_.store(0);
       sequence_ = 0;
 
@@ -331,41 +372,45 @@ bool Simulation::reset_runtime_locked(const std::string *keyframe_name) {
   }
 
   if (!succeeded) {
-    command_buffer_.clear();
-    state_buffer_.clear();
-    runtime_failed_.store(true);
-    return false;
+    // Keep the last successfully published state readable for diagnosis.  A
+    // shutdown, rather than a failed reset, is the lifecycle boundary that
+    // invalidates externally visible state.
+    return fail_reset();
   }
 
   runtime_failed_.store(false);
 
+  std::shared_ptr<SimulationViewer> viewer;
   {
-    std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
     std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
-    if (viewer_ != nullptr && runtime_ != nullptr &&
-        runtime_->is_initialized() && !viewer_->submit(runtime_->context())) {
-      LOG_WARNING << "failed to submit the reset state to the viewer.";
-    }
-    const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::duration<double>(config_.scheduler.viewer_period));
-    next_sync_time_ = std::chrono::steady_clock::now() + period;
+    viewer = viewer_;
   }
+  if (viewer != nullptr) {
+    SimulationViewer::ViewerSnapshot snapshot;
+    {
+      std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
+      if (runtime_ != nullptr && runtime_->is_initialized() &&
+          !viewer->capture_snapshot(runtime_->context(), snapshot)) {
+        LOG_WARNING << "failed to capture the reset viewer snapshot.";
+      }
+    }
+    if (snapshot && !viewer->submit(std::move(snapshot))) {
+      LOG_WARNING << "failed to enqueue the reset viewer snapshot.";
+    }
+  }
+  const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::duration<double>(config_.scheduler.viewer_period));
+  next_sync_time_ = std::chrono::steady_clock::now() + period;
 
   if (restart_running) {
     if (!scheduler_->start()) {
       LOG_ERROR << "failed to restart the scheduler after reset.";
-      command_buffer_.clear();
-      state_buffer_.clear();
-      runtime_failed_.store(true);
-      return false;
+      return fail_reset();
     }
   } else if (restart_paused) {
     if (!scheduler_->start_paused()) {
       LOG_ERROR << "failed to restore the scheduler paused state after reset.";
-      command_buffer_.clear();
-      state_buffer_.clear();
-      runtime_failed_.store(true);
-      return false;
+      return fail_reset();
     }
   }
 
@@ -373,45 +418,26 @@ bool Simulation::reset_runtime_locked(const std::string *keyframe_name) {
 }
 
 bool Simulation::write_command(std::string name, const JointCommand &command) {
-  JointId id = 0;
-  if (!find_component_id<JointInfo>(
-          config_.components, name,
-          [](const JointInfo &info) -> const std::string & {
-            return info.joint_name;
-          },
-          id)) {
+  const auto index =
+      std::atomic_load_explicit(&name_index_, std::memory_order_acquire);
+  const auto id = index == nullptr ? std::nullopt : index->joint_id(name);
+  if (!id.has_value()) {
     LOG_ERROR << "joint command name was not found.";
     return false;
   }
-  return write_command(id, command);
-}
-
-bool Simulation::write_command(const RobotCommand &command) {
-  return command_buffer_.write_command(command);
+  return write_command(*id, command);
 }
 
 bool Simulation::write_command(std::string name,
                                const MobileBaseCommand &command) {
-  MobileBaseId id = 0;
-  if (!find_component_id<MobileBaseInfo>(
-          config_.components, name,
-          [](const MobileBaseInfo &info) -> const std::string & {
-            return info.mobile_base_name;
-          },
-          id)) {
+  const auto index =
+      std::atomic_load_explicit(&name_index_, std::memory_order_acquire);
+  const auto id = index == nullptr ? std::nullopt : index->mobile_base_id(name);
+  if (!id.has_value()) {
     LOG_ERROR << "mobile base command name was not found.";
     return false;
   }
-  return write_command(id, command);
-}
-
-bool Simulation::write_command(JointId id, const JointCommand &command) {
-  return command_buffer_.write_joint_command(id, command);
-}
-
-bool Simulation::write_command(MobileBaseId id,
-                               const MobileBaseCommand &command) {
-  return command_buffer_.write_mobile_base_command(id, command);
+  return write_command(*id, command);
 }
 
 bool Simulation::read_state(std::shared_ptr<const RobotState> &out) const {
@@ -429,54 +455,34 @@ bool Simulation::read_state(RobotState &out) const {
 }
 
 bool Simulation::read_state(std::string name, JointState &out) const {
-  JointId id = 0;
-  return find_component_id<JointInfo>(
-             config_.components, name,
-             [](const JointInfo &info) -> const std::string & {
-               return info.joint_name;
-             },
-             id) &&
-         read_state(id, out);
+  const auto index =
+      std::atomic_load_explicit(&name_index_, std::memory_order_acquire);
+  const auto id = index == nullptr ? std::nullopt : index->joint_id(name);
+  return id.has_value() && read_state(*id, out);
 }
 bool Simulation::read_state(std::string name, ImuState &out) const {
-  ImuId id = 0;
-  return find_component_id<ImuInfo>(
-             config_.components, name,
-             [](const ImuInfo &info) -> const std::string & {
-               return info.name;
-             },
-             id) &&
-         read_state(id, out);
+  const auto index =
+      std::atomic_load_explicit(&name_index_, std::memory_order_acquire);
+  const auto id = index == nullptr ? std::nullopt : index->imu_id(name);
+  return id.has_value() && read_state(*id, out);
 }
 bool Simulation::read_state(std::string name, CameraState &out) const {
-  CameraId id = 0;
-  return find_component_id<CameraConfig>(
-             config_.components, name,
-             [](const CameraConfig &info) -> const std::string & {
-               return info.name;
-             },
-             id) &&
-         read_state(id, out);
+  const auto index =
+      std::atomic_load_explicit(&name_index_, std::memory_order_acquire);
+  const auto id = index == nullptr ? std::nullopt : index->camera_id(name);
+  return id.has_value() && read_state(*id, out);
 }
 bool Simulation::read_state(std::string name, LidarState &out) const {
-  LidarId id = 0;
-  return find_component_id<LidarInfo>(
-             config_.components, name,
-             [](const LidarInfo &info) -> const std::string & {
-               return info.name;
-             },
-             id) &&
-         read_state(id, out);
+  const auto index =
+      std::atomic_load_explicit(&name_index_, std::memory_order_acquire);
+  const auto id = index == nullptr ? std::nullopt : index->lidar_id(name);
+  return id.has_value() && read_state(*id, out);
 }
 bool Simulation::read_state(std::string name, MobileBaseState &out) const {
-  MobileBaseId id = 0;
-  return find_component_id<MobileBaseInfo>(
-             config_.components, name,
-             [](const MobileBaseInfo &info) -> const std::string & {
-               return info.mobile_base_name;
-             },
-             id) &&
-         read_state(id, out);
+  const auto index =
+      std::atomic_load_explicit(&name_index_, std::memory_order_acquire);
+  const auto id = index == nullptr ? std::nullopt : index->mobile_base_id(name);
+  return id.has_value() && read_state(*id, out);
 }
 bool Simulation::read_state(JointId id, JointState &out) const {
   return state_buffer_.read_joint_state(id, out);
@@ -575,8 +581,9 @@ bool Simulation::initialize_camera_renderer() {
     return false;
   }
   try {
-    camera_renderer_ =
-        std::make_unique<CameraRenderer>(config_.camera_renderer);
+    CameraRendererConfig renderer_config = config_.camera_renderer;
+    renderer_config.max_camera_id = config_.max_component_id;
+    camera_renderer_ = std::make_unique<CameraRenderer>(renderer_config);
   } catch (const std::exception &) {
     LOG_ERROR << "failed to create the camera renderer.";
     return false;
@@ -641,7 +648,26 @@ bool Simulation::initialize_components() {
     LOG_ERROR << "failed to obtain the initial camera frame.";
     return false;
   }
+  if (!command_bus_.configure_channel<JointCommand>(
+          command_valid_ids<JointInfo>(config_.components)) ||
+      !command_bus_.configure_channel<MobileBaseCommand>(
+          command_valid_ids<MobileBaseInfo>(config_.components)) ||
+      !command_bus_.finalize_configuration()) {
+    LOG_ERROR << "failed to initialize the command bus.";
+    return false;
+  }
+  std::shared_ptr<const ComponentNameIndex> index =
+      std::make_shared<ComponentNameIndex>(
+          ComponentNameIndex::build(config_.components));
+  std::atomic_store_explicit(&name_index_, std::move(index),
+                             std::memory_order_release);
   return true;
+}
+
+void Simulation::clear_name_indexes() {
+  std::atomic_store_explicit(&name_index_,
+                             std::shared_ptr<const ComponentNameIndex>{},
+                             std::memory_order_release);
 }
 
 bool Simulation::load_model(const ModelConfig &model_config) {
@@ -665,7 +691,12 @@ bool Simulation::scheduler_run_task() {
     LOG_ERROR << "simulation runtime is in the error state.";
     return false;
   }
-  const RobotCommand command = command_buffer_.read();
+  if (!has_applied_command_ ||
+      command_bus_.read_if_updated(applied_command_sequence_,
+                                   applied_command_)) {
+    applied_command_sequence_ = applied_command_.sequence;
+    has_applied_command_ = true;
+  }
   {
     std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
     if (runtime_ == nullptr) {
@@ -676,7 +707,8 @@ bool Simulation::scheduler_run_task() {
       LOG_ERROR << "simulation runtime is not initialized.";
       return false;
     }
-    if (!component_manager_.write_command(runtime_->context(), command)) {
+    if (!component_manager_.apply_commands(runtime_->context(),
+                                           applied_command_)) {
       LOG_ERROR << "component manager rejected a command snapshot.";
       return false;
     }
@@ -734,7 +766,7 @@ bool Simulation::build_state_snapshot_locked(std::uint64_t step,
 
 bool Simulation::start_viewer() {
   auto viewer =
-      std::make_unique<SimulationViewer>(config_.viewer_startup_timeout);
+      std::make_shared<SimulationViewer>(config_.viewer_startup_timeout);
   {
     std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
     if (runtime_ == nullptr) {
@@ -745,10 +777,14 @@ bool Simulation::start_viewer() {
       LOG_ERROR << "simulation runtime is not initialized.";
       return false;
     }
-    if (!viewer->start(runtime_->context(), config_.model.model_path)) {
-      LOG_ERROR << "viewer startup failed.";
+    if (!viewer->prepare(runtime_->context())) {
+      LOG_ERROR << "viewer preparation failed.";
       return false;
     }
+  }
+  if (!viewer->start(config_.model.model_path)) {
+    LOG_ERROR << "viewer startup failed.";
+    return false;
   }
   std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
   viewer_ = std::move(viewer);
@@ -761,12 +797,22 @@ bool Simulation::scheduler_submit_viewer_sync_if_due() {
   if (now < next_sync_time_) {
     return true;
   }
+  std::shared_ptr<SimulationViewer> viewer;
   {
-    std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
     std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
-    if (viewer_ != nullptr && runtime_ != nullptr &&
-        runtime_->is_initialized() && !viewer_->submit(runtime_->context())) {
-      LOG_WARNING << "failed to submit a viewer synchronization request.";
+    viewer = viewer_;
+  }
+  if (viewer != nullptr) {
+    SimulationViewer::ViewerSnapshot snapshot;
+    {
+      std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
+      if (runtime_ != nullptr && runtime_->is_initialized() &&
+          !viewer->capture_snapshot(runtime_->context(), snapshot)) {
+        LOG_WARNING << "failed to capture a viewer synchronization snapshot.";
+      }
+    }
+    if (snapshot && !viewer->submit(std::move(snapshot))) {
+      LOG_WARNING << "failed to enqueue a viewer synchronization request.";
     }
   }
   const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -776,7 +822,7 @@ bool Simulation::scheduler_submit_viewer_sync_if_due() {
 }
 
 bool Simulation::stop_viewer() {
-  std::unique_ptr<SimulationViewer> viewer;
+  std::shared_ptr<SimulationViewer> viewer;
   {
     std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
     viewer = std::move(viewer_);

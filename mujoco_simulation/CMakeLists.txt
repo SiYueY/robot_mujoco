@@ -20,6 +20,9 @@ option(MUJOCO_SIMULATION_BUILD_TESTS "Build mujoco_simulation tests" OFF)
 option(MUJOCO_SIMULATION_BUILD_EXAMPLES "Build mujoco_simulation examples" OFF)
 option(MUJOCO_SIMULATION_INSTALL "Generate installation rules" ON)
 option(MUJOCO_SIMULATION_ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(MUJOCO_SIMULATION_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(MUJOCO_SIMULATION_TSAN_RUNTIME_TESTS
+  "Run TSAN-labelled tests when ThreadSanitizer is enabled" ON)
 
 set(MUJOCO_ROOT_PATH "")
 if(DEFINED ENV{MUJOCO_ROOT} AND NOT "$ENV{MUJOCO_ROOT}" STREQUAL "")
@@ -84,7 +87,7 @@ endif()
 
 set(MUJOCO_SIMULATION_SOURCES
   src/simulation.cpp
-  src/buffer/command_buffer.cpp
+  src/buffer/command_bus.cpp
   src/buffer/state_buffer.cpp
   src/component/simulation_component.cpp
   src/component/component_manager.cpp
@@ -167,15 +170,28 @@ set_target_properties(mujoco_simulation PROPERTIES
   VISIBILITY_INLINES_HIDDEN YES
   POSITION_INDEPENDENT_CODE ON)
 
-if(MUJOCO_SIMULATION_ENABLE_ASAN)
+if(MUJOCO_SIMULATION_ENABLE_ASAN AND MUJOCO_SIMULATION_ENABLE_TSAN)
+  message(FATAL_ERROR "AddressSanitizer and ThreadSanitizer cannot be enabled together.")
+endif()
+
+if(MUJOCO_SIMULATION_ENABLE_ASAN OR MUJOCO_SIMULATION_ENABLE_TSAN)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    message(FATAL_ERROR
-      "AddressSanitizer is only supported for GCC and Clang.")
+    message(FATAL_ERROR "Sanitizers are only supported for GCC and Clang.")
   endif()
-  target_compile_options(mujoco_simulation PRIVATE
+endif()
+
+if(MUJOCO_SIMULATION_ENABLE_ASAN)
+  target_compile_options(mujoco_simulation PUBLIC
     -fsanitize=address
     -fno-omit-frame-pointer)
-  target_link_options(mujoco_simulation PRIVATE -fsanitize=address)
+  target_link_options(mujoco_simulation PUBLIC -fsanitize=address)
+endif()
+
+if(MUJOCO_SIMULATION_ENABLE_TSAN)
+  target_compile_options(mujoco_simulation PUBLIC
+    -fsanitize=thread
+    -fno-omit-frame-pointer)
+  target_link_options(mujoco_simulation PUBLIC -fsanitize=thread)
 endif()
 
 if(MUJOCO_SIMULATION_BUILD_TESTS)

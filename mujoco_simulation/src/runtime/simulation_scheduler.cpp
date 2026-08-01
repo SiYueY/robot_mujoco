@@ -45,6 +45,7 @@ bool SimulationScheduler::initialize(
   }
   task_ = {};
   stop_requested_ = false;
+  worker_task_executing_ = false;
   reset_timing_locked();
   status_ = SimulationStatus::Stopped;
   return true;
@@ -143,23 +144,32 @@ bool SimulationScheduler::start_paused() {
 }
 
 bool SimulationScheduler::stop() {
+  bool join_worker = false;
+  bool self_join = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
       LOG_ERROR << "scheduler is not initialized.";
       return false;
     }
-    if (status_ == SimulationStatus::Stopped) {
-      return true;
+    if (status_ != SimulationStatus::Stopped) {
+      stop_requested_ = true;
+      if (status_ != SimulationStatus::Error) {
+        status_ = SimulationStatus::Stopping;
+      }
     }
-    stop_requested_ = true;
-    if (status_ != SimulationStatus::Error) {
-      status_ = SimulationStatus::Stopping;
-    }
+    join_worker = worker_thread_.joinable();
+    self_join =
+        join_worker && worker_thread_.get_id() == std::this_thread::get_id();
   }
   cv_.notify_all();
 
-  if (worker_thread_.joinable()) {
+  if (self_join) {
+    LOG_ERROR << "scheduler worker cannot join itself.";
+    return false;
+  }
+
+  if (join_worker) {
     worker_thread_.join();
   }
 
@@ -172,7 +182,7 @@ bool SimulationScheduler::stop() {
 }
 
 bool SimulationScheduler::pause() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_);
   if (status_ == SimulationStatus::Uninitialized) {
     LOG_ERROR << "scheduler is not initialized.";
     return false;
@@ -181,9 +191,15 @@ bool SimulationScheduler::pause() {
     LOG_ERROR << "scheduler is not running.";
     return false;
   }
+  if (worker_thread_.joinable() &&
+      worker_thread_.get_id() == std::this_thread::get_id()) {
+    LOG_ERROR << "scheduler worker cannot synchronously pause itself.";
+    return false;
+  }
   status_ = SimulationStatus::Paused;
   timing_reset_requested_ = true;
   cv_.notify_all();
+  cv_.wait(lock, [this] { return !worker_task_executing_; });
   return true;
 }
 
@@ -271,18 +287,24 @@ void SimulationScheduler::worker_loop() {
           next_deadline = Clock::now();
           timing_reset_requested_ = false;
         }
+        if (status_ != SimulationStatus::Running) {
+          continue;
+        }
+        worker_task_executing_ = true;
       }
 
       next_deadline += physics_period_;
-      if (!execute_task_once()) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        set_error_locked();
-        break;
-      }
+      const bool task_succeeded = execute_task_once();
 
       const Clock::time_point step_end = Clock::now();
       {
         std::unique_lock<std::mutex> lock(mutex_);
+        worker_task_executing_ = false;
+        cv_.notify_all();
+        if (!task_succeeded) {
+          set_error_locked();
+          break;
+        }
         ++completed_steps_;
         if (step_end >= next_deadline + physics_period_) {
           log_deadline_miss(step_end, next_deadline);
@@ -300,14 +322,20 @@ void SimulationScheduler::worker_loop() {
   } catch (const std::exception &) {
     LOG_ERROR << "scheduler worker thread threw an exception.";
     std::lock_guard<std::mutex> lock(mutex_);
+    worker_task_executing_ = false;
+    cv_.notify_all();
     set_error_locked();
   } catch (...) {
     LOG_ERROR << "scheduler worker thread threw an unknown exception.";
     std::lock_guard<std::mutex> lock(mutex_);
+    worker_task_executing_ = false;
+    cv_.notify_all();
     set_error_locked();
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
+  worker_task_executing_ = false;
+  cv_.notify_all();
   stop_requested_ = false;
   if (status_ != SimulationStatus::Error &&
       status_ != SimulationStatus::Uninitialized) {

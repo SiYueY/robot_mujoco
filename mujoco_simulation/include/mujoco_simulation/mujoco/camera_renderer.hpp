@@ -6,13 +6,16 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "mujoco_simulation/component/camera/camera_data.hpp"
+#include "mujoco_simulation/config/config_limits.hpp"
 #include "mujoco_simulation/mujoco/context.hpp"
 #include "mujoco_simulation/visibility.hpp"
 
@@ -28,6 +31,10 @@ struct CameraRendererConfig {
   bool allow_glfw_backend{true};
   /// GLFW 无法创建 OpenGL context 时允许回退至 EGL。
   bool allow_egl_backend{true};
+  /// Largest sparse Camera ID accepted by submit().
+  ComponentId max_camera_id{SimulationConfigLimits::kMaximumComponentId};
+  /// Completed ticket results retained for explicit waiters.
+  std::size_t completed_ticket_history{8};
 };
 
 /// CameraRenderer 使用的内部离屏 OpenGL 后端。
@@ -92,6 +99,23 @@ using CameraRenderStatePtr = std::shared_ptr<const CameraRenderState>;
 using CameraRenderStates =
     std::shared_ptr<const std::vector<CameraRenderStatePtr>>;
 
+struct CameraRenderTaskStatus {
+  CameraId id{kInvalidComponentId};
+  bool succeeded{false};
+  std::string message;
+};
+
+struct CameraBatchResult {
+  std::uint64_t ticket{0};
+  std::vector<CameraRenderTaskStatus> statuses;
+  bool all_succeeded{false};
+};
+
+struct CameraRenderTicket {
+  std::uint64_t value{0};
+  explicit operator bool() const noexcept { return value != 0; }
+};
+
 class MUJOCO_SIMULATION_PUBLIC CameraRenderer {
 public:
   CameraRenderer();
@@ -104,11 +128,13 @@ public:
   /// 创建双缓冲数据并启动专属渲染线程；成功后重复调用不执行额外操作。
   bool initialize(const mjContext &context);
   /// 提交最新相机渲染请求；调用方必须在保护主 mjData 时调用。
-  bool submit(const mjContext &context, std::vector<CameraRenderTask> tasks);
+  std::optional<CameraRenderTicket> submit(const mjContext &context,
+                                           std::vector<CameraRenderTask> tasks);
   /// 读取所有相机的最新完成结果。
   bool read_results(CameraRenderStates &states) const;
-  /// 等待当前已提交批次完成，仅用于初始化和 reset。
-  bool wait_for_submitted_results();
+  /// Wait for the exact batch identified by ticket.  A ticket that has aged
+  /// out of the configured result history returns false.
+  bool wait(CameraRenderTicket ticket, CameraBatchResult *result = nullptr);
   /// 停止 worker 并释放全部资源；未初始化时重复调用不执行额外操作。
   bool release();
 
@@ -117,11 +143,11 @@ public:
 
 private:
   static constexpr auto kWorkerTimeout = std::chrono::seconds(5);
-
   void worker_loop();
   bool initialize_worker_resources();
   void release_worker_resources();
-  bool render_task(const CameraRenderTask &task, CameraRenderStatePtr &out);
+  bool render_task(const CameraRenderTask &task, CameraRenderStatePtr &out,
+                   std::string *error = nullptr);
 
   bool create_context();
   bool create_glfw_context();
@@ -156,8 +182,8 @@ private:
   bool pending_ready_{false};
   std::uint64_t pending_ticket_{0};
   std::uint64_t submitted_ticket_{0};
-  std::uint64_t completed_ticket_{0};
-  bool completed_success_{false};
+  std::uint64_t expired_through_ticket_{0};
+  std::map<std::uint64_t, CameraBatchResult> completed_results_;
   bool worker_ready_{false};
   bool worker_initialization_failed_{false};
   bool stopping_{false};

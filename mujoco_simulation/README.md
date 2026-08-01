@@ -34,7 +34,7 @@ Simulation
   -> ComponentManager
     -> Joint / Imu / Camera / Lidar / MobileBase
   -> SimulationScheduler
-  -> CommandBuffer / StateBuffer
+  -> CommandBus / StateBuffer
   -> CameraRenderer
   -> SimulationViewer
     -> mjModel / mjData
@@ -102,7 +102,7 @@ Simulation
   - `bool write_command(std::string, const MobileBaseCommand&)`
   - `bool write_command(JointId, const JointCommand&)`
   - `bool write_command(MobileBaseId, const MobileBaseCommand&)`
-  - `bool write_command(const RobotCommand&)`
+  - `template <typename Command> bool write_commands(const CommandBatch<Command>&)`
   - `bool read_state(std::shared_ptr<const RobotState>&)`
   - `bool read_state(RobotState&)`
   - `bool read_state(std::string, JointState&)`
@@ -122,7 +122,7 @@ Simulation
 
 - `mjModel / mjData` 保持单写线程原则
 - `ComponentManager` 负责组件更新、命令分发和状态汇总
-- `CommandBuffer / StateBuffer` 统一采用 `write(...) / read(...)` 语义
+- `CommandBus / StateBuffer` 统一采用 `write(...) / read(...)` 语义
   - 每个成功的 physics step 都向 `StateBuffer` 原子发布一个 `RobotState`；组件状态（包括相机）以不可变共享快照聚合
 
 ## 错误返回模型
@@ -136,12 +136,13 @@ Simulation
     `Running`、`Paused`、`Stopping`、`Error`
   - 通过 `Simulation::status()` 查询；viewer 或 scheduler 任务失败时可报告 `Error`
 
-`SimulationConfigParser::load_file(...)` 当前遵循如下返回约定：
+`SimulationConfigParser::load_file(...)` 支持可选的 `ConfigError*` 诊断参数：
 
 - 返回 `bool`
 - 成功时写入 `SimulationConfig`
-- 失败时返回 `false`，当前不对外暴露解析诊断
-- 当前只负责把 `robot_mujoco.xml` 映射成 `SimulationConfig`
+- 失败时返回 `false`；传入 `ConfigError` 时可取得首个错误的 XML 行号、元素、属性和说明
+- Parser 负责 XML 语法、类型提取与行号诊断；
+  `SimulationConfigValidator` 负责 XML 与直接 C++ 配置共用的语义约束
 
 ## 运行配置
 
@@ -158,6 +159,7 @@ Simulation
   - `JointInfo`、`ImuInfo`、`CameraConfig`、`LidarInfo` 与 `MobileBaseInfo` 的变体列表
   - 每个组件必须提供类型内唯一的显式 ID；ID 直接作为状态、命令和组件 vector 的下标
   - 空洞为保留槽位，默认允许范围是 `0..256`；`max_component_id` 可配置
+  - Camera 的宽、高必须在 `1..8192`；单个 Camera 启用的 RGB8（3 B/像素）和 depth float（4 B/像素）输出合计不得超过 256 MiB
   - 所有组件以 `period`（秒）配置采样周期；`period="0"` 表示每个 physics step 更新。
     正周期必须是 `physics.period` 的整数倍，且不得短于该物理周期。
     旧的 `update_rate`（Hz）属性不受支持。
@@ -166,7 +168,7 @@ Simulation
 - `viewer_startup_timeout`
   - viewer 启动等待超时
 
-此外，`SimulationConfigParser::load_file(const std::string&, SimulationConfig&)`
+此外，`SimulationConfigParser::load_file(const std::string&, SimulationConfig&, ConfigError*)`
 提供 `robot_mujoco.xml -> SimulationConfig` 的解析路径：
 
 - 解析 `<mujoco><mjcf>` 及 `<robot>` 下的 `joint`、`imu`、`camera`、`lidar`、`mobile_base`。
@@ -185,7 +187,9 @@ Simulation
   组件可选使用 `period="秒"` 属性；Joint、IMU、MobileBase 未配置时每物理步更新，
   Camera 与 Lidar 默认分别为 `1 / 30` 秒和 `1 / 10` 秒。
 
-`Simulation` 初始化时启动 viewer，并以独立频率同步显示；Camera 不依赖 viewer 的渲染
+`Simulation` 默认在初始化时启动 viewer，并以独立频率同步显示；将
+`SimulationConfig::viewer_enabled` 设为 `false`，或使用 XML
+`<viewer period="..." enabled="false"/>`，可用于 headless 部署或测试。Camera 不依赖 viewer 的渲染
 资源。`stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会自动重建
 viewer。
 
@@ -200,6 +204,18 @@ Stopped，前提是完整重置事务成功。
 `stop()` 停止 scheduler、Camera worker 与 Viewer，并清空命令；最后发布的
 `RobotState` 保留，仍可通过 `read_state(...)` 查询。只有 `shutdown()` 会清空状态
 快照并释放 runtime 资源。
+
+生命周期的可读状态契约如下：
+
+| 操作 | 成功后的状态 | 已发布 `RobotState` |
+| --- | --- | --- |
+| `initialize()` | `Stopped` | 发布初始快照 |
+| `start()` / `resume()` | `Running` | 保持可读，并持续更新 |
+| `pause()` | `Paused` | 保持可读；返回时当前 physics task 已结束 |
+| `stop()` | `Stopped` | 保留最后快照 |
+| reset 本体失败 | `Error` | 保留最后成功快照以供诊断 |
+| reset 后恢复 scheduler 失败 | `Error` | 保留新发布的 reset 快照 |
+| `shutdown()` | `Uninitialized` | 清空 |
 
 ## 设备层能力
 
@@ -242,6 +258,13 @@ viewer 相关代码位于 [`src/viewer`](./src/viewer)。
 
 Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer 的渲染资源。
 
+`CameraRenderer::submit()` 返回可等待的 `CameraRenderTicket`。`wait(ticket,
+result)` 只读取该 ticket 的结果：被 newer submit 覆盖的 pending ticket 会完成为
+`superseded`，而不是误读新批次；完成结果保留数量由
+`CameraRendererConfig::completed_ticket_history` 明确限定，超出历史窗口的 ticket
+会返回失败。初始化和 reset 等待的 ticket 要求全部 Camera 成功；运行期仍采用
+latest-only 降级策略，失败 Camera 保留上一帧而成功 Camera 正常发布。
+
 对 `Simulation` 而言，viewer 是可恢复的运行时资源：
 
 - `initialize(...)` 会创建 viewer
@@ -255,11 +278,11 @@ mujoco_simulation/
 ├── include/mujoco_simulation/
 │   ├── simulation.hpp               # 对外主入口
 │   ├── simulation_status.hpp         # 生命周期状态
-│   ├── buffer/                       # CommandBuffer / StateBuffer
+│   ├── buffer/                       # CommandBus / StateBuffer
 │   ├── common/                       # 数学和通用辅助类型
 │   ├── component/                    # 组件基类、管理器及设备类型
 │   ├── config/                       # SimulationConfig 与 XML 解析器
-│   ├── data/                         # RobotCommand / RobotState
+│   ├── data/                         # CommandBatch / CommandSnapshot / RobotState
 │   ├── mujoco/                       # mjContext 与 CameraRenderer
 │   ├── runtime/                      # SimulationRuntime / SimulationScheduler
 │   └── viewer/                       # SimulationViewer 对外接口
@@ -295,7 +318,7 @@ mujoco_simulation/
 例如：
 
 ```bash
-export MUJOCO_ROOT=/opt//opt/mujoco-3.9.0
+export MUJOCO_ROOT=/opt/mujoco-3.9.0
 cmake -S mujoco_simulation -B build/mujoco_simulation \\
   -DMUJOCO_SIMULATION_BUILD_SHARED=ON
 cmake --build build/mujoco_simulation
@@ -309,6 +332,31 @@ cmake --install build/mujoco_simulation --prefix /desired/install/prefix
 - `MUJOCO_SIMULATION_BUILD_EXAMPLES`：包含 `examples/`；
 - `MUJOCO_SIMULATION_INSTALL`：生成安装规则（默认开启）；
 - `MUJOCO_SIMULATION_ENABLE_ASAN`：为库启用 AddressSanitizer。
+- `MUJOCO_SIMULATION_ENABLE_TSAN`：为库启用 ThreadSanitizer；不能与 ASan 同时启用。
+
+TSAN 建议使用独立构建目录，并只运行纯 CPU 并发测试：
+
+```bash
+cmake -S mujoco_simulation -B build/mujoco_simulation-tsan \
+  -DMUJOCO_SIMULATION_BUILD_TESTS=ON \
+  -DMUJOCO_SIMULATION_ENABLE_TSAN=ON
+cmake --build build/mujoco_simulation-tsan
+ctest --test-dir build/mujoco_simulation-tsan -L tsan --output-on-failure
+```
+
+GLFW/EGL/MuJoCo 图形后端依赖通常未用 TSAN 插桩，因此 CameraRenderer 和 GUI Viewer
+测试不属于 TSAN 门禁。
+
+某些容器或受限宿主无法提供 TSAN 所需的地址空间布局，并会在启动时报告
+`unexpected memory mapping`。这类 runner 应继续执行 TSAN 编译，但显式配置：
+
+```bash
+cmake -S mujoco_simulation -B build/mujoco_simulation-tsan \
+  -DMUJOCO_SIMULATION_ENABLE_TSAN=ON \
+  -DMUJOCO_SIMULATION_TSAN_RUNTIME_TESTS=OFF
+```
+
+这样仅禁用带 `tsan` 标签的运行测试；支持 TSAN 的 CI runner 保持默认 `ON` 并执行该标签。
 
 安装后，下游工程只需：
 
