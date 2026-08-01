@@ -54,7 +54,10 @@ int main() {
     renderer_config.allow_egl_backend = true;
     renderer_config.max_camera_id = 4;
     mujoco_simulation::CameraRenderer renderer(renderer_config);
-    if (!check(!renderer.wait({1}),
+    if (!check(renderer.wait_result({1}) ==
+                   mujoco_simulation::CameraWaitResult::InvalidTicket,
+               "renderer did not diagnose an invalid ticket") ||
+        !check(!renderer.wait({1}),
                "renderer accepted a ticket it did not submit")) {
       return 1;
     }
@@ -154,6 +157,9 @@ int main() {
     const auto mixed_ticket = renderer.submit(context, {task, failed});
     if (!check(mixed_ticket.has_value(),
                "failed to submit mixed camera batch") ||
+        !check(renderer.wait_result(*mixed_ticket, &batch) ==
+                   mujoco_simulation::CameraWaitResult::RenderFailed,
+               "mixed camera batch did not report RenderFailed") ||
         !check(!renderer.wait(*mixed_ticket, &batch),
                "mixed camera batch was incorrectly successful") ||
         !check(batch.statuses.size() == 2U && !batch.all_succeeded &&

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "mujoco_simulation/component/component_id.hpp"
@@ -13,12 +15,26 @@ namespace mujoco_simulation {
 
 template <typename Command> struct CommandTraits;
 
+template <typename Command, typename = void>
+struct has_command_traits : std::false_type {};
+
+template <typename Command>
+struct has_command_traits<Command,
+                          std::void_t<decltype(CommandTraits<Command>::validate(
+                              std::declval<const Command &>()))>>
+    : std::true_type {};
+
+template <typename Command>
+constexpr bool has_command_traits_v = has_command_traits<Command>::value;
+
 // Cold-path layout bitmap. Unlike vector<bool>, this has ordinary reference
 // semantics and remains easy to inspect in diagnostics and tests.
 using CommandChannelLayout = std::vector<std::uint8_t>;
 
 template <typename Command> class CommandChannel {
 public:
+  static_assert(has_command_traits_v<Command>,
+                "CommandChannel requires CommandTraits<T>::validate(const T&)");
   using Slots = std::vector<std::optional<Command>>;
 
   using Snapshot = CommandChannelSnapshot<Command>;

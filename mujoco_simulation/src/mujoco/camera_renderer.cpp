@@ -58,10 +58,7 @@ bool pixel_count_for(int width, int height, std::size_t &pixel_count) {
 
 CameraRenderer::CameraRenderer() : CameraRenderer(CameraRendererConfig{}) {}
 
-CameraRenderer::CameraRenderer(CameraRendererConfig config) : config_(config) {
-  if (config_.completed_ticket_history == 0U)
-    config_.completed_ticket_history = 1U;
-}
+CameraRenderer::CameraRenderer(CameraRendererConfig config) : config_(config) {}
 
 CameraRenderer::~CameraRenderer() { UNUSED(release()); }
 
@@ -75,6 +72,14 @@ bool CameraRenderer::initialize(const mjContext &context) {
   }
   if (config_.max_scene_geometries <= 0) {
     LOG_ERROR << "max_scene_geometries must be positive.";
+    return false;
+  }
+  if (!config_.allow_glfw_backend && !config_.allow_egl_backend) {
+    LOG_ERROR << "camera renderer requires a GLFW or EGL backend.";
+    return false;
+  }
+  if (config_.completed_ticket_history == 0U) {
+    LOG_ERROR << "camera renderer ticket history must be positive.";
     return false;
   }
 
@@ -191,20 +196,20 @@ bool CameraRenderer::read_results(CameraRenderStates &states) const {
   return states != nullptr;
 }
 
-bool CameraRenderer::wait(CameraRenderTicket requested,
-                          CameraBatchResult *result) {
+CameraWaitResult CameraRenderer::wait_result(CameraRenderTicket requested,
+                                             CameraBatchResult *result) {
   std::unique_lock<std::mutex> lock(job_mutex_);
   const std::uint64_t ticket = requested.value;
   if (ticket == 0) {
-    return true;
+    return CameraWaitResult::Succeeded;
   }
   if (ticket > submitted_ticket_) {
     LOG_ERROR << "camera render ticket was not submitted by this renderer.";
-    return false;
+    return CameraWaitResult::InvalidTicket;
   }
   if (ticket <= expired_through_ticket_) {
     LOG_ERROR << "camera render ticket has expired.";
-    return false;
+    return CameraWaitResult::Expired;
   }
   const bool completed =
       completion_condition_.wait_for(lock, kWorkerTimeout, [this, ticket] {
@@ -212,19 +217,39 @@ bool CameraRenderer::wait(CameraRenderTicket requested,
                completed_results_.find(ticket) != completed_results_.end() ||
                worker_initialization_failed_;
       });
-  if (!completed || stopping_ || worker_initialization_failed_ ||
-      completed_results_.find(ticket) == completed_results_.end()) {
+  if (!completed) {
+    LOG_ERROR << "camera render worker timed out for the submitted frame.";
+    return CameraWaitResult::Timeout;
+  }
+  if (stopping_ || worker_initialization_failed_) {
+    LOG_ERROR << "camera render worker stopped before completing the frame.";
+    return CameraWaitResult::RendererStopped;
+  }
+  if (completed_results_.find(ticket) == completed_results_.end()) {
     LOG_ERROR << "camera render worker did not complete the submitted frame.";
-    return false;
+    return CameraWaitResult::RendererStopped;
   }
   const CameraBatchResult &batch = completed_results_.at(ticket);
   if (result != nullptr)
     *result = batch;
   if (!batch.all_succeeded) {
     LOG_ERROR << "camera render worker failed to render the submitted frame.";
-    return false;
+    const bool superseded =
+        !batch.statuses.empty() &&
+        std::all_of(batch.statuses.begin(), batch.statuses.end(),
+                    [](const CameraRenderTaskStatus &status) {
+                      return !status.succeeded &&
+                             status.message == "render request was superseded";
+                    });
+    return superseded ? CameraWaitResult::Superseded
+                      : CameraWaitResult::RenderFailed;
   }
-  return true;
+  return CameraWaitResult::Succeeded;
+}
+
+bool CameraRenderer::wait(CameraRenderTicket ticket,
+                          CameraBatchResult *result) {
+  return wait_result(ticket, result) == CameraWaitResult::Succeeded;
 }
 
 bool CameraRenderer::release() {

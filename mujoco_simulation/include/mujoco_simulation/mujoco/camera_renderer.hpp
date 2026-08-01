@@ -116,6 +116,16 @@ struct CameraRenderTicket {
   explicit operator bool() const noexcept { return value != 0; }
 };
 
+enum class CameraWaitResult {
+  Succeeded,
+  RenderFailed,
+  Superseded,
+  Expired,
+  InvalidTicket,
+  Timeout,
+  RendererStopped,
+};
+
 class MUJOCO_SIMULATION_PUBLIC CameraRenderer {
 public:
   CameraRenderer();
@@ -132,8 +142,10 @@ public:
                                            std::vector<CameraRenderTask> tasks);
   /// 读取所有相机的最新完成结果。
   bool read_results(CameraRenderStates &states) const;
-  /// Wait for the exact batch identified by ticket.  A ticket that has aged
-  /// out of the configured result history returns false.
+  /// Wait for the exact batch identified by ticket and report why it failed.
+  CameraWaitResult wait_result(CameraRenderTicket ticket,
+                               CameraBatchResult *result = nullptr);
+  /// Compatibility wrapper for callers that only need success/failure.
   bool wait(CameraRenderTicket ticket, CameraBatchResult *result = nullptr);
   /// 停止 worker 并释放全部资源；未初始化时重复调用不执行额外操作。
   bool release();

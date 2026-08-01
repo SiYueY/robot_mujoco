@@ -190,6 +190,8 @@ Simulation
 `Simulation` 默认在初始化时启动 viewer，并以独立频率同步显示；将
 `SimulationConfig::viewer_enabled` 设为 `false`，或使用 XML
 `<viewer period="..." enabled="false"/>`，可用于 headless 部署或测试。Camera 不依赖 viewer 的渲染
+资源。`viewer_enabled=false` 仅禁用 Viewer 资源创建；`viewer_period` 与
+`viewer_startup_timeout` 仍必须有效，以保证同一份配置可安全地重新启用 Viewer。
 资源。`stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会自动重建
 viewer。
 
@@ -262,7 +264,9 @@ Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer
 result)` 只读取该 ticket 的结果：被 newer submit 覆盖的 pending ticket 会完成为
 `superseded`，而不是误读新批次；完成结果保留数量由
 `CameraRendererConfig::completed_ticket_history` 明确限定，超出历史窗口的 ticket
-会返回失败。初始化和 reset 等待的 ticket 要求全部 Camera 成功；运行期仍采用
+会返回失败。需要区分失败原因时可使用 `wait_result()`，它返回
+`CameraWaitResult`（如 `Expired`、`Superseded`、`RenderFailed` 或 `Timeout`）。
+初始化和 reset 等待的 ticket 要求全部 Camera 成功；运行期仍采用
 latest-only 降级策略，失败 Camera 保留上一帧而成功 Camera 正常发布。
 
 对 `Simulation` 而言，viewer 是可恢复的运行时资源：

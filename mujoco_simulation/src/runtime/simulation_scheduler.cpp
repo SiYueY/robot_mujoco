@@ -17,9 +17,9 @@ bool SimulationScheduler::invoke_task(const std::function<bool()> &task) {
   try {
     return task();
   } catch (const std::exception &) {
-    LOG_ERROR << "scheduler task task threw an exception.";
+    LOG_ERROR << "scheduler task threw an exception.";
   } catch (...) {
-    LOG_ERROR << "scheduler task task threw an unknown exception.";
+    LOG_ERROR << "scheduler task threw an unknown exception.";
   }
   return false;
 }

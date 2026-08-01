@@ -340,6 +340,37 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     return 1;
   }
 
+  mujoco_simulation::SimulationConfig missing_camera_name_config;
+  missing_camera_name_config.model.model_path = "model.xml";
+  mujoco_simulation::CameraConfig missing_camera_name;
+  missing_camera_name.id = 0;
+  missing_camera_name.name = "camera";
+  missing_camera_name.width = 1;
+  missing_camera_name.height = 1;
+  missing_camera_name.frame_id.clear();
+  missing_camera_name.camera_name = "camera";
+  missing_camera_name.optical_frame_id = "camera_optical";
+  missing_camera_name_config.components.emplace_back(missing_camera_name);
+  if (!check(!mujoco_simulation::SimulationConfigValidator::validate(
+                 missing_camera_name_config, &validation_error) &&
+                 validation_error.attribute == "frame_id" &&
+                 !validation_error.message.empty(),
+             "validator omitted a camera name diagnostic")) {
+    cleanup();
+    return 1;
+  }
+
+  mujoco_simulation::SimulationConfig invalid_renderer_config;
+  invalid_renderer_config.model.model_path = "model.xml";
+  invalid_renderer_config.camera_renderer.completed_ticket_history = 0U;
+  if (!check(!mujoco_simulation::SimulationConfigValidator::validate(
+                 invalid_renderer_config, &validation_error) &&
+                 validation_error.attribute == "completed_ticket_history",
+             "validator accepted zero camera ticket history")) {
+    cleanup();
+    return 1;
+  }
+
   cleanup();
   return 0;
 }

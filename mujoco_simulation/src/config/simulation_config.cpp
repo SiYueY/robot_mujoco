@@ -62,6 +62,47 @@ bool validate_camera(const CameraConfig &camera, ConfigError *error) {
   return true;
 }
 
+bool validate_camera_names(const CameraConfig &camera, ConfigError *error) {
+  if (camera.frame_id.empty()) {
+    set_error(error, nullptr, "frame_id", "camera frame_id must not be empty");
+    return false;
+  }
+  if (camera.camera_name.empty()) {
+    set_error(error, nullptr, "camera_name",
+              "MuJoCo camera name must not be empty");
+    return false;
+  }
+  if (camera.optical_frame_id.empty()) {
+    set_error(error, nullptr, "optical_frame_id",
+              "camera optical_frame_id must not be empty");
+    return false;
+  }
+  return true;
+}
+
+bool validate_lidar_names(const LidarInfo &lidar, ConfigError *error) {
+  if (lidar.frame_id.empty()) {
+    set_error(error, nullptr, "frame_id", "lidar frame_id must not be empty");
+    return false;
+  }
+  if (lidar.sensor_prefix.empty()) {
+    set_error(error, nullptr, "sensor_prefix",
+              "lidar sensor prefix must not be empty");
+    return false;
+  }
+  return true;
+}
+
+bool validate_mobile_base_names(const MobileBaseInfo &base,
+                                ConfigError *error) {
+  if (base.base_body_name.empty()) {
+    set_error(error, nullptr, "base_body",
+              "mobile-base body name must not be empty");
+    return false;
+  }
+  return true;
+}
+
 bool validate_lidar(const LidarInfo &lidar, ConfigError *error) {
   if (!std::isfinite(lidar.angle_min) || !std::isfinite(lidar.angle_max) ||
       !std::isfinite(lidar.angle_increment) ||
@@ -571,6 +612,22 @@ bool SimulationConfigValidator::validate(const SimulationConfig &config,
               "viewer startup timeout must be positive");
     return false;
   }
+  if (config.camera_renderer.max_scene_geometries <= 0) {
+    set_error(error, nullptr, "max_scene_geometries",
+              "camera renderer scene geometry limit must be positive");
+    return false;
+  }
+  if (!config.camera_renderer.allow_glfw_backend &&
+      !config.camera_renderer.allow_egl_backend) {
+    set_error(error, nullptr, "camera_renderer",
+              "camera renderer requires a GLFW or EGL backend");
+    return false;
+  }
+  if (config.camera_renderer.completed_ticket_history == 0U) {
+    set_error(error, nullptr, "completed_ticket_history",
+              "camera renderer ticket history must be positive");
+    return false;
+  }
   if (!std::isfinite(config.scheduler.physics_period) ||
       config.scheduler.physics_period <= 0.0) {
     set_error(error, nullptr, "physics_period",
@@ -617,20 +674,19 @@ bool SimulationConfigValidator::validate(const SimulationConfig &config,
                    validate_component_identity(
                        info.id, info.name, info.period, camera_ids,
                        camera_names, "camera", config, &component_error) &&
-                   !info.frame_id.empty() && !info.camera_name.empty() &&
-                   !info.optical_frame_id.empty();
+                   validate_camera_names(info, &component_error);
           } else if constexpr (std::is_same_v<Info, LidarInfo>) {
             return validate_component_identity(info.id, info.name, info.period,
                                                lidar_ids, lidar_names, "lidar",
                                                config, &component_error) &&
-                   !info.frame_id.empty() && !info.sensor_prefix.empty() &&
+                   validate_lidar_names(info, &component_error) &&
                    validate_lidar(info, &component_error);
           } else {
             return validate_component_identity(info.id, info.mobile_base_name,
                                                info.period, mobile_base_ids,
                                                mobile_base_names, "mobile base",
                                                config, &component_error) &&
-                   !info.base_body_name.empty() &&
+                   validate_mobile_base_names(info, &component_error) &&
                    validate_mobile_base(info, &component_error);
           }
         },
