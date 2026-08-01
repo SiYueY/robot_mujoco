@@ -148,6 +148,8 @@ public:
   bool initialize(const mjContext &context);
   /// 提交最新相机渲染请求；调用方必须在保护主 mjData 时调用。
   /// Empty task lists return a zero-valued immediately-completed no-op ticket.
+  /// A no-op does not access the context and is valid even while this renderer
+  /// is uninitialized.
   std::optional<CameraRenderTicket> submit(const mjContext &context,
                                            std::vector<CameraRenderTask> tasks);
   /// 读取所有相机的最新完成结果。
@@ -164,6 +166,8 @@ public:
   bool is_running() const noexcept { return running_.load(); }
 
 private:
+  using TicketKey = std::pair<std::uint64_t, std::uint64_t>;
+
   static constexpr auto kWorkerTimeout = std::chrono::seconds(5);
   bool release_locked();
   void worker_loop();
@@ -207,8 +211,8 @@ private:
   bool pending_ready_{false};
   std::uint64_t pending_ticket_{0};
   std::uint64_t submitted_ticket_{0};
-  std::uint64_t expired_through_ticket_{0};
-  std::map<std::uint64_t, CameraBatchResult> completed_results_;
+  CameraRenderTicket expired_through_ticket_{};
+  std::map<TicketKey, CameraBatchResult> completed_results_;
   bool worker_ready_{false};
   bool worker_initialization_failed_{false};
   bool stopping_{false};

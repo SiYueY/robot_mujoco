@@ -192,7 +192,7 @@ Simulation
 `<viewer period="..." enabled="false"/>`，可用于 headless 部署或测试。Camera 不依赖 viewer 的渲染
 资源。`viewer_enabled=false` 仅禁用 Viewer 资源创建；`viewer_period` 与
 `viewer_startup_timeout` 仍必须有效，以保证同一份配置可安全地重新启用 Viewer。
-资源。`stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会自动重建
+`stop()` 会销毁当前 viewer；后续同一 `Simulation` 实例再次 `start()` 时会自动重建
 viewer。
 
 `reset()` 复位到默认 MuJoCo 数据状态；`reset(std::string keyframe_name)` 复位到指定

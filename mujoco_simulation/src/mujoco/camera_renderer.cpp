@@ -99,7 +99,7 @@ bool CameraRenderer::initialize(const mjContext &context) {
     pending_ready_ = false;
     pending_ticket_ = 0;
     submitted_ticket_ = 0;
-    expired_through_ticket_ = 0;
+    expired_through_ticket_ = {};
     completed_results_.clear();
     worker_ready_ = false;
     worker_initialization_failed_ = false;
@@ -185,9 +185,11 @@ CameraRenderer::submit(const mjContext &context,
         superseded.statuses.push_back({pending.config.id,
                                        CameraRenderTaskResult::Superseded,
                                        "render request was superseded"});
-      completed_results_[pending_ticket_] = std::move(superseded);
+      completed_results_[{superseded.ticket.generation,
+                          superseded.ticket.sequence}] = std::move(superseded);
       while (completed_results_.size() > config_.completed_ticket_history) {
-        expired_through_ticket_ = completed_results_.begin()->first;
+        const TicketKey expired_key = completed_results_.begin()->first;
+        expired_through_ticket_ = {expired_key.first, expired_key.second};
         completed_results_.erase(completed_results_.begin());
       }
     }
@@ -210,41 +212,49 @@ bool CameraRenderer::read_results(CameraRenderStates &states) const {
 CameraWaitResult CameraRenderer::wait_result(CameraRenderTicket requested,
                                              CameraBatchResult *result) {
   std::unique_lock<std::mutex> lock(job_mutex_);
-  const std::uint64_t ticket = requested.sequence;
   if (requested.is_noop()) {
     return CameraWaitResult::Succeeded;
   }
-  if (requested.generation != generation_.load()) {
+  const std::uint64_t requested_generation = requested.generation;
+  const TicketKey requested_key{requested.generation, requested.sequence};
+  if (requested_generation != generation_.load()) {
     LOG_ERROR << "camera render ticket belongs to another renderer lifecycle.";
     return CameraWaitResult::InvalidTicket;
   }
-  if (ticket > submitted_ticket_) {
+  if (requested.sequence > submitted_ticket_) {
     LOG_ERROR << "camera render ticket was not submitted by this renderer.";
     return CameraWaitResult::InvalidTicket;
   }
-  if (ticket <= expired_through_ticket_) {
+  if (requested.generation == expired_through_ticket_.generation &&
+      requested.sequence <= expired_through_ticket_.sequence) {
     LOG_ERROR << "camera render ticket has expired.";
     return CameraWaitResult::Expired;
   }
-  const bool completed =
-      completion_condition_.wait_for(lock, kWorkerTimeout, [this, ticket] {
-        return stopping_ ||
-               completed_results_.find(ticket) != completed_results_.end() ||
+  const bool completed = completion_condition_.wait_for(
+      lock, kWorkerTimeout, [this, requested_generation, requested_key] {
+        return generation_.load() != requested_generation || stopping_ ||
+               completed_results_.find(requested_key) !=
+                   completed_results_.end() ||
                worker_initialization_failed_;
       });
   if (!completed) {
     LOG_ERROR << "camera render worker timed out for the submitted frame.";
     return CameraWaitResult::Timeout;
   }
+  if (generation_.load() != requested_generation) {
+    LOG_ERROR << "camera render ticket belongs to another renderer lifecycle.";
+    return CameraWaitResult::InvalidTicket;
+  }
   if (stopping_ || worker_initialization_failed_) {
     LOG_ERROR << "camera render worker stopped before completing the frame.";
     return CameraWaitResult::RendererStopped;
   }
-  if (completed_results_.find(ticket) == completed_results_.end()) {
+  const auto completed_batch = completed_results_.find(requested_key);
+  if (completed_batch == completed_results_.end()) {
     LOG_ERROR << "camera render worker did not complete the submitted frame.";
     return CameraWaitResult::RendererStopped;
   }
-  const CameraBatchResult &batch = completed_results_.at(ticket);
+  const CameraBatchResult &batch = completed_batch->second;
   if (result != nullptr)
     *result = batch;
   if (!batch.all_succeeded) {
@@ -273,6 +283,15 @@ bool CameraRenderer::release() {
 }
 
 bool CameraRenderer::release_locked() {
+  if (initialized_.load()) {
+    const std::uint64_t prior_generation = generation_.load();
+    if (prior_generation != std::numeric_limits<std::uint64_t>::max()) {
+      // Invalidate tickets before waking waiters. A subsequent initialize()
+      // receives another generation, so an old waiter cannot observe its
+      // sequence number in a restarted lifecycle.
+      generation_.store(prior_generation + 1U);
+    }
+  }
   {
     std::lock_guard<std::mutex> lock(job_mutex_);
     stopping_ = true;
@@ -308,7 +327,7 @@ bool CameraRenderer::release_locked() {
     pending_ready_ = false;
     pending_ticket_ = 0;
     submitted_ticket_ = 0;
-    expired_through_ticket_ = 0;
+    expired_through_ticket_ = {};
     completed_results_.clear();
     worker_ready_ = false;
     worker_initialization_failed_ = false;
@@ -421,9 +440,12 @@ void CameraRenderer::worker_loop() {
                           return status.result ==
                                  CameraRenderTaskResult::Succeeded;
                         });
-        completed_results_[ticket] = std::move(batch);
+        const TicketKey completed_key{batch.ticket.generation,
+                                      batch.ticket.sequence};
+        completed_results_[completed_key] = std::move(batch);
         while (completed_results_.size() > config_.completed_ticket_history) {
-          expired_through_ticket_ = completed_results_.begin()->first;
+          const TicketKey expired_key = completed_results_.begin()->first;
+          expired_through_ticket_ = {expired_key.first, expired_key.second};
           completed_results_.erase(completed_results_.begin());
         }
       }

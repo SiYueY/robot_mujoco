@@ -117,7 +117,60 @@ int main() {
       return 1;
     }
 
-    task.sequence = 3;
+    // A waiter releases job_mutex_ while blocked. Releasing and immediately
+    // restarting the renderer must invalidate that old ticket even when the
+    // new lifecycle reuses sequence 1.
+    if (!check(renderer.release(), "failed to prepare race-test lifecycle") ||
+        !check(renderer.initialize(context),
+               "failed to initialize race-test lifecycle")) {
+      return 1;
+    }
+    mujoco_simulation::CameraRenderTask race_task = task;
+    race_task.config.width = 1024;
+    race_task.config.height = 768;
+    race_task.sequence = 3;
+    const auto race_ticket = renderer.submit(context, {race_task});
+    if (!check(race_ticket.has_value(), "failed to submit race-test frame")) {
+      renderer.release();
+      return 1;
+    }
+    std::atomic<bool> waiter_started{false};
+    mujoco_simulation::CameraWaitResult old_wait_result =
+        mujoco_simulation::CameraWaitResult::Timeout;
+    std::thread waiter([&] {
+      waiter_started.store(true, std::memory_order_release);
+      old_wait_result = renderer.wait_result(*race_ticket);
+    });
+    while (!waiter_started.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    if (!check(renderer.release(), "failed to release race-test lifecycle") ||
+        !check(renderer.initialize(context),
+               "failed to restart race-test lifecycle")) {
+      waiter.join();
+      return 1;
+    }
+    const auto replacement_ticket = renderer.submit(context, {task});
+    if (!check(
+            replacement_ticket.has_value() &&
+                replacement_ticket->sequence == race_ticket->sequence &&
+                replacement_ticket->generation != race_ticket->generation,
+            "race-test restart did not reuse sequence in a new generation") ||
+        !check(renderer.wait(*replacement_ticket),
+               "race-test replacement frame did not finish")) {
+      waiter.join();
+      renderer.release();
+      return 1;
+    }
+    waiter.join();
+    if (!check(old_wait_result ==
+                   mujoco_simulation::CameraWaitResult::InvalidTicket,
+               "waiter read a result from a restarted renderer lifecycle")) {
+      renderer.release();
+      return 1;
+    }
+
+    task.sequence = 4;
     task.timestamp = 300;
     const auto intermediate_ticket = renderer.submit(context, {task});
     if (!check(intermediate_ticket.has_value(),
@@ -125,7 +178,7 @@ int main() {
       renderer.release();
       return 1;
     }
-    task.sequence = 4;
+    task.sequence = 5;
     task.timestamp = 400;
     const auto latest_ticket = renderer.submit(context, {task});
     if (!check(latest_ticket.has_value(), "failed to submit latest frame") ||
@@ -143,7 +196,7 @@ int main() {
     if (!check(results->size() > task.config.id &&
                    (*results)[task.config.id] != nullptr,
                "camera result is missing") ||
-        !check((*results)[task.config.id]->sequence == 4,
+        !check((*results)[task.config.id]->sequence == 5,
                "latest result sequence is wrong") ||
         !check((*results)[task.config.id]->timestamp == 400,
                "latest result timestamp is wrong") ||

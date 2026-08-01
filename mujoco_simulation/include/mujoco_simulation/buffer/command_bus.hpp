@@ -64,6 +64,10 @@ class MUJOCO_SIMULATION_PUBLIC CommandBus {
 public:
   template <typename Command>
   bool configure_channel(CommandChannelLayout valid_ids) {
+    static_assert(
+        has_command_traits_v<Command>,
+        "CommandBus requires CommandTraits<T>::validate(const T&) for "
+        "configured command types");
     std::lock_guard<std::mutex> lock(mutex_);
     if (initialized_ || channels_.count(std::type_index(typeid(Command))) != 0)
       return false;
@@ -78,6 +82,9 @@ public:
 
   template <typename Command>
   bool write(ComponentId id, const Command &command) {
+    static_assert(has_command_traits_v<Command>,
+                  "CommandBus requires CommandTraits<T>::validate(const T&) "
+                  "for command writes");
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_)
       return false;
@@ -89,6 +96,9 @@ public:
   }
 
   template <typename Command> bool write(const CommandBatch<Command> &batch) {
+    static_assert(has_command_traits_v<Command>,
+                  "CommandBus requires CommandTraits<T>::validate(const T&) "
+                  "for command batch writes");
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_)
       return false;
