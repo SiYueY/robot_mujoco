@@ -371,6 +371,62 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     return 1;
   }
 
+  mujoco_simulation::SimulationConfig no_backend_config;
+  no_backend_config.model.model_path = "model.xml";
+  no_backend_config.camera_renderer.allow_glfw_backend = false;
+  no_backend_config.camera_renderer.allow_egl_backend = false;
+  if (!check(!mujoco_simulation::SimulationConfigValidator::validate(
+                 no_backend_config, &validation_error) &&
+                 validation_error.attribute == "camera_renderer",
+             "validator accepted a camera renderer without a backend")) {
+    cleanup();
+    return 1;
+  }
+
+  mujoco_simulation::SimulationConfig missing_lidar_name_config;
+  missing_lidar_name_config.model.model_path = "model.xml";
+  mujoco_simulation::LidarInfo missing_lidar_name;
+  missing_lidar_name.id = 0;
+  missing_lidar_name.name = "lidar";
+  missing_lidar_name.sensor_prefix = "scan";
+  missing_lidar_name.angle_max = 1.0;
+  missing_lidar_name.angle_increment = 1.0;
+  missing_lidar_name.range_max = 1.0;
+  missing_lidar_name_config.components.emplace_back(missing_lidar_name);
+  if (!check(!mujoco_simulation::SimulationConfigValidator::validate(
+                 missing_lidar_name_config, &validation_error) &&
+                 validation_error.attribute == "frame_id" &&
+                 !validation_error.message.empty(),
+             "validator omitted a lidar name diagnostic")) {
+    cleanup();
+    return 1;
+  }
+
+  mujoco_simulation::SimulationConfig missing_base_name_config;
+  missing_base_name_config.model.model_path = "model.xml";
+  mujoco_simulation::MobileBaseInfo missing_base_name;
+  missing_base_name.id = 0;
+  missing_base_name.mobile_base_name = "base";
+  missing_base_name.mecanum_info.wheel_radius = 1.0;
+  missing_base_name.mecanum_info.wheel_base = 1.0;
+  missing_base_name.mecanum_info.track_width = 1.0;
+  for (std::size_t index = 0; index < missing_base_name.mecanum_wheels.size();
+       ++index) {
+    missing_base_name.mecanum_wheels[index].wheel_name =
+        "wheel" + std::to_string(index);
+    missing_base_name.mecanum_wheels[index].actuator_name =
+        "actuator" + std::to_string(index);
+  }
+  missing_base_name_config.components.emplace_back(missing_base_name);
+  if (!check(!mujoco_simulation::SimulationConfigValidator::validate(
+                 missing_base_name_config, &validation_error) &&
+                 validation_error.attribute == "base_body" &&
+                 !validation_error.message.empty(),
+             "validator omitted a mobile-base name diagnostic")) {
+    cleanup();
+    return 1;
+  }
+
   cleanup();
   return 0;
 }

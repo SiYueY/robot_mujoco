@@ -54,10 +54,16 @@ public:
   bool write_command(std::string name, const MobileBaseCommand &command);
   template <typename Command>
   bool write_command(ComponentId id, const Command &command) {
+    static_assert(
+        has_command_traits_v<Command>,
+        "write_command<T> requires CommandTraits<T>::validate(const T&)");
     return command_bus_.write<Command>(id, command);
   }
   template <typename Command>
   bool write_commands(const CommandBatch<Command> &batch) {
+    static_assert(
+        has_command_traits_v<Command>,
+        "write_commands<T> requires CommandTraits<T>::validate(const T&)");
     return command_bus_.write(batch);
   }
 

@@ -99,21 +99,30 @@ using CameraRenderStatePtr = std::shared_ptr<const CameraRenderState>;
 using CameraRenderStates =
     std::shared_ptr<const std::vector<CameraRenderStatePtr>>;
 
+struct CameraRenderTicket {
+  std::uint64_t generation{0};
+  std::uint64_t sequence{0};
+
+  bool is_noop() const noexcept { return generation == 0 && sequence == 0; }
+  explicit operator bool() const noexcept { return !is_noop(); }
+};
+
+enum class CameraRenderTaskResult {
+  Succeeded,
+  RenderFailed,
+  Superseded,
+};
+
 struct CameraRenderTaskStatus {
   CameraId id{kInvalidComponentId};
-  bool succeeded{false};
+  CameraRenderTaskResult result{CameraRenderTaskResult::RenderFailed};
   std::string message;
 };
 
 struct CameraBatchResult {
-  std::uint64_t ticket{0};
+  CameraRenderTicket ticket{};
   std::vector<CameraRenderTaskStatus> statuses;
   bool all_succeeded{false};
-};
-
-struct CameraRenderTicket {
-  std::uint64_t value{0};
-  explicit operator bool() const noexcept { return value != 0; }
 };
 
 enum class CameraWaitResult {
@@ -138,6 +147,7 @@ public:
   /// 创建双缓冲数据并启动专属渲染线程；成功后重复调用不执行额外操作。
   bool initialize(const mjContext &context);
   /// 提交最新相机渲染请求；调用方必须在保护主 mjData 时调用。
+  /// Empty task lists return a zero-valued immediately-completed no-op ticket.
   std::optional<CameraRenderTicket> submit(const mjContext &context,
                                            std::vector<CameraRenderTask> tasks);
   /// 读取所有相机的最新完成结果。
@@ -155,6 +165,7 @@ public:
 
 private:
   static constexpr auto kWorkerTimeout = std::chrono::seconds(5);
+  bool release_locked();
   void worker_loop();
   bool initialize_worker_resources();
   void release_worker_resources();
@@ -186,6 +197,8 @@ private:
 
   CameraRendererConfig config_{};
   const mjModel *model_{nullptr};
+  mutable std::mutex lifecycle_mutex_;
+  std::atomic<std::uint64_t> generation_{0};
 
   mutable std::mutex job_mutex_;
   std::condition_variable job_condition_;
