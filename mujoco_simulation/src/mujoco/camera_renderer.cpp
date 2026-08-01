@@ -64,8 +64,20 @@ CameraRenderer::~CameraRenderer() { UNUSED(release()); }
 
 bool CameraRenderer::initialize(const mjContext &context) {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
-  if (initialized_.load()) {
+  if (initialized_.load() && running_.load()) {
     return true;
+  }
+
+  // A worker that failed after a successful initialize() has already released
+  // its thread-local OpenGL resources, but its thread object and mjData
+  // buffers still belong to this renderer. Reap that failed lifecycle before
+  // allocating a replacement one; otherwise initialize() would overwrite the
+  // stale pointers and report a healthy renderer without a worker.
+  if (worker_thread_.joinable() || pending_data_ != nullptr ||
+      render_data_ != nullptr || model_ != nullptr) {
+    if (!release_locked()) {
+      return false;
+    }
   }
   if (!context.valid()) {
     LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
@@ -129,14 +141,14 @@ bool CameraRenderer::initialize(const mjContext &context) {
     UNUSED(release_locked());
     return false;
   }
-  const std::uint64_t prior_generation = generation_.load();
+  const std::uint64_t prior_generation = ticket_epoch_.load();
   if (prior_generation == std::numeric_limits<std::uint64_t>::max()) {
-    LOG_ERROR << "camera renderer ticket generation overflowed.";
+    LOG_ERROR << "camera renderer ticket epoch overflowed.";
     lock.unlock();
     UNUSED(release_locked());
     return false;
   }
-  generation_.store(prior_generation + 1U);
+  ticket_epoch_.store(prior_generation + 1U);
   initialized_.store(true);
   return true;
 }
@@ -180,7 +192,7 @@ CameraRenderer::submit(const mjContext &context,
     }
     if (pending_ready_) {
       CameraBatchResult superseded;
-      superseded.ticket = {generation_.load(), pending_ticket_};
+      superseded.ticket = {ticket_epoch_.load(), pending_ticket_};
       for (const CameraRenderTask &pending : pending_tasks_)
         superseded.statuses.push_back({pending.config.id,
                                        CameraRenderTaskResult::Superseded,
@@ -195,7 +207,7 @@ CameraRenderer::submit(const mjContext &context,
     }
     pending_tasks_ = std::move(tasks);
     pending_ticket_ = ++submitted_ticket_;
-    ticket = {generation_.load(), pending_ticket_};
+    ticket = {ticket_epoch_.load(), pending_ticket_};
     pending_ready_ = true;
   }
   completion_condition_.notify_all();
@@ -217,7 +229,7 @@ CameraWaitResult CameraRenderer::wait_result(CameraRenderTicket requested,
   }
   const std::uint64_t requested_generation = requested.generation;
   const TicketKey requested_key{requested.generation, requested.sequence};
-  if (requested_generation != generation_.load()) {
+  if (requested_generation != ticket_epoch_.load()) {
     LOG_ERROR << "camera render ticket belongs to another renderer lifecycle.";
     return CameraWaitResult::InvalidTicket;
   }
@@ -232,7 +244,7 @@ CameraWaitResult CameraRenderer::wait_result(CameraRenderTicket requested,
   }
   const bool completed = completion_condition_.wait_for(
       lock, kWorkerTimeout, [this, requested_generation, requested_key] {
-        return generation_.load() != requested_generation || stopping_ ||
+        return ticket_epoch_.load() != requested_generation || stopping_ ||
                completed_results_.find(requested_key) !=
                    completed_results_.end() ||
                worker_initialization_failed_;
@@ -241,7 +253,7 @@ CameraWaitResult CameraRenderer::wait_result(CameraRenderTicket requested,
     LOG_ERROR << "camera render worker timed out for the submitted frame.";
     return CameraWaitResult::Timeout;
   }
-  if (generation_.load() != requested_generation) {
+  if (ticket_epoch_.load() != requested_generation) {
     LOG_ERROR << "camera render ticket belongs to another renderer lifecycle.";
     return CameraWaitResult::InvalidTicket;
   }
@@ -284,12 +296,12 @@ bool CameraRenderer::release() {
 
 bool CameraRenderer::release_locked() {
   if (initialized_.load()) {
-    const std::uint64_t prior_generation = generation_.load();
+    const std::uint64_t prior_generation = ticket_epoch_.load();
     if (prior_generation != std::numeric_limits<std::uint64_t>::max()) {
-      // Invalidate tickets before waking waiters. A subsequent initialize()
-      // receives another generation, so an old waiter cannot observe its
+      // Invalidate tickets before waking waiters. The next initialize()
+      // advances the epoch again, so an old waiter cannot observe its
       // sequence number in a restarted lifecycle.
-      generation_.store(prior_generation + 1U);
+      ticket_epoch_.store(prior_generation + 1U);
     }
   }
   {
@@ -379,7 +391,7 @@ void CameraRenderer::worker_loop() {
 
       auto updates = std::make_shared<std::vector<CameraRenderStatePtr>>();
       CameraBatchResult batch;
-      batch.ticket = {generation_.load(), ticket};
+      batch.ticket = {ticket_epoch_.load(), ticket};
       bool succeeded = activate_context();
       if (!succeeded) {
         LOG_ERROR << "failed to activate the camera render context.";
@@ -464,6 +476,10 @@ void CameraRenderer::worker_loop() {
   }
 
   release_worker_resources();
+  // A stopped worker no longer represents an initialized lifecycle. Mark it
+  // inactive only after its worker-owned resources are released, so a later
+  // initialize() can synchronously reap and replace it.
+  initialized_.store(false);
   running_.store(false);
   completion_condition_.notify_all();
 }

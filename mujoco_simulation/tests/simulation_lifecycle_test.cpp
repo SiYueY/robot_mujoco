@@ -72,6 +72,11 @@ int main() {
              "failed keyframe reset did not enter error state") ||
       !check(simulation.read_state(state) && state != nullptr,
              "failed keyframe reset did not retain diagnostic state") ||
+      !check(simulation.stop(), "error-state simulation stop failed") ||
+      !check(simulation.status() == mujoco_simulation::SimulationStatus::Error,
+             "stop incorrectly cleared the simulation error state") ||
+      !check(!simulation.start(),
+             "error-state simulation started without a reset") ||
       !check(simulation.reset("home"), "error recovery reset failed") ||
       !check(simulation.status() ==
                  mujoco_simulation::SimulationStatus::Stopped,

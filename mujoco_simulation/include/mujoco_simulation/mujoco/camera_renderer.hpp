@@ -104,7 +104,6 @@ struct CameraRenderTicket {
   std::uint64_t sequence{0};
 
   bool is_noop() const noexcept { return generation == 0 && sequence == 0; }
-  explicit operator bool() const noexcept { return !is_noop(); }
 };
 
 enum class CameraRenderTaskResult {
@@ -202,7 +201,10 @@ private:
   CameraRendererConfig config_{};
   const mjModel *model_{nullptr};
   mutable std::mutex lifecycle_mutex_;
-  std::atomic<std::uint64_t> generation_{0};
+  // Advance at both initialize and release boundaries. This is an invalidation
+  // epoch rather than a count of successful worker lifecycles, so waiters are
+  // invalidated as soon as release begins.
+  std::atomic<std::uint64_t> ticket_epoch_{0};
 
   mutable std::mutex job_mutex_;
   std::condition_variable job_condition_;

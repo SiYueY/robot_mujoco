@@ -266,9 +266,9 @@ result)` 只读取该 ticket 的结果：被 newer submit 覆盖的 pending tick
 `CameraRendererConfig::completed_ticket_history` 明确限定，超出历史窗口的 ticket
 会返回失败。需要区分失败原因时可使用 `wait_result()`，它返回
 `CameraWaitResult`（如 `Expired`、`Superseded`、`RenderFailed` 或 `Timeout`）。
-ticket 还包含 Renderer 初始化 generation，因此 release/reinitialize 后的旧 ticket
-会被明确识别为 `InvalidTicket`，不会匹配新生命周期的同序号请求。空任务列表返回
-立即成功的 no-op ticket（`is_noop()==true`）。
+ticket 还包含 Renderer 的失效 epoch；它会在 initialize 与 release 边界推进，因此
+release/reinitialize 后的旧 ticket 会被明确识别为 `InvalidTicket`，不会匹配新生命周期
+的同序号请求。空任务列表返回立即成功的 no-op ticket（`is_noop()==true`）。
 初始化和 reset 等待的 ticket 要求全部 Camera 成功；运行期仍采用
 latest-only 降级策略，失败 Camera 保留上一帧而成功 Camera 正常发布。
 

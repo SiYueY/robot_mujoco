@@ -164,6 +164,12 @@ bool Simulation::start() {
     LOG_ERROR << "simulation scheduler is not initialized.";
     return false;
   }
+  if (runtime_failed_.load()) {
+    LOG_ERROR
+        << "simulation is in an error state; reset or shutdown is required "
+           "before starting again.";
+    return false;
+  }
   bool needs_viewer = false;
   bool viewer_started_here = false;
   bool camera_started_here = false;
@@ -226,13 +232,19 @@ bool Simulation::start() {
 
 bool Simulation::stop() {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
+  const bool was_error = runtime_failed_.load() ||
+                         (scheduler_ != nullptr &&
+                          scheduler_->status() == SimulationStatus::Error);
   if (scheduler_ != nullptr) {
     if (!scheduler_->stop()) {
       LOG_ERROR << "failed to stop the simulation scheduler.";
       return false;
     }
   }
-  runtime_failed_.store(false);
+  // Stopping joins the worker, but it is not a runtime recovery operation.
+  // Preserve an existing failure so only reset() or shutdown() can make this
+  // Simulation startable again.
+  runtime_failed_.store(was_error);
   if (camera_renderer_ != nullptr) {
     UNUSED(camera_renderer_->release());
   }
@@ -539,6 +551,12 @@ bool Simulation::step(std::size_t count) {
   std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
   if (scheduler_ == nullptr) {
     LOG_ERROR << "simulation scheduler is not initialized.";
+    return false;
+  }
+  if (runtime_failed_.load()) {
+    LOG_ERROR
+        << "simulation is in an error state; reset or shutdown is required "
+           "before stepping again.";
     return false;
   }
   return scheduler_->step(count);

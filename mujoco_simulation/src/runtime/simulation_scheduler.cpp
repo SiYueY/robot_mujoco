@@ -306,9 +306,14 @@ void SimulationScheduler::worker_loop() {
           break;
         }
         ++completed_steps_;
-        if (step_end >= next_deadline + physics_period_) {
+        // Real-time mode is latest-time, not catch-up: any missed deadline is
+        // re-anchored one full period after the completed step so the next
+        // task cannot start immediately merely to recover a fraction of one
+        // period. The loop's next iteration then advances its deadline for
+        // the task after that.
+        if (step_end > next_deadline) {
           log_deadline_miss(step_end, next_deadline);
-          next_deadline = step_end;
+          next_deadline = step_end + physics_period_;
         }
         cv_.wait_until(lock, next_deadline, [this] {
           return stop_requested_ || status_ != SimulationStatus::Running ||

@@ -1,10 +1,12 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
 
 #include "mujoco_simulation/runtime/simulation_scheduler.hpp"
+#include "test_support.hpp"
 
 namespace {
 
@@ -56,6 +58,51 @@ int main() {
   }
 
   if (!check(scheduler.shutdown(), "scheduler shutdown failed")) {
+    return 1;
+  }
+
+  // A task that overruns by less than one full period must still be re-anchored
+  // before the next invocation. Otherwise the scheduler immediately starts a
+  // second task to catch up with a deadline that is already in the past.
+  mujoco_simulation::SimulationScheduler no_catchup_scheduler;
+  std::atomic<std::size_t> no_catchup_invocations{0};
+  std::chrono::steady_clock::time_point overrun_finished;
+  std::chrono::steady_clock::time_point next_task_started;
+  std::mutex no_catchup_mutex;
+  if (!check(
+          no_catchup_scheduler.initialize(std::chrono::duration<double>(10ms)),
+          "no-catchup scheduler initialization failed") ||
+      !check(no_catchup_scheduler.register_task([&] {
+        const std::size_t invocation = ++no_catchup_invocations;
+        if (invocation == 1U) {
+          std::this_thread::sleep_for(15ms);
+          std::lock_guard<std::mutex> lock(no_catchup_mutex);
+          overrun_finished = std::chrono::steady_clock::now();
+        } else if (invocation == 2U) {
+          std::lock_guard<std::mutex> lock(no_catchup_mutex);
+          next_task_started = std::chrono::steady_clock::now();
+        }
+        return true;
+      }),
+             "no-catchup scheduler task registration failed") ||
+      !check(no_catchup_scheduler.start(),
+             "no-catchup scheduler start failed") ||
+      !check(mujoco_simulation_test::wait_until(
+                 [&] { return no_catchup_invocations.load() >= 2U; },
+                 std::chrono::seconds(1)),
+             "no-catchup scheduler did not run twice") ||
+      !check(no_catchup_scheduler.stop(), "no-catchup scheduler stop failed")) {
+    return 1;
+  }
+  {
+    std::lock_guard<std::mutex> lock(no_catchup_mutex);
+    if (!check(next_task_started - overrun_finished >= 8ms,
+               "scheduler immediately ran a catch-up task after an overrun")) {
+      return 1;
+    }
+  }
+  if (!check(no_catchup_scheduler.shutdown(),
+             "no-catchup scheduler shutdown failed")) {
     return 1;
   }
 
