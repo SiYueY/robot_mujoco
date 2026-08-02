@@ -1,5 +1,5 @@
 #include "config/simulation_config_parser.hpp"
-#include "config/simulation_config_detail.hpp"
+#include "config/simulation_config_validator.hpp"
 
 #include "component/component.hpp"
 
@@ -22,6 +22,12 @@ using tinyxml2::XMLDocument;
 using tinyxml2::XMLElement;
 using tinyxml2::XMLNode;
 
+// Hard bounds shared by the XML validation paths.  These limits are compile-time
+// constants and are intentionally not configurable through the config file.
+constexpr std::size_t kMaximumComponentId{65535};
+constexpr int kMaximumCameraDimension{8192};
+constexpr std::size_t kMaximumCameraOutputBytes{256U * 1024U * 1024U};
+
 void set_error(
     ConfigError* error, const XMLElement* element, std::string attribute, std::string message) {
     if (error == nullptr || !error->message.empty()) return;
@@ -32,11 +38,11 @@ void set_error(
 }
 
 bool validate_camera(const CameraConfig& camera, ConfigError* error) {
-    if (camera.width <= 0 || camera.width > SimulationConfigLimits::kMaximumCameraDimension) {
+    if (camera.width <= 0 || camera.width > kMaximumCameraDimension) {
         set_error(error, nullptr, "width", "camera width must be in 1..8192");
         return false;
     }
-    if (camera.height <= 0 || camera.height > SimulationConfigLimits::kMaximumCameraDimension) {
+    if (camera.height <= 0 || camera.height > kMaximumCameraDimension) {
         set_error(error, nullptr, "height", "camera height must be in 1..8192");
         return false;
     }
@@ -50,7 +56,7 @@ bool validate_camera(const CameraConfig& camera, ConfigError* error) {
     const std::size_t height = static_cast<std::size_t>(camera.height);
     if (height > std::numeric_limits<std::size_t>::max() / width ||
         width * height > std::numeric_limits<std::size_t>::max() / bytes_per_pixel ||
-        width * height * bytes_per_pixel > SimulationConfigLimits::kMaximumCameraOutputBytes) {
+        width * height * bytes_per_pixel > kMaximumCameraOutputBytes) {
         set_error(error, nullptr, "width", "camera output exceeds the 256 MiB limit");
         return false;
     }
@@ -209,10 +215,8 @@ bool validate_imu(const ImuInfo& imu, ConfigError* error) {
 
 bool validate_component_identity(
     ComponentId id, const std::string& name, double period, std::unordered_set<ComponentId>& ids,
-    std::unordered_set<std::string>& names, const char* kind, const SimulationConfig& config,
-    ConfigError* error) {
-    if (id == kInvalidComponentId || id > config.max_component_id ||
-        id > SimulationConfigLimits::kMaximumComponentId) {
+    std::unordered_set<std::string>& names, const char* kind, ConfigError* error) {
+    if (id == kInvalidComponentId || id > kMaximumComponentId) {
         set_error(error, nullptr, "id", std::string(kind) + " ID is outside the configured range");
         return false;
     }
@@ -304,8 +308,7 @@ bool parse_component_id_value(std::string_view raw, ComponentId maximum, Compone
     }
     if (parsed != value.size() || numeric > std::numeric_limits<ComponentId>::max()) return false;
     out = static_cast<ComponentId>(numeric);
-    return out != kInvalidComponentId && out <= SimulationConfigLimits::kMaximumComponentId &&
-           out <= maximum;
+    return out != kInvalidComponentId && out <= kMaximumComponentId && out <= maximum;
 }
 
 bool id(const XMLElement& element, ComponentId maximum, ComponentId& out) {
@@ -561,13 +564,6 @@ bool validate_simulation_config_impl(const SimulationConfig& config, ConfigError
         set_error(error, nullptr, "viewer_period", "viewer_period must be finite and positive");
         return false;
     }
-    if (config.max_component_id == kInvalidComponentId ||
-        config.max_component_id > SimulationConfigLimits::kMaximumComponentId) {
-        set_error(
-            error, nullptr, "max_component_id",
-            "component ID limit is outside the supported range");
-        return false;
-    }
     std::unordered_set<ComponentId> joint_ids, imu_ids, camera_ids, lidar_ids, mobile_base_ids;
     std::unordered_set<std::string> joint_names, imu_names, camera_names, lidar_names,
         mobile_base_names;
@@ -583,29 +579,29 @@ bool validate_simulation_config_impl(const SimulationConfig& config, ConfigError
                 if constexpr (std::is_same_v<Info, JointInfo>) {
                     return validate_component_identity(
                                info.id, info.joint_name, info.period, joint_ids, joint_names,
-                               "joint", config, &component_error) &&
+                               "joint", &component_error) &&
                            validate_joint(info, &component_error);
                 } else if constexpr (std::is_same_v<Info, ImuInfo>) {
                     return validate_component_identity(
-                               info.id, info.name, info.period, imu_ids, imu_names, "IMU", config,
+                               info.id, info.name, info.period, imu_ids, imu_names, "IMU",
                                &component_error) &&
                            validate_imu(info, &component_error);
                 } else if constexpr (std::is_same_v<Info, CameraConfig>) {
                     return validate_camera(info, &component_error) &&
                            validate_component_identity(
                                info.id, info.name, info.period, camera_ids, camera_names, "camera",
-                               config, &component_error) &&
+                               &component_error) &&
                            validate_camera_names(info, &component_error);
                 } else if constexpr (std::is_same_v<Info, LidarInfo>) {
                     return validate_component_identity(
                                info.id, info.name, info.period, lidar_ids, lidar_names, "lidar",
-                               config, &component_error) &&
+                               &component_error) &&
                            validate_lidar_names(info, &component_error) &&
                            validate_lidar(info, &component_error);
                 } else {
                     return validate_component_identity(
                                info.id, info.mobile_base_name, info.period, mobile_base_ids,
-                               mobile_base_names, "mobile base", config, &component_error) &&
+                               mobile_base_names, "mobile base", &component_error) &&
                            validate_mobile_base_names(info, &component_error) &&
                            validate_mobile_base(info, &component_error);
                 }
@@ -645,13 +641,6 @@ bool SimulationConfigParser::load_file(
         return false;
     }
     SimulationConfig parsed;
-    if (const char* max = root->Attribute("max_component_id")) {
-        if (!parse_component_id_value(
-                max, SimulationConfigLimits::kMaximumComponentId, parsed.max_component_id)) {
-            set_error(error, root, "max_component_id", "invalid component ID limit");
-            return false;
-        }
-    }
     const XMLElement* mujoco = root->FirstChildElement("mujoco");
     const XMLElement* mjcf = mujoco == nullptr ? nullptr : mujoco->FirstChildElement("mjcf");
     if (mujoco == nullptr || mjcf == nullptr || !allowed(*mujoco, {"mjcf"})) {
@@ -676,7 +665,7 @@ bool SimulationConfigParser::load_file(
     }
     std::vector<const XMLElement*> component_elements;
     if (!parse_components(
-            root->FirstChildElement("robot"), parsed.max_component_id, parsed.components,
+            root->FirstChildElement("robot"), kMaximumComponentId, parsed.components,
             component_elements, error)) {
         if (error != nullptr && error->message.empty())
             set_error(

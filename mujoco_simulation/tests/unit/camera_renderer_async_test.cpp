@@ -59,7 +59,6 @@ int main() {
         mujoco_simulation::CameraRendererConfig renderer_config;
         renderer_config.allow_glfw_backend = false;
         renderer_config.allow_egl_backend = true;
-        renderer_config.max_camera_id = 4;
         mujoco_simulation::CameraRenderer renderer(renderer_config);
         if (!check(
                 renderer.wait_result({0, 1}) ==
@@ -387,8 +386,8 @@ int main() {
         }
 
         mujoco_simulation::CameraRenderTask out_of_range = task;
-        out_of_range.config.id = 5;
-        out_of_range.camera_id = 5;
+        out_of_range.config.id = 65536;
+        out_of_range.camera_id = 65536;
         mujoco_simulation::CameraRenderTask duplicate = task;
         duplicate.sequence = 4;
         if (!check(
@@ -478,7 +477,6 @@ int main() {
         mujoco_simulation::CameraRendererConfig service_renderer_config;
         service_renderer_config.allow_glfw_backend = false;
         service_renderer_config.allow_egl_backend = true;
-        service_renderer_config.max_camera_id = 4;
         mujoco_simulation::CameraRenderServiceImpl service(service_renderer_config);
         mujoco_simulation::SimulationConfig service_config;
         if (!check(

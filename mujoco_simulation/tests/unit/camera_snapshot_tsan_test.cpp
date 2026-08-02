@@ -51,7 +51,6 @@ int main() {
     mujoco_simulation::CameraRendererConfig renderer_config;
     renderer_config.allow_glfw_backend = false;
     renderer_config.allow_egl_backend = true;
-    renderer_config.max_camera_id = 4;
     mujoco_simulation::CameraRenderer renderer(renderer_config);
     if (!check(renderer.initialize(context), "failed to initialize renderer")) {
         context.clear();

@@ -25,6 +25,7 @@ constexpr int kEglColorBits = 8;
 constexpr int kEglDepthBits = 24;
 constexpr int kFontScale = mjFONTSCALE_150;
 constexpr double kPi = 3.14159265358979323846;
+constexpr CameraId kMaximumCameraId{65535};
 
 template <typename Callback>
 class ScopeExit {
@@ -229,7 +230,7 @@ std::optional<CameraRenderTicket> CameraRenderer::submit(
         // camera_id is the batch protocol contract; CameraConfig remains the
         // legacy rendering payload and carries no id authority.
         const CameraId id = task.camera_id;
-        if (id > config_.max_camera_id || !ids.insert(id).second) {
+        if (id > kMaximumCameraId || !ids.insert(id).second) {
             LOG_ERROR << "camera render task id is invalid, outside range, or duplicated.";
             return std::nullopt;
         }

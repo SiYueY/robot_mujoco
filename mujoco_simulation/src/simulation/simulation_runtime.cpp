@@ -42,7 +42,6 @@ bool Simulation::Impl::initialize_camera_renderer() {
     }
     try {
         CameraRendererConfig renderer_config = config_.camera_renderer;
-        renderer_config.max_camera_id = config_.max_component_id;
         camera_render_service_ =
             std::make_unique<CameraRenderServiceImpl>(std::move(renderer_config));
     } catch (const std::exception&) {
@@ -89,8 +88,7 @@ bool Simulation::Impl::initialize_components() {
             return false;
         }
         if (!component_manager_.init(
-                runtime_->context(), config_.components, config_.max_component_id,
-                *camera_render_service_)) {
+                runtime_->context(), config_.components, *camera_render_service_)) {
             LOG_ERROR << "failed to initialize simulation components.";
             return false;
         }

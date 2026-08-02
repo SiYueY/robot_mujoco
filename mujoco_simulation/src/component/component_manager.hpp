@@ -26,7 +26,7 @@ class ComponentManager {
 public:
     bool init(
         const mjContext& context, const ComponentConfigList& components,
-        ComponentId max_component_id, CameraRenderService& camera_render_service);
+        CameraRenderService& camera_render_service);
     void clear();
 
     bool reset(const mjContext& context);

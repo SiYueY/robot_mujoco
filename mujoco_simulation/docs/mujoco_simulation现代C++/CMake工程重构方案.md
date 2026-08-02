@@ -387,7 +387,6 @@ mujoco_simulation/
 │   │   ├── simulation_config_parser.cpp
 │   │   ├── simulation_config_validator.hpp
 │   │   ├── simulation_config_validator.cpp
-│   │   └── simulation_config_detail.hpp
 │   │
 │   ├── runtime/
 │   │   ├── context.hpp

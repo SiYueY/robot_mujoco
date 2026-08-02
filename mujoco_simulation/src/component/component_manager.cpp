@@ -8,6 +8,8 @@
 namespace mujoco_simulation {
 namespace {
 
+constexpr ComponentId kMaximumComponentId{65535};
+
 template <typename Component>
 bool reset_components(
     const mjContext& context, std::vector<std::unique_ptr<Component>>& components) {
@@ -61,7 +63,7 @@ bool update_components(
 }  // namespace
 
 bool ComponentManager::init(
-    const mjContext& context, const ComponentConfigList& components, ComponentId max_component_id,
+    const mjContext& context, const ComponentConfigList& components,
     CameraRenderService& camera_render_service) {
     if (!context.valid()) {
         LOG_ERROR << "component manager requires a valid MuJoCo context.";
@@ -73,7 +75,7 @@ bool ComponentManager::init(
 
     const auto add = [&](auto config, auto& slots, std::size_t& count, auto make_component) {
         const ComponentId id = config.id;
-        if (id == kInvalidComponentId || id > max_component_id ||
+        if (id == kInvalidComponentId || id > kMaximumComponentId ||
             (slots.size() > id && slots[id] != nullptr)) {
             LOG_ERROR << "component id is invalid or duplicated.";
             return false;

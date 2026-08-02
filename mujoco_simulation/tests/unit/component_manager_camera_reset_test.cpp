@@ -125,7 +125,7 @@ int main() {
     RetainingCameraRenderService service(true);
     mujoco_simulation::ComponentManager manager;
     if (!check(
-            manager.init(context, components, 4, service) && manager.update(context),
+            manager.init(context, components, service) && manager.update(context),
             "failed to submit initial camera batch")) {
         context.clear();
         return 1;

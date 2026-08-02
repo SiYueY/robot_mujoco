@@ -166,7 +166,7 @@ int main() {
         const char* name;
         const char* content;
     };
-    const std::array<InvalidConfig, 10> invalid_configs = {{
+    const std::array<InvalidConfig, 7> invalid_configs = {{
         {"trailing joint numeric text", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
@@ -187,17 +187,8 @@ int main() {
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
 <joint id="0" name="joint"><velocity><damping>-1</damping></velocity></joint>
 </robot></robot_mujoco>)"},
-        {"signed maximum component id", R"(
-<robot_mujoco max_component_id="+1"><mujoco><mjcf>model.xml</mjcf></mujoco>
-<simulation><physics period="0.001"/><viewer period="0.02"/></simulation></robot_mujoco>)"},
-        {"negative maximum component id", R"(
-<robot_mujoco max_component_id="-1"><mujoco><mjcf>model.xml</mjcf></mujoco>
-<simulation><physics period="0.001"/><viewer period="0.02"/></simulation></robot_mujoco>)"},
-        {"oversized maximum component id", R"(
-<robot_mujoco max_component_id="65536"><mujoco><mjcf>model.xml</mjcf></mujoco>
-<simulation><physics period="0.001"/><viewer period="0.02"/></simulation></robot_mujoco>)"},
         {"oversized component id", R"(
-<robot_mujoco max_component_id="65535"><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
 <joint id="65536" name="joint"/></robot></robot_mujoco>)"},
         {"invalid camera rgb bool", R"(

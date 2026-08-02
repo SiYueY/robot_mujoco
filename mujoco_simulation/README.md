@@ -155,7 +155,7 @@ Simulation
     - `JointInfo`、`ImuInfo`、`CameraConfig`、`LidarInfo` 与 `MobileBaseInfo` 的变体列表
     - 每个组件必须提供类型内唯一的显式 ID；ID 直接作为状态、命令和组件 vector 的下标
   - 状态与单组件命令读写允许稀疏 ID（空洞为保留槽位）；批量命令通道要求连续 ID
-  - 默认允许范围是 `0..256`；`max_component_id` 可配置
+  - 组件 ID 允许范围是 `0..65535`（编译期固定上限，不可配置）
   - Camera 的宽、高必须在 `1..8192`；单个 Camera 启用的 RGB8（3 B/像素）和 depth float（4 B/像素）输出合计不得超过 256 MiB
   - 所有组件以 `period`（秒）配置采样周期；`period="0"` 表示每个 physics step 更新。
     正周期必须是 `physics.period` 的整数倍，且不得短于该物理周期。
@@ -169,8 +169,7 @@ Simulation
 的内部解析路径：
 
 - 解析 `<mujoco><mjcf>` 及 `<robot>` 下的 `joint`、`imu`、`camera`、`lidar`、`mobile_base`。
-- 所有组件 XML 元素都必须包含 `id` 与 `name` 属性；根元素可设置
-  `max_component_id`。
+- 所有组件 XML 元素都必须包含 `id` 与 `name` 属性。
 - `<mjcf>` 相对路径相对 `robot_mujoco.xml` 所在目录解析
 - `initial_keyframe` 仍通过 C++ `SimulationConfig` 配置。
 - XML 必须提供：

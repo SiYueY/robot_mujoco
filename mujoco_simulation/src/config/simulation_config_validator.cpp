@@ -1,4 +1,4 @@
-#include "config/simulation_config_detail.hpp"
+#include "config/simulation_config_validator.hpp"
 
 namespace mujoco_simulation {
 
