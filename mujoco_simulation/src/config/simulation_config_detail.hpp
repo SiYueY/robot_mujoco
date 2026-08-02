@@ -4,7 +4,6 @@
 
 namespace mujoco_simulation {
 
-bool validate_simulation_config_impl(const SimulationConfig &config,
-                                     ConfigError *error);
+bool validate_simulation_config_impl(const SimulationConfig& config, ConfigError* error);
 
-} // namespace mujoco_simulation
+}  // namespace mujoco_simulation

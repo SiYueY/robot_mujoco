@@ -21,8 +21,8 @@
 write_command(JointId, JointCommand)
 write_command(MobileBaseId, MobileBaseCommand)
 write_command(RobotCommand)
-write_commands(JointCommandBatch)
-write_commands(MobileBaseCommandBatch)
+write_commands(JointCommands)
+write_commands(MobileBaseCommands)
 ```
 
 `RobotCommand` 的空 batch 与 batch 中空槽均保留已有命令；两个 batch 都为空时为

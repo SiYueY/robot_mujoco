@@ -12,7 +12,8 @@
 
 namespace mujoco_simulation {
 
-template <typename State> using StateSnapshot = std::shared_ptr<const State>;
+template <typename State>
+using StateSnapshot = std::shared_ptr<const State>;
 
 template <typename State>
 using StateSnapshots = std::shared_ptr<const std::vector<StateSnapshot<State>>>;
@@ -24,16 +25,16 @@ using LidarStates = StateSnapshots<LidarState>;
 using CameraStates = StateSnapshots<CameraState>;
 
 struct RobotState {
-  std::uint64_t sequence{0};
-  std::uint64_t timestamp{0};
-  double simulation_time{0.0};
-  std::uint64_t step{0};
+    std::uint64_t sequence{0};
+    std::uint64_t timestamp{0};
+    double simulation_time{0.0};
+    std::uint64_t step{0};
 
-  JointStates joints;
-  MobileBaseStates mobile_bases;
-  ImuStates imus;
-  LidarStates lidars;
-  CameraStates cameras;
+    JointStates joints;
+    MobileBaseStates mobile_bases;
+    ImuStates imus;
+    LidarStates lidars;
+    CameraStates cameras;
 };
 
-} // namespace mujoco_simulation
+}  // namespace mujoco_simulation

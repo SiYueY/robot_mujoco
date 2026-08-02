@@ -504,9 +504,9 @@ joint_config.hpp
 JointId
 JointControlMode
 JointCommand
-JointCommandBatch
+JointCommands
 JointState
-JointConfig
+JointInfo
 JointLimit
 ```
 
@@ -517,7 +517,7 @@ JointLimit
 ```text
 ImuId
 ImuState
-ImuConfig
+ImuInfo
 ```
 
 ## 7.5 `camera.hpp`
@@ -557,7 +557,7 @@ mjrContext
 
 ```text
 LidarId
-LidarConfig
+LidarInfo
 LaserScan
 LidarState
 ```
@@ -568,11 +568,11 @@ LidarState
 
 ```text
 MobileBaseId
-WheelConfig
+WheelInfo
 MobileBaseCommand
-MobileBaseCommandBatch
+MobileBaseCommands
 MobileBaseState
-MobileBaseConfig
+MobileBaseInfo
 ```
 
 ---
@@ -775,10 +775,10 @@ bool write_command(
     const RobotCommand& command);
 
 bool write_commands(
-    const JointCommandBatch& commands);
+    const JointCommands& commands);
 
 bool write_commands(
-    const MobileBaseCommandBatch& commands);
+    const MobileBaseCommands& commands);
 ```
 
 状态读取：
@@ -893,10 +893,10 @@ public:
   bool write_command(const RobotCommand& command);
 
   bool write_commands(
-      const JointCommandBatch& commands);
+      const JointCommands& commands);
 
   bool write_commands(
-      const MobileBaseCommandBatch& commands);
+      const MobileBaseCommands& commands);
 
   bool read_state(RobotState& state) const;
 

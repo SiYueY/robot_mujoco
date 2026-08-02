@@ -117,7 +117,7 @@ MJCF 已经负责：
 -   位置约束；
 -   无限旋转配置。
 
-MuJoCo 负责模型级的关节范围和约束；控制层仍在 `JointConfig` 中维护
+MuJoCo 负责模型级的关节范围和约束；控制层仍在 `JointInfo` 中维护
 `JointLimit`，分别对 position、velocity 和 effort 命令执行安全钳制。两者共同生效：
 控制层先限制命令，MuJoCo 再执行模型约束。
 

@@ -3,12 +3,12 @@
 namespace mujoco_simulation {
 
 enum class SimulationStatus {
-  Uninitialized,
-  Stopped,
-  Running,
-  Paused,
-  Stopping,
-  Error,
+    Uninitialized,
+    Stopped,
+    Running,
+    Paused,
+    Stopping,
+    Error,
 };
 
-} // namespace mujoco_simulation
+}  // namespace mujoco_simulation

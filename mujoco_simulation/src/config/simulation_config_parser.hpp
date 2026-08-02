@@ -8,8 +8,8 @@ namespace mujoco_simulation {
 
 class SimulationConfigParser {
 public:
-  bool load_file(const std::string &path, SimulationConfig &config,
-                 ConfigError *error = nullptr) const;
+    bool load_file(
+        const std::string& path, SimulationConfig& config, ConfigError* error = nullptr) const;
 };
 
-} // namespace mujoco_simulation
+}  // namespace mujoco_simulation

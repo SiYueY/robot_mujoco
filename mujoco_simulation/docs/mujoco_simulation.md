@@ -82,8 +82,8 @@ Simulation
   - `write_command(JointId, const JointCommand&)`
   - `write_command(MobileBaseId, const MobileBaseCommand&)`
   - `write_command(const RobotCommand&)`：跨类型原子提交
-  - `write_commands(const JointCommandBatch&)`
-  - `write_commands(const MobileBaseCommandBatch&)`
+  - `write_commands(const JointCommands&)`
+  - `write_commands(const MobileBaseCommands&)`
 - 状态读取
   - `read_state(std::shared_ptr<const RobotState>&)`
   - `read_state(RobotState&)`

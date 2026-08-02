@@ -5,12 +5,14 @@
 
 namespace mujoco_simulation {
 
-// A sparse, cross-component command update.  Simulation::write_command()
-// validates both batches and publishes them as one command-buffer snapshot.
-// Empty batches, and empty slots within a batch, preserve prior commands.
+// A cross-component command update.  Simulation::write_command() validates both
+// batches and publishes them as one command-buffer snapshot.  A batch is a
+// dense command vector indexed by component id: every slot is an explicit
+// command, and the batch must cover the configured command channel size.  An
+// empty batch is a no-op and preserves prior commands.
 struct RobotCommand {
-  JointCommandBatch joints;
-  MobileBaseCommandBatch mobile_bases;
+    JointCommands joints;
+    MobileBaseCommands mobile_bases;
 };
 
-} // namespace mujoco_simulation
+}  // namespace mujoco_simulation

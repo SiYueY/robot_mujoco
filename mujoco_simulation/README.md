@@ -103,8 +103,12 @@ Simulation
   - `bool write_command(JointId, const JointCommand&)`
   - `bool write_command(MobileBaseId, const MobileBaseCommand&)`
   - `bool write_command(const RobotCommand&)`：Joint 与 MobileBase 命令的跨类型原子提交
-  - `bool write_commands(const JointCommandBatch&)`
-  - `bool write_commands(const MobileBaseCommandBatch&)`
+  - `bool write_commands(const JointCommands&)`
+  - `bool write_commands(const MobileBaseCommands&)`
+    - `JointCommands` / `MobileBaseCommands` 是稠密命令向量
+      （`std::vector<JointCommand>` / `std::vector<MobileBaseCommand>`），按组件
+      ID 下标索引，每次写入替换整条命令通道；空批次是 no-op。命令通道要求组件
+      ID 连续（`0..N-1`），稀疏 ID 配置只能通过单组件 `write_command` 下发
   - `bool read_state(std::shared_ptr<const RobotState>&)`
   - `bool read_state(RobotState&)`
   - 按 `JointId`、`ImuId`、`CameraId`、`LidarId`、`MobileBaseId` 的单组件读取重载
@@ -147,10 +151,11 @@ Simulation
 - `scheduler`
   - `physics_period` 同时定义 MuJoCo timestep 与墙钟物理调度周期
   - `viewer_period` 定义 Viewer latest-only 同步请求周期
-- `components`
-  - `JointInfo`、`ImuInfo`、`CameraConfig`、`LidarInfo` 与 `MobileBaseInfo` 的变体列表
-  - 每个组件必须提供类型内唯一的显式 ID；ID 直接作为状态、命令和组件 vector 的下标
-  - 空洞为保留槽位，默认允许范围是 `0..256`；`max_component_id` 可配置
+  - `components`
+    - `JointInfo`、`ImuInfo`、`CameraConfig`、`LidarInfo` 与 `MobileBaseInfo` 的变体列表
+    - 每个组件必须提供类型内唯一的显式 ID；ID 直接作为状态、命令和组件 vector 的下标
+  - 状态与单组件命令读写允许稀疏 ID（空洞为保留槽位）；批量命令通道要求连续 ID
+  - 默认允许范围是 `0..256`；`max_component_id` 可配置
   - Camera 的宽、高必须在 `1..8192`；单个 Camera 启用的 RGB8（3 B/像素）和 depth float（4 B/像素）输出合计不得超过 256 MiB
   - 所有组件以 `period`（秒）配置采样周期；`period="0"` 表示每个 physics step 更新。
     正周期必须是 `physics.period` 的整数倍，且不得短于该物理周期。
