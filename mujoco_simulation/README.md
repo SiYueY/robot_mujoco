@@ -102,6 +102,7 @@ Simulation
     - 初始化时传入的组件配置入口
   - `bool write_command(JointId, const JointCommand&)`
   - `bool write_command(MobileBaseId, const MobileBaseCommand&)`
+  - `bool write_command(const RobotCommand&)`：Joint 与 MobileBase 命令的跨类型原子提交
   - `bool write_commands(const JointCommandBatch&)`
   - `bool write_commands(const MobileBaseCommandBatch&)`
   - `bool read_state(std::shared_ptr<const RobotState>&)`
@@ -282,10 +283,10 @@ mujoco_simulation/
 │   ├── simulation_status.hpp         # 生命周期状态
 │   ├── export.hpp                    # 构建生成的导出宏
 │   ├── version.hpp                   # 构建生成的版本信息
-│   ├── common/                       # 数学和通用辅助类型
+│   ├── common/                       # 数学值类型
 │   ├── component/                    # 设备配置、命令与状态值类型
 │   ├── config/                       # SimulationConfig 值类型
-│   └── data/                         # RobotState 值类型
+│   └── data/                         # RobotState 与 RobotCommand 值类型
 ├── src/
 │   ├── buffer/                       # 缓冲实现
 │   ├── common/                       # 内部日志与辅助宏

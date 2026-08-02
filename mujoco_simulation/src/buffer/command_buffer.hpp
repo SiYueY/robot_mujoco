@@ -12,6 +12,7 @@
 #include "data/command_snapshot.hpp"
 #include "mujoco_simulation/component/joint.hpp"
 #include "mujoco_simulation/component/mobile_base.hpp"
+#include "mujoco_simulation/data/robot_command.hpp"
 
 namespace mujoco_simulation {
 
@@ -96,6 +97,7 @@ public:
     publish(*channel);
     return true;
   }
+  bool write(const RobotCommand &command);
   CommandSnapshot read() const;
   bool read_if_updated(std::uint64_t last_sequence, CommandSnapshot &out) const;
   void clear();

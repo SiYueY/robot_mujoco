@@ -1,5 +1,7 @@
 #include "buffer/state_buffer.hpp"
 
+#include "component/component.hpp"
+
 namespace mujoco_simulation {
 
 namespace {

@@ -233,8 +233,8 @@ CameraRenderer::submit(const CameraRenderBatchRequest &request,
     // CameraConfig remains the renderer's legacy configuration payload. Use
     // its id when present; new task-only callers can provide camera_id.
     const CameraId id =
-        task.config.id == kInvalidComponentId ? task.camera_id : task.config.id;
-    if (id == kInvalidComponentId || id > config_.max_camera_id ||
+        task.config.id == kInvalidCameraId ? task.camera_id : task.config.id;
+    if (id == kInvalidCameraId || id > config_.max_camera_id ||
         !ids.insert(id).second) {
       LOG_ERROR
           << "camera render task id is invalid, outside range, or duplicated.";

@@ -79,7 +79,9 @@ int main() {
              "simulation initialization failed") ||
       !check(simulation.status() ==
                  mujoco_simulation::SimulationStatus::Stopped,
-             "initialized simulation was not stopped")) {
+             "initialized simulation was not stopped") ||
+      !check(simulation.write_command(mujoco_simulation::RobotCommand{}),
+             "public empty robot command was rejected")) {
     return 1;
   }
 

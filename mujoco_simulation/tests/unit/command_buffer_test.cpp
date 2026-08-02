@@ -36,6 +36,17 @@ bool has_effort_command(const mujoco_simulation::CommandSnapshot &snapshot,
          (*commands)[id]->effort == effort;
 }
 
+bool has_twist_command(const mujoco_simulation::CommandSnapshot &snapshot,
+                       std::size_t id, double forward) {
+  const auto *commands =
+      snapshot.channel<mujoco_simulation::MobileBaseCommand>();
+  return commands != nullptr && id < commands->size() &&
+         (*commands)[id].has_value() &&
+         (*commands)[id]->mode ==
+             mujoco_simulation::MobileBaseControlMode::Twist &&
+         (*commands)[id]->base_linear[0] == forward;
+}
+
 } // namespace
 
 int main() {
@@ -146,6 +157,46 @@ int main() {
     return 1;
   }
 
+  mujoco_simulation::RobotCommand atomic_command;
+  atomic_command.joints.resize(1);
+  atomic_command.joints[0] = effort;
+  atomic_command.joints[0]->effort = 7.0;
+  atomic_command.mobile_bases.resize(2);
+  atomic_command.mobile_bases[1] = twist;
+  atomic_command.mobile_bases[1]->base_linear[0] = 3.0;
+  const std::uint64_t sequence_before_atomic = buffer.read().sequence;
+  if (!check(buffer.write(atomic_command),
+             "atomic robot command was rejected") ||
+      !check(buffer.read().sequence == sequence_before_atomic + 1U,
+             "atomic robot command did not publish exactly one sequence") ||
+      !check(has_effort_command(buffer.read(), 0, 7.0) &&
+                 has_twist_command(buffer.read(), 1, 3.0),
+             "atomic robot command did not publish both component types")) {
+    return 1;
+  }
+
+  mujoco_simulation::RobotCommand invalid_atomic = atomic_command;
+  invalid_atomic.joints.resize(2);
+  invalid_atomic.joints[1] = effort;
+  invalid_atomic.mobile_bases[1]->base_linear[0] = 9.0;
+  const std::uint64_t sequence_before_rejection = buffer.read().sequence;
+  if (!check(!buffer.write(invalid_atomic),
+             "invalid atomic robot command was accepted") ||
+      !check(buffer.read().sequence == sequence_before_rejection &&
+                 has_effort_command(buffer.read(), 0, 7.0) &&
+                 has_twist_command(buffer.read(), 1, 3.0),
+             "invalid atomic robot command partially updated a channel")) {
+    return 1;
+  }
+
+  const std::uint64_t sequence_before_empty = buffer.read().sequence;
+  if (!check(buffer.write(mujoco_simulation::RobotCommand{}),
+             "empty robot command was rejected") ||
+      !check(buffer.read().sequence == sequence_before_empty,
+             "empty robot command changed the command sequence")) {
+    return 1;
+  }
+
   const std::uint64_t sequence_before_clear = buffer.read().sequence;
   buffer.clear();
   CommandSnapshot cleared;
@@ -170,7 +221,7 @@ int main() {
 
   if (!check(buffer.configure_channel<JointCommand>({true}) &&
                  buffer.configure_channel<mujoco_simulation::MobileBaseCommand>(
-                     {}) &&
+                     {true}) &&
                  buffer.finalize_configuration(),
              "failed to reinitialize command bus for concurrency test")) {
     return 1;
@@ -181,7 +232,14 @@ int main() {
     for (std::size_t iteration = 0; iteration < 1000U; ++iteration) {
       JointCommand command = effort;
       command.effort = static_cast<double>(iteration);
-      if (!buffer.write(0, command)) {
+      mujoco_simulation::MobileBaseCommand mobile_command = twist;
+      mobile_command.base_linear[0] = static_cast<double>(iteration);
+      mujoco_simulation::RobotCommand robot_command;
+      robot_command.joints.resize(1);
+      robot_command.joints[0] = command;
+      robot_command.mobile_bases.resize(1);
+      robot_command.mobile_bases[0] = mobile_command;
+      if (!buffer.write(robot_command)) {
         reader_failed.store(true);
         break;
       }
@@ -195,8 +253,15 @@ int main() {
       if (buffer.read_if_updated(sequence, snapshot)) {
         sequence = snapshot.sequence;
         const auto *commands = snapshot.channel<JointCommand>();
-        if (commands == nullptr || !commands->at(0).has_value() ||
-            !has_effort_command(snapshot, 0, commands->at(0)->effort))
+        const auto *mobile_commands =
+            snapshot.channel<mujoco_simulation::MobileBaseCommand>();
+        if (commands == nullptr || mobile_commands == nullptr ||
+            !commands->at(0).has_value() ||
+            !mobile_commands->at(0).has_value() ||
+            !has_effort_command(snapshot, 0, commands->at(0)->effort) ||
+            !has_twist_command(snapshot, 0,
+                               mobile_commands->at(0)->base_linear[0]) ||
+            commands->at(0)->effort != mobile_commands->at(0)->base_linear[0])
           reader_failed.store(true);
       }
     }

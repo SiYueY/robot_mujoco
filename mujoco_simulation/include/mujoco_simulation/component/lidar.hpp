@@ -1,14 +1,18 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
-#include "mujoco_simulation/component/component_id.hpp"
-
 namespace mujoco_simulation {
+
+using LidarId = std::size_t;
+inline constexpr LidarId kInvalidLidarId = std::numeric_limits<LidarId>::max();
+
 struct LidarConfig {
-  LidarId id{kInvalidComponentId};
+  LidarId id{kInvalidLidarId};
   std::string name;
   std::string frame_id;
   double period{1.0 / 10.0};

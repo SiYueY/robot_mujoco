@@ -11,6 +11,7 @@
 
 #include "component/camera/camera_component.hpp"
 #include "component/camera/camera_render_service.hpp"
+#include "component/component.hpp"
 #include "component/imu/imu_component.hpp"
 #include "component/joint/joint_component.hpp"
 #include "component/lidar/lidar_component.hpp"

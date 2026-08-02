@@ -81,6 +81,7 @@ Simulation
 - 组件与命令
   - `write_command(JointId, const JointCommand&)`
   - `write_command(MobileBaseId, const MobileBaseCommand&)`
+  - `write_command(const RobotCommand&)`：跨类型原子提交
   - `write_commands(const JointCommandBatch&)`
   - `write_commands(const MobileBaseCommandBatch&)`
 - 状态读取
@@ -117,7 +118,7 @@ Simulation
 缓冲层职责：
 
 - `CommandBuffer`
-  - 缓存外部线程提交的最新控制命令
+  - 缓存外部线程提交的最新控制命令；`RobotCommand` 在一个快照中发布其所有类型更新
 - `StateBuffer`
   - 每个成功的 physics step 发布最新 `RobotState`，其中包含各类设备的不可变共享状态快照
 

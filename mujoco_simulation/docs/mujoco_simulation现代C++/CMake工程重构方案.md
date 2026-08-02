@@ -322,16 +322,14 @@ mujoco_simulation/
 │       ├── version.hpp
 │       │
 │       ├── common/
-│       │   ├── enum.hpp
 │       │   └── math.hpp
 │       ├── config/
-│       │   ├── config_limits.hpp
 │       │   └── simulation_config.hpp
 │       ├── data/
+│       │   ├── robot_command.hpp
 │       │   └── robot_state.hpp
 │       └── component/
-│           ├── component_id.hpp
-│           ├── joint.hpp
+│           ├── joint.hpp       # JointId
 │           ├── imu.hpp
 │           ├── camera.hpp
 │           ├── lidar.hpp
@@ -460,12 +458,15 @@ version.hpp
 安装包还包含 `Simulation` 的公开值类型依赖：
 
 ```text
-common/enum.hpp
 common/math.hpp
-config/config_limits.hpp
 config/simulation_config.hpp
+data/robot_command.hpp
 data/robot_state.hpp
-component/component_id.hpp
+component/joint.hpp
+component/imu.hpp
+component/camera.hpp
+component/lidar.hpp
+component/mobile_base.hpp
 ```
 
 它们只承载公开值类型，不得包含 Runtime、Renderer、Viewer、Parser 或
@@ -482,6 +483,10 @@ component/camera.hpp
 component/lidar.hpp
 component/mobile_base.hpp
 ```
+
+每个组件头定义自己的 `XXXId` 及对应无效值。通用 `ComponentId` 仅用于
+内部组件管理和缓冲区，直接定义在 `src/component/component.hpp`，不安装也不
+出现在公共配置中。
 
 不再拆分：
 
@@ -747,7 +752,7 @@ StateBuffer
 ```cpp
 template <typename Command>
 bool write_command(
-    ComponentId id,
+    /* component-specific ID */ std::size_t id,
     const Command& command);
 ```
 
@@ -765,6 +770,9 @@ bool write_command(
 bool write_command(
     MobileBaseId id,
     const MobileBaseCommand& command);
+
+bool write_command(
+    const RobotCommand& command);
 
 bool write_commands(
     const JointCommandBatch& commands);
@@ -819,6 +827,15 @@ bool Simulation::write_command(
 }
 ```
 
+跨类型原子提交使用同一个不可变命令快照：
+
+```cpp
+bool Simulation::write_command(const RobotCommand& command);
+```
+
+实现先校验全部 batch，再一次性发布 Joint 与 MobileBase 的更新；任一 batch
+无效时不发布任何类型更新。
+
 不采用：
 
 ```text
@@ -872,6 +889,8 @@ public:
   bool write_command(
       MobileBaseId id,
       const MobileBaseCommand& command);
+
+  bool write_command(const RobotCommand& command);
 
   bool write_commands(
       const JointCommandBatch& commands);

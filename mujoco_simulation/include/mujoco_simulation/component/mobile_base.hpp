@@ -3,16 +3,18 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-#include "mujoco_simulation/common/enum.hpp"
 #include "mujoco_simulation/common/math.hpp"
-#include "mujoco_simulation/component/component_id.hpp"
-
 namespace mujoco_simulation {
+
+using MobileBaseId = std::size_t;
+inline constexpr MobileBaseId kInvalidMobileBaseId =
+    std::numeric_limits<MobileBaseId>::max();
 
 enum class MecanumWheelIndex : std::size_t {
   FrontLeft = 0,
@@ -54,10 +56,14 @@ public:
   }
   void forward(const Vector4d &wheel_angular, Vector3d &linear,
                Vector3d &angular) const noexcept {
-    const double fl = wheel_angular[to_integer(MecanumWheelIndex::FrontLeft)];
-    const double fr = wheel_angular[to_integer(MecanumWheelIndex::FrontRight)];
-    const double rl = wheel_angular[to_integer(MecanumWheelIndex::RearLeft)];
-    const double rr = wheel_angular[to_integer(MecanumWheelIndex::RearRight)];
+    const double fl =
+        wheel_angular[static_cast<std::size_t>(MecanumWheelIndex::FrontLeft)];
+    const double fr =
+        wheel_angular[static_cast<std::size_t>(MecanumWheelIndex::FrontRight)];
+    const double rl =
+        wheel_angular[static_cast<std::size_t>(MecanumWheelIndex::RearLeft)];
+    const double rr =
+        wheel_angular[static_cast<std::size_t>(MecanumWheelIndex::RearRight)];
     linear = {wheel_radius_ * (fl + fr + rl + rr) * 0.25,
               wheel_radius_ * (-fl + fr + rl - rr) * 0.25, 0.0};
     angular = {0.0, 0.0,
@@ -82,7 +88,7 @@ using WheelInfo = WheelConfig;
 using MecanumWheelInfo = std::array<WheelConfig, MecanumWheelCount>;
 
 struct MobileBaseConfig {
-  MobileBaseId id{kInvalidComponentId};
+  MobileBaseId id{kInvalidMobileBaseId};
   std::string mobile_base_name;
   MobileBaseType type{MobileBaseType::Mecanum};
   std::string base_frame_id{"base_link"};

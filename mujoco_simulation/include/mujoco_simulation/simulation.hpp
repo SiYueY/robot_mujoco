@@ -11,6 +11,7 @@
 #include "mujoco_simulation/component/lidar.hpp"
 #include "mujoco_simulation/component/mobile_base.hpp"
 #include "mujoco_simulation/config/simulation_config.hpp"
+#include "mujoco_simulation/data/robot_command.hpp"
 #include "mujoco_simulation/data/robot_state.hpp"
 #include "mujoco_simulation/export.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
@@ -42,6 +43,7 @@ public:
                                               const JointCommand &command);
   MUJOCO_SIMULATION_PUBLIC bool write_command(MobileBaseId id,
                                               const MobileBaseCommand &command);
+  MUJOCO_SIMULATION_PUBLIC bool write_command(const RobotCommand &command);
   MUJOCO_SIMULATION_PUBLIC bool
   write_commands(const JointCommandBatch &commands);
   MUJOCO_SIMULATION_PUBLIC bool

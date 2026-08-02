@@ -16,7 +16,6 @@
 #include <vector>
 
 #include "component/camera/camera_render_service.hpp"
-#include "mujoco_simulation/config/config_limits.hpp"
 #include "mujoco_simulation/config/simulation_config.hpp"
 #include "render/offscreen_gl_context.hpp"
 

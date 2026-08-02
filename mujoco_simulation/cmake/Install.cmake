@@ -21,17 +21,13 @@ install(FILES
   include/mujoco_simulation/component/lidar.hpp
   include/mujoco_simulation/component/mobile_base.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/component)
-install(FILES
-  include/mujoco_simulation/config/simulation_config.hpp
-  include/mujoco_simulation/config/config_limits.hpp
+install(FILES include/mujoco_simulation/config/simulation_config.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/config)
-install(FILES include/mujoco_simulation/data/robot_state.hpp
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/data)
-install(FILES include/mujoco_simulation/component/component_id.hpp
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/component)
 install(FILES
-  include/mujoco_simulation/common/math.hpp
-  include/mujoco_simulation/common/enum.hpp
+  include/mujoco_simulation/data/robot_command.hpp
+  include/mujoco_simulation/data/robot_state.hpp
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/data)
+install(FILES include/mujoco_simulation/common/math.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/common)
 install(FILES
   "${MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR}/mujoco_simulation/version.hpp"

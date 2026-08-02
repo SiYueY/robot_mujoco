@@ -10,6 +10,8 @@
 
 - 单组件写入覆盖该组件的最近命令。
 - 批量写入仅覆盖对应强类型命令批次中有值的槽位。
+- `RobotCommand` 先整体校验，再作为一个 snapshot 发布其 Joint 与 MobileBase 更新；
+  scheduler 只会观察到旧快照或完整新快照。
 - `clear()` 清空命令集合。
 - scheduler 在一个物理周期内只应用每个组件的最终有效命令。
 
@@ -18,11 +20,14 @@
 ```cpp
 write_command(JointId, JointCommand)
 write_command(MobileBaseId, MobileBaseCommand)
+write_command(RobotCommand)
 write_commands(JointCommandBatch)
 write_commands(MobileBaseCommandBatch)
 ```
 
-批量入口是优化机会，不是对调用方的强制要求。
+`RobotCommand` 的空 batch 与 batch 中空槽均保留已有命令；两个 batch 都为空时为
+成功但不发布的无操作。单类型 batch 入口是优化机会，不是对调用方的强制要求，且
+不提供跨类型原子提交保证。
 
 ## 2. 并发模型
 

@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "component/component.hpp"
 #include "data/command_snapshot.hpp"
-#include "mujoco_simulation/component/component_id.hpp"
 
 namespace mujoco_simulation {
 
@@ -58,6 +58,13 @@ public:
   }
 
   bool apply(const Slots &updates) {
+    if (!validate(updates))
+      return false;
+    snapshot_ = updated_snapshot(updates);
+    return true;
+  }
+
+  bool validate(const Slots &updates) const {
     if (updates.size() > valid_ids_.size())
       return false;
     for (std::size_t id = 0; id < updates.size(); ++id) {
@@ -65,12 +72,19 @@ public:
           (!valid_ids_[id] || !CommandTraits<Command>::validate(*updates[id])))
         return false;
     }
+    return true;
+  }
+
+  std::shared_ptr<const Snapshot> updated_snapshot(const Slots &updates) const {
     auto updated = std::make_shared<Snapshot>(*snapshot_);
     for (std::size_t id = 0; id < updates.size(); ++id)
       if (updates[id].has_value())
         updated->slots[id] = updates[id];
-    snapshot_ = std::move(updated);
-    return true;
+    return updated;
+  }
+
+  void replace_snapshot(std::shared_ptr<const Snapshot> snapshot) noexcept {
+    snapshot_ = std::move(snapshot);
   }
 
   std::shared_ptr<const Snapshot> snapshot() const noexcept {

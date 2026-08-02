@@ -16,7 +16,7 @@ namespace {
 
 template <typename Info>
 CommandChannelLayout command_valid_ids(const ComponentConfigList &components) {
-  ComponentId largest_id = 0;
+  std::size_t largest_id = 0;
   bool found = false;
   for (const ComponentConfig &component : components) {
     const Info *info = std::get_if<Info>(&component);

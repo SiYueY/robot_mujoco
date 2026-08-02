@@ -22,6 +22,14 @@ bool Simulation::Impl::write_command(MobileBaseId id,
   return true;
 }
 
+bool Simulation::Impl::write_command(const RobotCommand &command) {
+  if (!command_buffer_.write(command)) {
+    LOG_ERROR << "atomic robot command was rejected.";
+    return false;
+  }
+  return true;
+}
+
 bool Simulation::Impl::write_commands(const JointCommandBatch &commands) {
   if (!command_buffer_.write(CommandBatch<JointCommand>{commands})) {
     LOG_ERROR << "joint command batch was rejected.";

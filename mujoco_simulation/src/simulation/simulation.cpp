@@ -35,6 +35,9 @@ bool Simulation::write_command(MobileBaseId id,
                                const MobileBaseCommand &command) {
   return impl_->write_command(id, command);
 }
+bool Simulation::write_command(const RobotCommand &command) {
+  return impl_->write_command(command);
+}
 bool Simulation::write_commands(const JointCommandBatch &commands) {
   return impl_->write_commands(commands);
 }

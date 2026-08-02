@@ -47,7 +47,7 @@ struct CameraRenderState {
 enum class CameraPixelFormat { Rgb8 };
 
 struct CameraRenderTask {
-  CameraId camera_id{kInvalidComponentId};
+  CameraId camera_id{kInvalidCameraId};
   int mujoco_camera_id{-1};
   std::uint32_t width{0};
   std::uint32_t height{0};
@@ -103,7 +103,7 @@ enum class CameraBatchStatus {
 };
 
 struct CameraRenderTaskResult {
-  CameraId camera_id{kInvalidComponentId};
+  CameraId camera_id{kInvalidCameraId};
   CameraTaskStatus status{CameraTaskStatus::Pending};
   CameraFrame frame;
   std::uint64_t generation{0};

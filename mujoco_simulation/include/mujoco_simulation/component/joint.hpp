@@ -1,13 +1,15 @@
 #pragma once
 
+#include <cstddef>
 #include <limits>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "mujoco_simulation/component/component_id.hpp"
-
 namespace mujoco_simulation {
+
+using JointId = std::size_t;
+inline constexpr JointId kInvalidJointId = std::numeric_limits<JointId>::max();
 
 enum class JointType { Revolute, Prismatic };
 enum class JointControlMode { Position, Velocity, Effort, Hybrid };
@@ -22,7 +24,7 @@ struct JointLimit {
 using Limit = JointLimit;
 
 struct JointConfig {
-  JointId id{kInvalidComponentId};
+  JointId id{kInvalidJointId};
   std::string joint_name;
   std::string actuator_name;
   JointType joint_type{JointType::Revolute};

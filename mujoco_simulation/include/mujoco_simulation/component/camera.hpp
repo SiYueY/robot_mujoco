@@ -1,16 +1,20 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include "mujoco_simulation/common/math.hpp"
-#include "mujoco_simulation/component/component_id.hpp"
-
 namespace mujoco_simulation {
 
+using CameraId = std::size_t;
+inline constexpr CameraId kInvalidCameraId =
+    std::numeric_limits<CameraId>::max();
+
 struct CameraConfig {
-  CameraId id{kInvalidComponentId};
+  CameraId id{kInvalidCameraId};
   std::string name;
   std::string frame_id;
   double period{1.0 / 30.0};

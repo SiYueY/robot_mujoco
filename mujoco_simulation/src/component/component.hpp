@@ -1,11 +1,20 @@
 #pragma once
 // Internal component base contract.
 
+#include <cstddef>
+#include <limits>
 #include <string>
 
 #include "runtime/context.hpp"
 
 namespace mujoco_simulation {
+
+// ComponentId coordinates internal component-manager and buffer storage.  The
+// public API deliberately exposes only per-component IDs from their own
+// value-type headers.
+using ComponentId = std::size_t;
+inline constexpr ComponentId kInvalidComponentId =
+    std::numeric_limits<ComponentId>::max();
 
 class SimulationComponent {
 public:

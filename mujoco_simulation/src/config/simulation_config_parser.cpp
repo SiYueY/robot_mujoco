@@ -1,6 +1,8 @@
 #include "config/simulation_config_parser.hpp"
 #include "config/simulation_config_detail.hpp"
 
+#include "component/component.hpp"
+
 #include <cmath>
 #include <exception>
 #include <filesystem>

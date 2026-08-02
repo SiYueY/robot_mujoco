@@ -33,6 +33,7 @@ public:
 
   bool write_command(JointId id, const JointCommand &command);
   bool write_command(MobileBaseId id, const MobileBaseCommand &command);
+  bool write_command(const RobotCommand &command);
   bool write_commands(const JointCommandBatch &commands);
   bool write_commands(const MobileBaseCommandBatch &commands);
   bool read_state(std::shared_ptr<const RobotState> &out) const;

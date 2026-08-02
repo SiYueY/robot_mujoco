@@ -1,14 +1,18 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include "mujoco_simulation/common/math.hpp"
-#include "mujoco_simulation/component/component_id.hpp"
-
 namespace mujoco_simulation {
+
+using ImuId = std::size_t;
+inline constexpr ImuId kInvalidImuId = std::numeric_limits<ImuId>::max();
+
 struct ImuConfig {
-  ImuId id{kInvalidComponentId};
+  ImuId id{kInvalidImuId};
   std::string name;
   std::string frame_id;
   std::string framequat_sensor_name;
