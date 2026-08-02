@@ -81,13 +81,14 @@ Simulation
 
 主入口类是 [`Simulation`](./include/mujoco_simulation/simulation.hpp)。
 
-配置可直接传入 [`SimulationConfig`](./include/mujoco_simulation/simulation_config.hpp)，
+配置可直接传入 [`SimulationConfig`](./include/mujoco_simulation/config/simulation_config.hpp)，
 也可将 XML 配置文件路径传给 `Simulation::initialize(...)`。XML 解析和校验属于库内部实现。
 
 `Simulation` 对外暴露的能力主要有：
 
 - 初始化仿真
   - `bool initialize(const SimulationConfig&)`
+  - `bool initialize(const std::string& config_path)`
   - `bool shutdown()`
 - 控制运行
   - `bool start()`
@@ -257,7 +258,7 @@ timeout)` 等待该 ticket 进入终态；随后通过 `read_batch_result(ticket
 读取该 ticket 的结果。被 newer submit 覆盖的 pending ticket 会完成为
 `superseded`，而不是误读新批次；完成结果保留数量由
 `CameraRendererConfig::completed_ticket_history` 明确限定，超出历史窗口的 ticket
-会返回失败。需要区分失败原因时可使用 `wait_result()`，它返回
+会返回失败。需要区分失败原因时，内部服务的 `wait(...)` 或 `query(...)` 返回
 `CameraRenderWaitStatus`，包括 `Completed`、`PartiallyFailed`、`Failed`、
 `Superseded`、`Stale`、`InvalidTicket`、`Timeout`、`Cancelled` 与 `Stopped`。
 ticket 还包含 Renderer 的失效 epoch；它会在 initialize 与 release 边界推进，因此
@@ -278,10 +279,7 @@ latest-only 降级策略，失败 Camera 保留上一帧而成功 Camera 正常�
 mujoco_simulation/
 ├── include/mujoco_simulation/
 │   ├── simulation.hpp               # 对外主入口
-│   ├── simulation_config.hpp         # 配置入口
 │   ├── simulation_status.hpp         # 生命周期状态
-│   ├── robot_state.hpp               # 状态入口
-│   ├── component_id.hpp              # 组件 ID 入口
 │   ├── export.hpp                    # 构建生成的导出宏
 │   ├── version.hpp                   # 构建生成的版本信息
 │   ├── common/                       # 数学和通用辅助类型
@@ -294,7 +292,7 @@ mujoco_simulation/
 │   ├── component/                    # 组件管理与设备实现
 │   ├── config/                       # XML 配置解析
 │   ├── data/                         # 内部命令快照
-│   ├── facade/simulation.cpp         # 仿真主实现
+│   ├── simulation/                   # 私有 PImpl、生命周期、运行时与 Viewer 实现
 │   ├── render/                       # 相机渲染实现
 │   ├── runtime/                      # 运行时与调度器实现
 │   └── viewer/                       # viewer、lodepng 与 simulate 集成

@@ -317,10 +317,7 @@ mujoco_simulation/
 ├── include/
 │   └── mujoco_simulation/
 │       ├── simulation.hpp
-│       ├── simulation_config.hpp
 │       ├── simulation_status.hpp
-│       ├── robot_state.hpp
-│       ├── component_id.hpp
 │       ├── export.hpp
 │       ├── version.hpp
 │       │
@@ -348,8 +345,14 @@ mujoco_simulation/
 │   ├── data/
 │   │   └── command_snapshot.hpp
 │   │
-│   ├── facade/
-│   │   └── simulation.cpp
+│   ├── simulation/
+│   │   ├── simulation.cpp
+│   │   ├── simulation_impl.hpp
+│   │   ├── simulation_lifecycle.cpp
+│   │   ├── simulation_runtime.cpp
+│   │   ├── simulation_viewer.cpp
+│   │   ├── simulation_commands.cpp
+│   │   └── simulation_state.cpp
 │   │
 │   ├── buffer/
 │   │   ├── command_buffer.hpp
@@ -449,15 +452,12 @@ simulation_result.hpp
 
 ```text
 simulation.hpp
-simulation_config.hpp
 simulation_status.hpp
-robot_state.hpp
-component_id.hpp
 export.hpp
 version.hpp
 ```
 
-为使这些入口头自包含，安装包还包含其值类型依赖：
+安装包还包含 `Simulation` 的公开值类型依赖：
 
 ```text
 common/enum.hpp
@@ -930,10 +930,10 @@ ConfigLoadResult
 
 ## 11.2 `Simulation::Impl`
 
-定义在：
+定义在私有 facade 实现中：
 
 ```text
-src/facade/simulation.cpp
+src/simulation/simulation_impl.hpp
 ```
 
 建议结构：
@@ -1297,7 +1297,12 @@ endif()
 add_library(
   mujoco_simulation
   ${MUJOCO_SIMULATION_LIBRARY_TYPE}
-    src/facade/simulation.cpp
+    src/simulation/simulation.cpp
+    src/simulation/simulation_lifecycle.cpp
+    src/simulation/simulation_runtime.cpp
+    src/simulation/simulation_viewer.cpp
+    src/simulation/simulation_commands.cpp
+    src/simulation/simulation_state.cpp
 
     $<TARGET_OBJECTS:mujoco_simulation_runtime>
     $<TARGET_OBJECTS:mujoco_simulation_render>
@@ -2604,9 +2609,6 @@ include(
 install(
   FILES
     include/mujoco_simulation/simulation.hpp
-    include/mujoco_simulation/simulation_config.hpp
-    include/mujoco_simulation/robot_state.hpp
-    include/mujoco_simulation/component_id.hpp
     include/mujoco_simulation/simulation_status.hpp
   DESTINATION
     "${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation"

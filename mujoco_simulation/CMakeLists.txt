@@ -129,7 +129,12 @@ target_link_libraries(mujoco_simulation_render PRIVATE mujoco::mujoco Threads::T
 target_link_libraries(mujoco_simulation_viewer PRIVATE mujoco::mujoco Threads::Threads OpenGL::GL OpenGL::EGL ${MUJOCO_SIMULATION_GLFW_TARGET} ${CMAKE_DL_LIBS})
 
 add_library(mujoco_simulation ${MUJOCO_SIMULATION_LIBRARY_TYPE}
-  src/facade/simulation.cpp
+  src/simulation/simulation.cpp
+  src/simulation/simulation_lifecycle.cpp
+  src/simulation/simulation_runtime.cpp
+  src/simulation/simulation_viewer.cpp
+  src/simulation/simulation_commands.cpp
+  src/simulation/simulation_state.cpp
   $<TARGET_OBJECTS:mujoco_simulation_runtime>
   $<TARGET_OBJECTS:mujoco_simulation_render>
   $<TARGET_OBJECTS:mujoco_simulation_viewer>

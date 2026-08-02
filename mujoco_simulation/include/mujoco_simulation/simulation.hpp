@@ -10,9 +10,9 @@
 #include "mujoco_simulation/component/joint.hpp"
 #include "mujoco_simulation/component/lidar.hpp"
 #include "mujoco_simulation/component/mobile_base.hpp"
+#include "mujoco_simulation/config/simulation_config.hpp"
+#include "mujoco_simulation/data/robot_state.hpp"
 #include "mujoco_simulation/export.hpp"
-#include "mujoco_simulation/robot_state.hpp"
-#include "mujoco_simulation/simulation_config.hpp"
 #include "mujoco_simulation/simulation_status.hpp"
 
 namespace mujoco_simulation {

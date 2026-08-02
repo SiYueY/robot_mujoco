@@ -12,9 +12,6 @@ install(TARGETS mujoco_simulation
 # renderer, viewer, buffer and parser headers deliberately remain private.
 install(FILES
   include/mujoco_simulation/simulation.hpp
-  include/mujoco_simulation/simulation_config.hpp
-  include/mujoco_simulation/robot_state.hpp
-  include/mujoco_simulation/component_id.hpp
   include/mujoco_simulation/simulation_status.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation)
 install(FILES
