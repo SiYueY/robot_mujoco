@@ -1,11 +1,11 @@
-#include "mujoco_simulation/component/lidar/lidar_component.hpp"
+#include "component/lidar/lidar_component.hpp"
 
 #include <cmath>
 #include <limits>
 #include <utility>
 
 #include "common/logging.hpp"
-#include "mujoco_simulation/common/macro.hpp"
+#include "common/macro.hpp"
 #include "mujoco_simulation/common/math.hpp"
 
 namespace mujoco_simulation {

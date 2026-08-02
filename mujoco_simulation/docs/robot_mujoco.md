@@ -327,7 +327,7 @@ robot_mujoco负责：
 
 ## 17. 当前 v1 已支持的 XML 子集
 
-`mujoco_simulation::SimulationConfigParser::load_file(...)` 当前只解析以下内容：
+`Simulation::initialize(config_path)` 内部的 XML 配置解析当前只解析以下内容：
 
 - 根节点 `<robot_mujoco>`
 - `<mujoco><mjcf>...</mjcf></mujoco>`

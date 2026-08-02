@@ -1,11 +1,11 @@
-#include "mujoco_simulation/component/mobile_base/mobile_base_component.hpp"
+#include "component/mobile_base/mobile_base_component.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <utility>
 
 #include "common/logging.hpp"
-#include "mujoco_simulation/common/macro.hpp"
+#include "common/macro.hpp"
 #include "mujoco_simulation/common/math.hpp"
 
 namespace mujoco_simulation {

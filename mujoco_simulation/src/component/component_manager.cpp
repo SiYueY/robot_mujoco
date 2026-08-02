@@ -1,4 +1,4 @@
-#include "mujoco_simulation/component/component_manager.hpp"
+#include "component/component_manager.hpp"
 
 #include <utility>
 #include <vector>
@@ -72,13 +72,13 @@ bool update_components(
 bool ComponentManager::init(const mjContext &context,
                             const ComponentConfigList &components,
                             ComponentId max_component_id,
-                            CameraRenderer &camera_renderer) {
+                            CameraRenderService &camera_render_service) {
   if (!context.valid()) {
     LOG_ERROR << "component manager requires a valid MuJoCo context.";
     return false;
   }
   clear();
-  camera_renderer_ = &camera_renderer;
+  camera_render_service_ = &camera_render_service;
   command_appliers_.clear();
 
   const auto add = [&](auto config, auto &slots, std::size_t &count,
@@ -187,8 +187,12 @@ void ComponentManager::clear() {
   imus_.reset();
   lidars_.reset();
   cameras_.reset();
-  camera_renderer_ = nullptr;
+  camera_render_service_ = nullptr;
+  active_camera_ticket_.reset();
   pending_camera_ticket_.reset();
+  camera_request_sequence_ = 0;
+  camera_generation_ = 1;
+  simulation_step_ = 0;
   command_appliers_.clear();
 }
 
@@ -206,12 +210,18 @@ bool ComponentManager::reset(const mjContext &context) {
   imus_.reset();
   lidars_.reset();
   cameras_.reset();
+  active_camera_ticket_.reset();
+  pending_camera_ticket_.reset();
+  ++camera_generation_;
+  camera_request_sequence_ = 0;
+  simulation_step_ = 0;
   return true;
 }
 
 bool ComponentManager::update(const mjContext &context) {
   if (!context.valid())
     return false;
+  ++simulation_step_;
   if (!update_components<JointComponent, JointState>(
           context, joints_components_, joint_component_count_, joints_) ||
       !update_components<MobileBaseComponent, MobileBaseState>(
@@ -228,12 +238,26 @@ bool ComponentManager::update(const mjContext &context) {
 bool ComponentManager::wait_for_camera_results() {
   if (!has_cameras())
     return true;
-  if (camera_renderer_ == nullptr)
+  if (camera_render_service_ == nullptr)
     return false;
-  if (pending_camera_ticket_.has_value() &&
-      !camera_renderer_->wait(*pending_camera_ticket_))
+  if (active_camera_ticket_.has_value()) {
+    const CameraRenderWaitStatus status = camera_render_service_->wait(
+        *active_camera_ticket_, std::chrono::seconds(5));
+    if (status != CameraRenderWaitStatus::Completed &&
+        status != CameraRenderWaitStatus::PartiallyFailed) {
+      return false;
+    }
+  }
+  if (!consume_camera_results())
     return false;
-  pending_camera_ticket_.reset();
+  if (active_camera_ticket_.has_value()) {
+    const CameraRenderWaitStatus status = camera_render_service_->wait(
+        *active_camera_ticket_, std::chrono::seconds(5));
+    if (status != CameraRenderWaitStatus::Completed &&
+        status != CameraRenderWaitStatus::PartiallyFailed) {
+      return false;
+    }
+  }
   return consume_camera_results();
 }
 
@@ -250,21 +274,43 @@ void ComponentManager::clear_camera_states() noexcept {
 bool ComponentManager::consume_camera_results() {
   if (!has_cameras())
     return true;
-  if (camera_renderer_ == nullptr)
+  if (camera_render_service_ == nullptr)
     return false;
-  CameraRenderStates results;
-  if (!camera_renderer_->read_results(results) || results == nullptr)
+  if (!active_camera_ticket_.has_value() &&
+      pending_camera_ticket_.has_value()) {
+    active_camera_ticket_ = pending_camera_ticket_;
+    pending_camera_ticket_.reset();
+  }
+  if (!active_camera_ticket_.has_value())
     return true;
+  const CameraRenderWaitStatus wait_status =
+      camera_render_service_->query(*active_camera_ticket_);
+  if (wait_status == CameraRenderWaitStatus::Timeout)
+    return true;
+  CameraRenderBatchResult result;
+  if (!camera_render_service_->read_batch_result(*active_camera_ticket_,
+                                                 result)) {
+    active_camera_ticket_.reset();
+    if (pending_camera_ticket_.has_value()) {
+      active_camera_ticket_ = pending_camera_ticket_;
+      pending_camera_ticket_.reset();
+    }
+    return wait_status == CameraRenderWaitStatus::Superseded ||
+           wait_status == CameraRenderWaitStatus::Stale ||
+           wait_status == CameraRenderWaitStatus::Cancelled;
+  }
+  active_camera_ticket_.reset();
   auto slots = std::make_shared<std::vector<StateSnapshot<CameraState>>>(
       cameras_ == nullptr ? 0U : cameras_->size());
   if (cameras_ != nullptr)
     *slots = *cameras_;
   bool changed = false;
-  for (CameraId id = 0; id < camera_components_.size(); ++id) {
+  for (const CameraRenderTaskResult &camera : result.cameras) {
+    const CameraId id = camera.camera_id;
+    if (id >= camera_components_.size())
+      continue;
     CameraComponent *component = camera_components_[id].get();
-    if (component == nullptr || id >= results->size() ||
-        (*results)[id] == nullptr ||
-        !component->apply_render_result((*results)[id]))
+    if (component == nullptr || !component->apply_render_result(camera))
       continue;
     std::shared_ptr<const CameraState> state;
     if (!component->read_state(state))
@@ -278,13 +324,17 @@ bool ComponentManager::consume_camera_results() {
     cameras_ =
         std::static_pointer_cast<const std::vector<StateSnapshot<CameraState>>>(
             slots);
+  if (pending_camera_ticket_.has_value()) {
+    active_camera_ticket_ = pending_camera_ticket_;
+    pending_camera_ticket_.reset();
+  }
   return true;
 }
 
 bool ComponentManager::submit_due_cameras(const mjContext &context) {
   if (!has_cameras())
     return true;
-  if (camera_renderer_ == nullptr)
+  if (camera_render_service_ == nullptr)
     return false;
   std::vector<CameraRenderTask> tasks;
   const auto timestamp =
@@ -296,12 +346,26 @@ bool ComponentManager::submit_due_cameras(const mjContext &context) {
       tasks.push_back(component->make_render_task(timestamp));
   }
   if (!tasks.empty()) {
-    const auto ticket = camera_renderer_->submit(context, std::move(tasks));
-    if (!ticket.has_value()) {
+    CameraRenderBatchRequest request;
+    request.generation = camera_generation_;
+    request.sequence = ++camera_request_sequence_;
+    request.simulation_step = simulation_step_;
+    request.simulation_time = context.data->time;
+    request.model = context.model;
+    request.data = context.data;
+    request.tasks = std::move(tasks);
+    CameraRenderTicket ticket;
+    const CameraRenderSubmitResult submit_result =
+        camera_render_service_->submit(request, ticket);
+    if (submit_result != CameraRenderSubmitResult::Accepted &&
+        submit_result != CameraRenderSubmitResult::ReplacedPendingBatch) {
       LOG_WARNING
           << "failed to submit camera render job; keeping prior frames.";
     } else {
-      pending_camera_ticket_ = *ticket;
+      if (!active_camera_ticket_.has_value())
+        active_camera_ticket_ = ticket;
+      else
+        pending_camera_ticket_ = ticket;
     }
   }
   return true;

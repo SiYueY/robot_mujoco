@@ -7,21 +7,30 @@
 #include <variant>
 #include <vector>
 
-#include "mujoco_simulation/component/camera/camera_data.hpp"
+#include "mujoco_simulation/component/camera.hpp"
 #include "mujoco_simulation/component/component_id.hpp"
-#include "mujoco_simulation/component/imu/imu_data.hpp"
-#include "mujoco_simulation/component/joint/joint_data.hpp"
-#include "mujoco_simulation/component/lidar/lidar_data.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
+#include "mujoco_simulation/component/imu.hpp"
+#include "mujoco_simulation/component/joint.hpp"
+#include "mujoco_simulation/component/lidar.hpp"
+#include "mujoco_simulation/component/mobile_base.hpp"
 #include "mujoco_simulation/config/config_limits.hpp"
-#include "mujoco_simulation/mujoco/camera_renderer.hpp"
-#include "mujoco_simulation/visibility.hpp"
 
 namespace mujoco_simulation {
 
 using ComponentConfig =
     std::variant<JointInfo, ImuInfo, CameraConfig, LidarInfo, MobileBaseInfo>;
 using ComponentConfigList = std::vector<ComponentConfig>;
+
+// Configuration contract for the always-built internal camera renderer.  It
+// intentionally describes policy only and does not expose any GL or MuJoCo
+// rendering type.
+struct CameraRendererConfig {
+  int max_scene_geometries{2000};
+  bool allow_glfw_backend{true};
+  bool allow_egl_backend{true};
+  ComponentId max_camera_id{SimulationConfigLimits::kMaximumComponentId};
+  std::size_t completed_ticket_history{8};
+};
 
 struct ModelConfig {
   std::string model_path;
@@ -42,27 +51,6 @@ struct SimulationConfig {
   bool viewer_enabled{true};
   std::chrono::milliseconds viewer_startup_timeout{5000};
   CameraRendererConfig camera_renderer;
-};
-
-struct ConfigError {
-  static constexpr std::size_t kNoComponent = static_cast<std::size_t>(-1);
-  int line{0};
-  std::size_t component_index{kNoComponent};
-  std::string element;
-  std::string attribute;
-  std::string message;
-};
-
-class MUJOCO_SIMULATION_PUBLIC SimulationConfigValidator {
-public:
-  static bool validate(const SimulationConfig &config,
-                       ConfigError *error = nullptr);
-};
-
-class MUJOCO_SIMULATION_PUBLIC SimulationConfigParser {
-public:
-  bool load_file(const std::string &path, SimulationConfig &config,
-                 ConfigError *error = nullptr) const;
 };
 
 } // namespace mujoco_simulation

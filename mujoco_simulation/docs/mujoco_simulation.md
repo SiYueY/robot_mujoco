@@ -32,8 +32,8 @@ Simulation
   -> ComponentManager
     -> SimulationComponent
       -> Joint / Imu / Lidar / Camera / MobileBase
-  -> CommandBus / StateBuffer
-  -> CameraRenderer
+  -> CommandBuffer / StateBuffer
+  -> CameraRenderService (internal)
   -> SimulationViewer
 ```
 
@@ -43,7 +43,7 @@ Simulation
 - `SimulationRuntime` 负责模型加载、forward、step、reset
 - `SimulationScheduler` 负责运行态调度和状态机
 - `ComponentManager` 负责组件装配、统一更新、命令下发和聚合读状态
-- `CameraRenderer` 与 `SimulationViewer` 是独立渲染资源
+- `CameraRenderService` 与 `SimulationViewer` 是独立渲染资源
 - `SimulationViewer` 通过受控 `mjContext` 同步 MuJoCo 运行时，不直接对外暴露裸 `mjModel* / mjData*` 启动接口
 - viewer 启动超时通过 `SimulationConfig.viewer_startup_timeout` 控制
 - `mjModel / mjData` 保持单写线程原则，只在 scheduler/reset 安全路径中写入
@@ -55,7 +55,7 @@ Simulation
 - viewer render thread
   - 只负责 viewer 渲染与被动同步
 - external caller threads
-  - 只写 `CommandBus`、读取 `StateBuffer`、提交控制请求
+  - 只写 `CommandBuffer`、读取 `StateBuffer`、提交控制请求
 
 ## 当前公开接口约定
 
@@ -73,23 +73,23 @@ Simulation
 `Simulation` 公开的核心能力包括：
 
 - 生命周期与运行控制
-  - `initialize(...)`
+  - `initialize(const SimulationConfig&)` / `initialize(const std::string&)`
   - `shutdown()`
   - `start() / stop() / pause() / resume()`
-  - `step(...)`
-  - `request_reset(...) / reset(...)`
-  - `request_reset_to_keyframe(...) / reset_to_keyframe(...)`
+  - `reset()` / `reset(std::string keyframe_name)`
+  - `step(std::size_t count = 1)`、`step_count()`、`status()` 与 `time()`
 - 组件与命令
-  - `set_joint_command(...)`
-  - `set_mobile_base_command(...)`
+  - `write_command(JointId, const JointCommand&)`
+  - `write_command(MobileBaseId, const MobileBaseCommand&)`
+  - `write_commands(const JointCommandBatch&)`
+  - `write_commands(const MobileBaseCommandBatch&)`
 - 状态读取
-  - `joint_state(...)`
-  - `imu_state(...)`
-  - `lidar_state(...)`
-  - `camera_state(...)`
-  - `mobile_base_state(...)`
   - `read_state(std::shared_ptr<const RobotState>&)`
   - `read_state(RobotState&)`
+  - 按组件 ID 读取 `JointState`、`ImuState`、`CameraState`、`LidarState` 与
+    `MobileBaseState`
+  - 分别读取 `JointStates`、`ImuStates`、`CameraStates`、`LidarStates` 与
+    `MobileBaseStates` 聚合状态
 
 ## 组件模型与调度模型
 
@@ -98,7 +98,7 @@ Simulation
 统一组件能力：
 
 - `name()`
-- `bind(...)`
+- `init(const mjContext&)`
 - `reset(...)`
 - `update(...)`
 - `poll_update(mjTime time)`
@@ -116,7 +116,7 @@ Simulation
 
 缓冲层职责：
 
-- `CommandBus`
+- `CommandBuffer`
   - 缓存外部线程提交的最新控制命令
 - `StateBuffer`
   - 每个成功的 physics step 发布最新 `RobotState`，其中包含各类设备的不可变共享状态快照
@@ -125,8 +125,8 @@ Simulation
 
 缓冲层的并发模型、动态拓扑和确定性实时性能取舍见：
 
-- [CommandBus 并发与实时性能设计](./command_buffer.md)
-- [StateBuffer 并发与实时性能设计](./state_buffer_realtime_design.md)
+- [CommandBuffer 并发与实时性能设计](./command_buffer.md)
+- [StateBuffer 并发与实时性能设计](./state_buffer.md)
 
 这两份文档包含提议架构；本页仍以当前已实现行为为准。
 
@@ -263,4 +263,3 @@ Simulation
 ## 相关入口
 
 - 包概览与构建方式见 [`../README.md`](../README.md)
-- 工作区级迁移和包边界说明见 [`../../docs/migration_guide.md`](../../docs/migration_guide.md)

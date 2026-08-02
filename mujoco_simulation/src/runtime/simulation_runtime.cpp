@@ -1,4 +1,4 @@
-#include "mujoco_simulation/runtime/simulation_runtime.hpp"
+#include "runtime/simulation_runtime.hpp"
 
 #include <cmath>
 #include <filesystem>

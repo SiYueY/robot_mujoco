@@ -4,11 +4,11 @@
 #include <memory>
 #include <vector>
 
-#include "mujoco_simulation/component/camera/camera_data.hpp"
-#include "mujoco_simulation/component/imu/imu_data.hpp"
-#include "mujoco_simulation/component/joint/joint_data.hpp"
-#include "mujoco_simulation/component/lidar/lidar_data.hpp"
-#include "mujoco_simulation/component/mobile_base/mobile_base_data.hpp"
+#include "mujoco_simulation/component/camera.hpp"
+#include "mujoco_simulation/component/imu.hpp"
+#include "mujoco_simulation/component/joint.hpp"
+#include "mujoco_simulation/component/lidar.hpp"
+#include "mujoco_simulation/component/mobile_base.hpp"
 
 namespace mujoco_simulation {
 

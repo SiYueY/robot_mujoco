@@ -1,4 +1,4 @@
-#include "mujoco_simulation/buffer/state_buffer.hpp"
+#include "buffer/state_buffer.hpp"
 
 namespace mujoco_simulation {
 

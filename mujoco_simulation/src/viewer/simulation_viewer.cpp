@@ -1,4 +1,4 @@
-#include "mujoco_simulation/viewer/simulation_viewer.hpp"
+#include "viewer/simulation_viewer.hpp"
 
 #include <chrono>
 #include <cstring>

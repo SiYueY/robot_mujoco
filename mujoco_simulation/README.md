@@ -34,8 +34,8 @@ Simulation
   -> ComponentManager
     -> Joint / Imu / Camera / Lidar / MobileBase
   -> SimulationScheduler
-  -> CommandBus / StateBuffer
-  -> CameraRenderer
+  -> CommandBuffer / StateBuffer
+  -> CameraRenderService (internal)
   -> SimulationViewer
     -> mjModel / mjData
 ```
@@ -81,7 +81,8 @@ Simulation
 
 主入口类是 [`Simulation`](./include/mujoco_simulation/simulation.hpp)。
 
-配置文件加载入口是 [`SimulationConfigParser`](./include/mujoco_simulation/config/simulation_config.hpp)。
+配置可直接传入 [`SimulationConfig`](./include/mujoco_simulation/simulation_config.hpp)，
+也可将 XML 配置文件路径传给 `Simulation::initialize(...)`。XML 解析和校验属于库内部实现。
 
 `Simulation` 对外暴露的能力主要有：
 
@@ -98,18 +99,12 @@ Simulation
 - 组件配置与设备访问
   - `SimulationConfig.components`
     - 初始化时传入的组件配置入口
-  - `bool write_command(std::string, const JointCommand&)`
-  - `bool write_command(std::string, const MobileBaseCommand&)`
   - `bool write_command(JointId, const JointCommand&)`
   - `bool write_command(MobileBaseId, const MobileBaseCommand&)`
-  - `template <typename Command> bool write_commands(const CommandBatch<Command>&)`
+  - `bool write_commands(const JointCommandBatch&)`
+  - `bool write_commands(const MobileBaseCommandBatch&)`
   - `bool read_state(std::shared_ptr<const RobotState>&)`
   - `bool read_state(RobotState&)`
-  - `bool read_state(std::string, JointState&)`
-  - `bool read_state(std::string, ImuState&)`
-  - `bool read_state(std::string, CameraState&)`
-  - `bool read_state(std::string, LidarState&)`
-  - `bool read_state(std::string, MobileBaseState&)`
   - 按 `JointId`、`ImuId`、`CameraId`、`LidarId`、`MobileBaseId` 的单组件读取重载
   - 按组件类型读取完整稀疏状态数组的重载
 - 查询状态
@@ -122,7 +117,7 @@ Simulation
 
 - `mjModel / mjData` 保持单写线程原则
 - `ComponentManager` 负责组件更新、命令分发和状态汇总
-- `CommandBus / StateBuffer` 统一采用 `write(...) / read(...)` 语义
+- `CommandBuffer / StateBuffer` 统一采用 `write(...) / read(...)` 语义
   - 每个成功的 physics step 都向 `StateBuffer` 原子发布一个 `RobotState`；组件状态（包括相机）以不可变共享快照聚合
 
 ## 错误返回模型
@@ -136,13 +131,8 @@ Simulation
     `Running`、`Paused`、`Stopping`、`Error`
   - 通过 `Simulation::status()` 查询；viewer 或 scheduler 任务失败时可报告 `Error`
 
-`SimulationConfigParser::load_file(...)` 支持可选的 `ConfigError*` 诊断参数：
-
-- 返回 `bool`
-- 成功时写入 `SimulationConfig`
-- 失败时返回 `false`；传入 `ConfigError` 时可取得首个错误的 XML 行号、元素、属性和说明
-- Parser 负责 XML 语法、类型提取与行号诊断；
-  `SimulationConfigValidator` 负责 XML 与直接 C++ 配置共用的语义约束
+配置或初始化失败时，接口返回 `false` 并记录错误日志。XML 解析器和配置校验器是内部实现，
+不构成公开诊断 API。
 
 ## 运行配置
 
@@ -168,8 +158,8 @@ Simulation
 - `viewer_startup_timeout`
   - viewer 启动等待超时
 
-此外，`SimulationConfigParser::load_file(const std::string&, SimulationConfig&, ConfigError*)`
-提供 `robot_mujoco.xml -> SimulationConfig` 的解析路径：
+`Simulation::initialize(const std::string&)` 提供 `robot_mujoco.xml -> SimulationConfig`
+的内部解析路径：
 
 - 解析 `<mujoco><mjcf>` 及 `<robot>` 下的 `joint`、`imu`、`camera`、`lidar`、`mobile_base`。
 - 所有组件 XML 元素都必须包含 `id` 与 `name` 属性；根元素可设置
@@ -199,7 +189,8 @@ viewer。
 keyframe。两者均执行完整重置事务：运行态 scheduler 会先停止，随后复位 MuJoCo
 runtime、清空旧命令、复位并立即更新组件采样、重置 step/sequence，并发布新的状态
 快照。Viewer 模式会异步提交 reset 后的显示状态；MuJoCo runtime 或组件失败会使
-reset 返回 `false` 并进入错误状态，Viewer 故障仅禁用可视化。成功后恢复调用前的
+reset 返回 `false` 并进入错误状态。`viewer_enabled=true` 时，Viewer 的创建或启动
+失败同样会使 `initialize()` 或 `start()` 返回 `false` 并进入 Error。成功后恢复调用前的
 Running 状态；Paused 和 Stopped 状态保持不变。Error 状态可通过 `reset()` 恢复为
 Stopped，前提是完整重置事务成功。
 
@@ -221,7 +212,8 @@ Stopped，前提是完整重置事务成功。
 
 ## 设备层能力
 
-设备对象现在统一由 [`ComponentManager`](./include/mujoco_simulation/component/component_manager.hpp) 管理；`CameraRenderer` 是 Camera 组件共享的图像生成资源，当前支持以下几类：
+设备对象由内部 `ComponentManager` 管理；Camera 组件通过内部
+`CameraRenderService` 使用共享的图像生成资源，当前支持以下几类：
 
 | 设备 | 作用 | 当前实现特点 |
 | --- | --- | --- |
@@ -246,7 +238,7 @@ Stopped，前提是完整重置事务成功。
 
 更完整的当前实现说明见：
 
-- [`docs/architecture.md`](./docs/architecture.md)
+- [`docs/mujoco_simulation.md`](./docs/mujoco_simulation.md)
 
 ## Viewer 的定位
 
@@ -258,14 +250,16 @@ viewer 相关代码位于 [`src/viewer`](./src/viewer)。
 - 物理步进仍然由 `Simulation` 驱动
 - `SimulationViewer` 只负责渲染和异步状态同步；GUI 卡顿、关闭或同步失败不影响物理仿真
 
-Camera 渲染现在通过独立的 `CameraRenderer` 完成，不再复用 viewer 的渲染资源。
+Camera 渲染通过内部 `CameraRenderService` 完成，不复用 viewer 的渲染资源。
 
-`CameraRenderer::submit()` 返回可等待的 `CameraRenderTicket`。`wait(ticket,
-result)` 只读取该 ticket 的结果：被 newer submit 覆盖的 pending ticket 会完成为
+服务的 batch `submit()` 返回可等待的 `CameraRenderTicket`。`wait(ticket,
+timeout)` 等待该 ticket 进入终态；随后通过 `read_batch_result(ticket, result)`
+读取该 ticket 的结果。被 newer submit 覆盖的 pending ticket 会完成为
 `superseded`，而不是误读新批次；完成结果保留数量由
 `CameraRendererConfig::completed_ticket_history` 明确限定，超出历史窗口的 ticket
 会返回失败。需要区分失败原因时可使用 `wait_result()`，它返回
-`CameraWaitResult`（如 `Expired`、`Superseded`、`RenderFailed` 或 `Timeout`）。
+`CameraRenderWaitStatus`，包括 `Completed`、`PartiallyFailed`、`Failed`、
+`Superseded`、`Stale`、`InvalidTicket`、`Timeout`、`Cancelled` 与 `Stopped`。
 ticket 还包含 Renderer 的失效 epoch；它会在 initialize 与 release 边界推进，因此
 release/reinitialize 后的旧 ticket 会被明确识别为 `InvalidTicket`，不会匹配新生命周期
 的同序号请求。空任务列表返回立即成功的 no-op ticket（`is_noop()==true`）。
@@ -284,23 +278,28 @@ latest-only 降级策略，失败 Camera 保留上一帧而成功 Camera 正常�
 mujoco_simulation/
 ├── include/mujoco_simulation/
 │   ├── simulation.hpp               # 对外主入口
+│   ├── simulation_config.hpp         # 配置入口
 │   ├── simulation_status.hpp         # 生命周期状态
-│   ├── buffer/                       # CommandBus / StateBuffer
+│   ├── robot_state.hpp               # 状态入口
+│   ├── component_id.hpp              # 组件 ID 入口
+│   ├── export.hpp                    # 构建生成的导出宏
+│   ├── version.hpp                   # 构建生成的版本信息
 │   ├── common/                       # 数学和通用辅助类型
-│   ├── component/                    # 组件基类、管理器及设备类型
-│   ├── config/                       # SimulationConfig 与 XML 解析器
-│   ├── data/                         # CommandBatch / CommandSnapshot / RobotState
-│   ├── mujoco/                       # mjContext 与 CameraRenderer
-│   ├── runtime/                      # SimulationRuntime / SimulationScheduler
-│   └── viewer/                       # SimulationViewer 对外接口
+│   ├── component/                    # 设备配置、命令与状态值类型
+│   ├── config/                       # SimulationConfig 值类型
+│   └── data/                         # RobotState 值类型
 ├── src/
 │   ├── buffer/                       # 缓冲实现
+│   ├── common/                       # 内部日志与辅助宏
 │   ├── component/                    # 组件管理与设备实现
 │   ├── config/                       # XML 配置解析
-│   ├── mujoco/                       # 相机渲染实现
+│   ├── data/                         # 内部命令快照
+│   ├── facade/simulation.cpp         # 仿真主实现
+│   ├── render/                       # 相机渲染实现
 │   ├── runtime/                      # 运行时与调度器实现
-│   ├── simulation.cpp                # 仿真主实现
 │   └── viewer/                       # viewer、lodepng 与 simulate 集成
+├── cmake/                            # 依赖、安装与 sanitizer 模块
+├── tests/                            # public、unit 与 package 测试
 ├── third_party/                      # 裁剪后的外部源码
 │   ├── tinyxml2/
 │   └── easyloggingpp/
@@ -313,14 +312,19 @@ mujoco_simulation/
 
 - `glfw3`
 - `OpenGL`
+- `EGL`
+- `Threads`
 - `mujoco`
 
 核心库当前不再直接依赖 `hardware_interface`、`rclcpp` 或 `sensor_msgs`；这些 ROS 2 相关依赖保留在上层 `robot_mujoco_ros2` 适配层。
 
-构建时不调用 `find_package(mujoco)`；MuJoCo 的路径解析规则为：
+构建和安装包会优先复用已有的 `mujoco::mujoco` target，其次尝试
+`find_package(mujoco CONFIG QUIET)`；找不到时再按以下顺序查找 MuJoCo SDK：
 
-- 如果设置了环境变量 `MUJOCO_ROOT`，优先使用它
-- 否则默认使用 `/opt/mujoco-3.9.0`
+- CMake cache 中的 `MUJOCO_ROOT`
+- 环境变量 `MUJOCO_ROOT`
+- `/opt/mujoco`
+- `/opt/mujoco-3.9.0`
 
 例如：
 

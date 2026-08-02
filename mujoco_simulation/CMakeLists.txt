@@ -13,101 +13,58 @@ endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(GenerateExportHeader)
+
+if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+  set(MUJOCO_SIMULATION_IS_TOP_LEVEL ON)
+else()
+  set(MUJOCO_SIMULATION_IS_TOP_LEVEL OFF)
+endif()
 
 option(MUJOCO_SIMULATION_BUILD_SHARED
        "Build mujoco_simulation as a shared library" ON)
-option(MUJOCO_SIMULATION_BUILD_TESTS "Build mujoco_simulation tests" OFF)
-option(MUJOCO_SIMULATION_BUILD_EXAMPLES "Build mujoco_simulation examples" OFF)
-option(MUJOCO_SIMULATION_INSTALL "Generate installation rules" ON)
+option(MUJOCO_SIMULATION_BUILD_TESTS "Build mujoco_simulation tests"
+       ${MUJOCO_SIMULATION_IS_TOP_LEVEL})
+option(MUJOCO_SIMULATION_BUILD_EXAMPLES "Build mujoco_simulation examples"
+       ${MUJOCO_SIMULATION_IS_TOP_LEVEL})
+option(MUJOCO_SIMULATION_INSTALL "Generate installation rules"
+       ${MUJOCO_SIMULATION_IS_TOP_LEVEL})
 option(MUJOCO_SIMULATION_ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(MUJOCO_SIMULATION_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(MUJOCO_SIMULATION_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(MUJOCO_SIMULATION_TSAN_RUNTIME_TESTS
   "Run TSAN-labelled tests when ThreadSanitizer is enabled" ON)
 
-set(MUJOCO_ROOT_PATH "")
-if(DEFINED ENV{MUJOCO_ROOT} AND NOT "$ENV{MUJOCO_ROOT}" STREQUAL "")
-  set(MUJOCO_ROOT_PATH "$ENV{MUJOCO_ROOT}")
-else()
-  set(MUJOCO_ROOT_PATH "/opt/mujoco-3.9.0")
-endif()
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dependencies.cmake")
 
-file(TO_CMAKE_PATH "${MUJOCO_ROOT_PATH}" MUJOCO_ROOT_PATH)
-get_filename_component(MUJOCO_ROOT_PATH "${MUJOCO_ROOT_PATH}" ABSOLUTE)
-
-if(NOT IS_DIRECTORY "${MUJOCO_ROOT_PATH}")
-  message(FATAL_ERROR
-    "MuJoCo installation directory was not found.\n"
-    "Checked path: ${MUJOCO_ROOT_PATH}\n"
-    "Set MUJOCO_ROOT or install MuJoCo under /opt/mujoco-3.9.0.")
-endif()
-
-find_path(MUJOCO_INCLUDE_DIR
-  NAMES mujoco/mujoco.h
-  PATHS "${MUJOCO_ROOT_PATH}/include"
-  NO_DEFAULT_PATH)
-find_library(MUJOCO_LIBRARY
-  NAMES mujoco
-  PATHS
-    "${MUJOCO_ROOT_PATH}/lib"
-    "${MUJOCO_ROOT_PATH}/lib64"
-  NO_DEFAULT_PATH)
-
-if(NOT MUJOCO_INCLUDE_DIR OR NOT MUJOCO_LIBRARY)
-  message(FATAL_ERROR
-    "MuJoCo headers or library were not found under '${MUJOCO_ROOT_PATH}'.")
-endif()
-
-message(STATUS "MuJoCo root: ${MUJOCO_ROOT_PATH}")
-message(STATUS "MuJoCo include: ${MUJOCO_INCLUDE_DIR}")
-message(STATUS "MuJoCo library: ${MUJOCO_LIBRARY}")
-
-if(NOT TARGET mujoco::mujoco)
-  add_library(mujoco::mujoco UNKNOWN IMPORTED)
-  set_target_properties(mujoco::mujoco PROPERTIES
-    IMPORTED_LOCATION "${MUJOCO_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${MUJOCO_INCLUDE_DIR}")
-endif()
-
-find_package(Threads REQUIRED)
-find_package(OpenGL REQUIRED COMPONENTS OpenGL EGL)
-find_package(glfw3 CONFIG REQUIRED)
-
-if(NOT TARGET OpenGL::GL OR NOT TARGET OpenGL::EGL)
-  message(FATAL_ERROR "OpenGL and EGL CMake targets are required.")
-endif()
-
-if(TARGET glfw)
-  set(MUJOCO_SIMULATION_GLFW_TARGET glfw)
-elseif(TARGET glfw3::glfw)
-  set(MUJOCO_SIMULATION_GLFW_TARGET glfw3::glfw)
-else()
-  message(FATAL_ERROR
-    "glfw3 was found, but neither target 'glfw' nor 'glfw3::glfw' is available.")
-endif()
-
-set(MUJOCO_SIMULATION_SOURCES
-  src/simulation.cpp
-  src/buffer/command_bus.cpp
+set(MUJOCO_SIMULATION_RUNTIME_SOURCES
+  src/buffer/command_buffer.cpp
   src/buffer/state_buffer.cpp
-  src/component/simulation_component.cpp
+  src/component/component.cpp
   src/component/component_manager.cpp
   src/component/camera/camera_component.cpp
   src/component/imu/imu_component.cpp
   src/component/joint/joint_component.cpp
   src/component/lidar/lidar_component.cpp
   src/component/mobile_base/mobile_base_component.cpp
-  src/config/simulation_config.cpp
-  src/mujoco/camera_renderer.cpp
+  src/config/simulation_config_parser.cpp
+  src/config/simulation_config_validator.cpp
   src/runtime/simulation_runtime.cpp
-  src/runtime/simulation_scheduler.cpp
+  src/runtime/simulation_scheduler.cpp)
+
+set(MUJOCO_SIMULATION_RENDER_SOURCES
+  src/render/camera_renderer.cpp
+  src/render/camera_render_service_impl.cpp)
+
+set(MUJOCO_SIMULATION_VIEWER_SOURCES
   src/viewer/simulation_viewer.cpp
-  src/viewer/lodepng/lodepng.cpp
   src/viewer/simulate/glfw_adapter.cc
   src/viewer/simulate/glfw_dispatch.cc
   src/viewer/simulate/platform_ui_adapter.cc
-  src/viewer/simulate/simulate.cc
-  third_party/easyloggingpp/easylogging++.cc
-  third_party/tinyxml2/tinyxml2.cpp
+  src/viewer/simulate/simulate.cc)
+
+set(MUJOCO_SIMULATION_VIEWER_BACKEND_SOURCES
+  src/viewer/lodepng/lodepng.cpp
 )
 
 if(MUJOCO_SIMULATION_BUILD_SHARED)
@@ -116,13 +73,20 @@ else()
   set(MUJOCO_SIMULATION_LIBRARY_TYPE STATIC)
 endif()
 
-add_library(mujoco_simulation ${MUJOCO_SIMULATION_LIBRARY_TYPE}
-  ${MUJOCO_SIMULATION_SOURCES})
-add_library(mujoco_simulation::mujoco_simulation ALIAS mujoco_simulation)
-
 set_source_files_properties(
   third_party/easyloggingpp/easylogging++.cc
   PROPERTIES COMPILE_DEFINITIONS AUTO_INITIALIZE_EASYLOGGINGPP)
+
+add_library(mujoco_simulation_runtime OBJECT
+  ${MUJOCO_SIMULATION_RUNTIME_SOURCES})
+add_library(mujoco_simulation_render OBJECT
+  ${MUJOCO_SIMULATION_RENDER_SOURCES})
+add_library(mujoco_simulation_viewer OBJECT
+  ${MUJOCO_SIMULATION_VIEWER_SOURCES})
+add_library(mujoco_simulation_tinyxml2 OBJECT third_party/tinyxml2/tinyxml2.cpp)
+add_library(mujoco_simulation_logging OBJECT third_party/easyloggingpp/easylogging++.cc)
+add_library(mujoco_simulation_viewer_backend OBJECT
+  ${MUJOCO_SIMULATION_VIEWER_BACKEND_SOURCES})
 
 set(MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR
   "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -131,29 +95,67 @@ configure_file(
   "${MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR}/mujoco_simulation/version.hpp"
   @ONLY)
 
+set(MUJOCO_SIMULATION_PRIVATE_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/viewer/simulate
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/viewer/lodepng
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/easyloggingpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tinyxml2)
+
+set(MUJOCO_SIMULATION_INTERNAL_TARGETS
+  mujoco_simulation_runtime
+  mujoco_simulation_render
+  mujoco_simulation_viewer
+  mujoco_simulation_tinyxml2
+  mujoco_simulation_logging
+  mujoco_simulation_viewer_backend)
+
+foreach(target IN LISTS MUJOCO_SIMULATION_INTERNAL_TARGETS)
+  target_compile_features(${target} PRIVATE cxx_std_17)
+  target_include_directories(${target} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR}
+    ${MUJOCO_SIMULATION_PRIVATE_INCLUDE_DIRS})
+  target_compile_definitions(${target} PRIVATE MUJOCO_SIMULATION_BUILDING_LIBRARY)
+  set_target_properties(${target} PROPERTIES
+    CXX_EXTENSIONS OFF
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES)
+endforeach()
+
+target_link_libraries(mujoco_simulation_runtime PRIVATE mujoco::mujoco Threads::Threads)
+target_link_libraries(mujoco_simulation_render PRIVATE mujoco::mujoco Threads::Threads OpenGL::GL OpenGL::EGL ${MUJOCO_SIMULATION_GLFW_TARGET} ${CMAKE_DL_LIBS})
+target_link_libraries(mujoco_simulation_viewer PRIVATE mujoco::mujoco Threads::Threads OpenGL::GL OpenGL::EGL ${MUJOCO_SIMULATION_GLFW_TARGET} ${CMAKE_DL_LIBS})
+
+add_library(mujoco_simulation ${MUJOCO_SIMULATION_LIBRARY_TYPE}
+  src/facade/simulation.cpp
+  $<TARGET_OBJECTS:mujoco_simulation_runtime>
+  $<TARGET_OBJECTS:mujoco_simulation_render>
+  $<TARGET_OBJECTS:mujoco_simulation_viewer>
+  $<TARGET_OBJECTS:mujoco_simulation_tinyxml2>
+  $<TARGET_OBJECTS:mujoco_simulation_logging>
+  $<TARGET_OBJECTS:mujoco_simulation_viewer_backend>)
+add_library(mujoco_simulation::mujoco_simulation ALIAS mujoco_simulation)
+
+generate_export_header(mujoco_simulation
+  EXPORT_FILE_NAME
+    "${MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR}/mujoco_simulation/export.hpp"
+  EXPORT_MACRO_NAME MUJOCO_SIMULATION_PUBLIC
+  NO_EXPORT_MACRO_NAME MUJOCO_SIMULATION_LOCAL
+  STATIC_DEFINE MUJOCO_SIMULATION_STATIC_DEFINE)
+
 target_compile_features(mujoco_simulation PUBLIC cxx_std_17)
 target_include_directories(mujoco_simulation
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/viewer/simulate
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/viewer/lodepng
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/easyloggingpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tinyxml2)
+  PRIVATE ${MUJOCO_SIMULATION_PRIVATE_INCLUDE_DIRS})
 target_link_libraries(mujoco_simulation
-  PUBLIC
-    mujoco::mujoco
-    Threads::Threads
-  PRIVATE
-    OpenGL::GL
-    OpenGL::EGL
-    ${MUJOCO_SIMULATION_GLFW_TARGET}
-    ${CMAKE_DL_LIBS})
-target_compile_definitions(mujoco_simulation PRIVATE
-  MUJOCO_SIMULATION_BUILDING_LIBRARY)
+  PUBLIC mujoco::mujoco Threads::Threads OpenGL::GL OpenGL::EGL ${MUJOCO_SIMULATION_GLFW_TARGET}
+  PRIVATE ${CMAKE_DL_LIBS})
+target_compile_definitions(mujoco_simulation PRIVATE MUJOCO_SIMULATION_BUILDING_LIBRARY)
 
 if(NOT MUJOCO_SIMULATION_BUILD_SHARED)
   target_compile_definitions(mujoco_simulation PUBLIC
@@ -170,29 +172,7 @@ set_target_properties(mujoco_simulation PROPERTIES
   VISIBILITY_INLINES_HIDDEN YES
   POSITION_INDEPENDENT_CODE ON)
 
-if(MUJOCO_SIMULATION_ENABLE_ASAN AND MUJOCO_SIMULATION_ENABLE_TSAN)
-  message(FATAL_ERROR "AddressSanitizer and ThreadSanitizer cannot be enabled together.")
-endif()
-
-if(MUJOCO_SIMULATION_ENABLE_ASAN OR MUJOCO_SIMULATION_ENABLE_TSAN)
-  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    message(FATAL_ERROR "Sanitizers are only supported for GCC and Clang.")
-  endif()
-endif()
-
-if(MUJOCO_SIMULATION_ENABLE_ASAN)
-  target_compile_options(mujoco_simulation PUBLIC
-    -fsanitize=address
-    -fno-omit-frame-pointer)
-  target_link_options(mujoco_simulation PUBLIC -fsanitize=address)
-endif()
-
-if(MUJOCO_SIMULATION_ENABLE_TSAN)
-  target_compile_options(mujoco_simulation PUBLIC
-    -fsanitize=thread
-    -fno-omit-frame-pointer)
-  target_link_options(mujoco_simulation PUBLIC -fsanitize=thread)
-endif()
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Sanitizers.cmake")
 
 if(MUJOCO_SIMULATION_BUILD_TESTS)
   include(CTest)
@@ -206,39 +186,5 @@ if(MUJOCO_SIMULATION_BUILD_EXAMPLES)
 endif()
 
 if(MUJOCO_SIMULATION_INSTALL)
-  set(MUJOCO_SIMULATION_CMAKE_INSTALL_DIR
-    "${CMAKE_INSTALL_LIBDIR}/cmake/mujoco_simulation")
-
-  install(TARGETS mujoco_simulation
-    EXPORT mujoco_simulationTargets
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-  install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/mujoco_simulation
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING
-      PATTERN "*.hpp"
-      PATTERN "*.h"
-      PATTERN "*.in" EXCLUDE)
-  install(FILES
-    "${MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR}/mujoco_simulation/version.hpp"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation)
-
-  configure_package_config_file(
-    cmake/mujoco_simulationConfig.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/mujoco_simulationConfig.cmake"
-    INSTALL_DESTINATION ${MUJOCO_SIMULATION_CMAKE_INSTALL_DIR})
-  write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/mujoco_simulationConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion)
-  install(EXPORT mujoco_simulationTargets
-    FILE mujoco_simulationTargets.cmake
-    NAMESPACE mujoco_simulation::
-    DESTINATION ${MUJOCO_SIMULATION_CMAKE_INSTALL_DIR})
-  install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/mujoco_simulationConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/mujoco_simulationConfigVersion.cmake"
-    DESTINATION ${MUJOCO_SIMULATION_CMAKE_INSTALL_DIR})
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Install.cmake")
 endif()

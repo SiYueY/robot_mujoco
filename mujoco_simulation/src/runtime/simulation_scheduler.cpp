@@ -1,11 +1,11 @@
-#include "mujoco_simulation/runtime/simulation_scheduler.hpp"
+#include "runtime/simulation_scheduler.hpp"
 
 #include <cmath>
 #include <exception>
 #include <utility>
 
 #include "common/logging.hpp"
-#include "mujoco_simulation/common/macro.hpp"
+#include "common/macro.hpp"
 
 namespace mujoco_simulation {
 

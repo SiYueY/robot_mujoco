@@ -1,10 +1,10 @@
-#include "mujoco_simulation/component/imu/imu_component.hpp"
+#include "component/imu/imu_component.hpp"
 
 #include <cmath>
 #include <utility>
 
 #include "common/logging.hpp"
-#include "mujoco_simulation/common/macro.hpp"
+#include "common/macro.hpp"
 
 namespace mujoco_simulation {
 ImuComponent::ImuComponent(ImuInfo info)
