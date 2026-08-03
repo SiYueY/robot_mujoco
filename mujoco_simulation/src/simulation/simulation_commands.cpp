@@ -5,7 +5,7 @@
 namespace mujoco_simulation {
 
 bool Simulation::Impl::write_command(JointId id, const JointCommand& command) {
-    if (!command_buffer_.write<JointCommand>(id, command)) {
+    if (!command_buffer_.write(id, command)) {
         LOG_ERROR << "joint command was rejected for component id " << id << ".";
         return false;
     }
@@ -13,7 +13,7 @@ bool Simulation::Impl::write_command(JointId id, const JointCommand& command) {
 }
 
 bool Simulation::Impl::write_command(MobileBaseId id, const MobileBaseCommand& command) {
-    if (!command_buffer_.write<MobileBaseCommand>(id, command)) {
+    if (!command_buffer_.write(id, command)) {
         LOG_ERROR << "mobile base command was rejected for component id " << id << ".";
         return false;
     }
@@ -29,7 +29,7 @@ bool Simulation::Impl::write_command(const RobotCommand& command) {
 }
 
 bool Simulation::Impl::write_commands(const JointCommands& commands) {
-    if (!command_buffer_.write(CommandBatch<JointCommand>{commands})) {
+    if (!command_buffer_.write(commands)) {
         LOG_ERROR << "joint command batch was rejected.";
         return false;
     }
@@ -37,7 +37,7 @@ bool Simulation::Impl::write_commands(const JointCommands& commands) {
 }
 
 bool Simulation::Impl::write_commands(const MobileBaseCommands& commands) {
-    if (!command_buffer_.write(CommandBatch<MobileBaseCommand>{commands})) {
+    if (!command_buffer_.write(commands)) {
         LOG_ERROR << "mobile base command batch was rejected.";
         return false;
     }

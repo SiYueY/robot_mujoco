@@ -3,14 +3,14 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <string_view>
+#include <string>
 #include <thread>
 
 namespace mujoco_simulation_test {
 
 class TemporaryFile {
 public:
-    explicit TemporaryFile(std::string_view filename)
+    explicit TemporaryFile(const std::string& filename)
     : path_(std::filesystem::temp_directory_path() / filename) {}
     ~TemporaryFile() { std::filesystem::remove(path_); }
 
@@ -19,7 +19,7 @@ public:
 
     const std::filesystem::path& path() const noexcept { return path_; }
 
-    bool write(std::string_view content) const {
+    bool write(const std::string& content) const {
         std::ofstream output(path_);
         output << content;
         return output.good();

@@ -289,7 +289,7 @@ bool MobileBaseComponent::configure_wheel(
         return false;
     }
     const mjtNum* gain = context.model->actuator_gainprm + binding.actuator_id * mjNGAIN;
-    if (!equal(static_cast<double>(gain[0]), 1.0)) {
+    if (!math::equal(static_cast<double>(gain[0]), 1.0)) {
         LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' gain must be 1.";
         return false;
@@ -300,7 +300,7 @@ bool MobileBaseComponent::configure_wheel(
         return false;
     }
     const mjtNum* gear = context.model->actuator_gear + binding.actuator_id * 6;
-    if (!equal(static_cast<double>(gear[0]), 1.0)) {
+    if (!math::equal(static_cast<double>(gear[0]), 1.0)) {
         LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' gear must be 1.";
         return false;
@@ -408,10 +408,10 @@ bool MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
 }
 
 double MobileBaseComponent::wrap_angle(double angle) {
-    while (angle > Pi) {
+    while (math::greater(angle, Pi)) {
         angle -= 2.0 * Pi;
     }
-    while (angle < -Pi) {
+    while (math::less(angle, -Pi)) {
         angle += 2.0 * Pi;
     }
     return angle;

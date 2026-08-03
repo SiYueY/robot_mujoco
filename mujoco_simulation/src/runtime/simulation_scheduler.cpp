@@ -4,6 +4,7 @@
 #include <exception>
 #include <utility>
 
+#include "common/compare.hpp"
 #include "common/logging.hpp"
 #include "common/macro.hpp"
 
@@ -304,7 +305,7 @@ void SimulationScheduler::worker_loop() {
                 // task cannot start immediately merely to recover a fraction of one
                 // period. The loop's next iteration then advances its deadline for
                 // the task after that.
-                if (step_end > next_deadline) {
+                if (math::greater(step_end, next_deadline)) {
                     log_deadline_miss(step_end, next_deadline);
                     next_deadline = step_end + physics_period_;
                 }

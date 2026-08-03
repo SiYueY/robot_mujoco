@@ -110,7 +110,7 @@ bool JointComponent::init(const mjContext& context) {
         return false;
     }
     const mjtNum* gain = model.actuator_gainprm + joint_.actuator_id * mjNGAIN;
-    if (!equal(static_cast<double>(gain[0]), 1.0)) {
+    if (!math::equal(static_cast<double>(gain[0]), 1.0)) {
         LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
                   << "' has gain " << gain[0] << ", expected 1.";
         return false;
@@ -122,7 +122,7 @@ bool JointComponent::init(const mjContext& context) {
         return false;
     }
     const mjtNum* gear = model.actuator_gear + joint_.actuator_id * 6;
-    if (!equal(static_cast<double>(gear[0]), 1.0)) {
+    if (!math::equal(static_cast<double>(gear[0]), 1.0)) {
         LOG_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
                   << "' has gear " << gear[0] << ", expected 1.";
         return false;

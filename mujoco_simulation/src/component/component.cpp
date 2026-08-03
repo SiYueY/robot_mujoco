@@ -25,8 +25,8 @@ bool SimulationComponent::configure(const mjContext& context) {
         LOG_ERROR << "component name must not be empty.";
         return false;
     }
-    if (!std::isfinite(period_) || period_ < 0.0) {
-        LOG_ERROR << "component '" << name_ << "' period must be finite and non-negative.";
+    if (!std::isfinite(period_) || period_ <= 0.0) {
+        LOG_ERROR << "component '" << name_ << "' period must be a finite, positive number.";
         return false;
     }
 
@@ -36,30 +36,23 @@ bool SimulationComponent::configure(const mjContext& context) {
         return false;
     }
 
-    if (period_ > 0.0 && period_ < physics_period) {
+    if (math::less(period_, physics_period)) {
         LOG_ERROR << "component '" << name_ << "' period " << period_
                   << " must not be shorter than the physics period " << physics_period << ".";
         return false;
     }
 
-    if (period_ > 0.0) {
-        const double multiple = period_ / physics_period;
-        const double rounded_multiple = std::round(multiple);
-        const double tolerance = 1e-9 * std::max(1.0, std::abs(multiple));
-        if (rounded_multiple < 1.0 || std::abs(multiple - rounded_multiple) > tolerance) {
-            LOG_ERROR << "component '" << name_ << "' period " << period_
-                      << " must be an integer multiple of the physics period " << physics_period
-                      << ".";
-            return false;
-        }
+    const double multiple = period_ / physics_period;
+    const double rounded_multiple = std::round(multiple);
+    const double tolerance = 1e-9 * std::max(1.0, std::abs(multiple));
+    if (rounded_multiple < 1.0 || std::abs(multiple - rounded_multiple) > tolerance) {
+        LOG_ERROR << "component '" << name_ << "' period " << period_
+                  << " must be an integer multiple of the physics period " << physics_period << ".";
+        return false;
     }
 
-    if (period_ == 0.0) {
-        LOG_DEBUG << "component '" << name_ << "' is configured to update every physics step.";
-    } else {
-        LOG_DEBUG << "component '" << name_ << "' is configured with period " << period_
-                  << " seconds.";
-    }
+    LOG_DEBUG << "component '" << name_ << "' is configured with update period " << period_
+              << " seconds.";
 
     if (!reset_schedule()) {
         LOG_ERROR << "failed to reset the update schedule for component '" << name_ << "'.";
@@ -69,17 +62,13 @@ bool SimulationComponent::configure(const mjContext& context) {
 }
 
 bool SimulationComponent::poll_update(mjTime time) {
-    if (period_ <= 0.0) {
-        return true;
-    }
-
-    if (less(time, next_time_)) {
+    if (math::less(time, next_time_)) {
         return false;
     }
 
     do {
         next_time_ += period_;
-    } while (greater(time, next_time_) || equal(time, next_time_));
+    } while (math::greater(time, next_time_) || math::equal(time, next_time_));
     return true;
 }
 

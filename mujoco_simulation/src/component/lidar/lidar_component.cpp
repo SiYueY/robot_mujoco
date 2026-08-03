@@ -38,18 +38,18 @@ bool LidarComponent::init(const mjContext& context) {
         LOG_ERROR << "lidar '" << info_.name << "' angle increment must be positive.";
         return false;
     }
-    if (info_.angle_max < info_.angle_min) {
+    if (math::less(info_.angle_max, info_.angle_min)) {
         LOG_ERROR << "lidar '" << info_.name << "' angle maximum is less than angle minimum.";
         return false;
     }
-    if (info_.range_max < info_.range_min) {
+    if (math::less(info_.range_max, info_.range_min)) {
         LOG_ERROR << "lidar '" << info_.name << "' range maximum is less than range minimum.";
         return false;
     }
 
     const double span = (info_.angle_max - info_.angle_min) / info_.angle_increment;
     const double rounded_span = std::round(span);
-    if (!equal(span, rounded_span) ||
+    if (!math::equal(span, rounded_span) ||
         rounded_span > static_cast<double>(std::numeric_limits<int>::max() - 1)) {
         LOG_ERROR << "lidar '" << info_.name
                   << "' angle span must be an integral number of increments.";

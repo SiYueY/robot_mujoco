@@ -33,9 +33,9 @@ std::size_t component_count(const std::vector<std::unique_ptr<Component>>& v) {
 template <typename Component, typename State>
 bool update_components(
     const mjContext& context, const std::vector<std::unique_ptr<Component>>& components,
-    std::size_t component_count, StateSnapshots<State>& published) {
+    StateSnapshots<State>& published) {
     std::vector<Component*> due;
-    due.reserve(component_count);
+    due.reserve(components.size());
     for (const auto& component : components) {
         if (component != nullptr && component->poll_update(context.data->time)) {
             due.push_back(component.get());
@@ -71,9 +71,8 @@ bool ComponentManager::init(
     }
     clear();
     camera_render_service_ = &camera_render_service;
-    command_appliers_.clear();
 
-    const auto add = [&](auto config, auto& slots, std::size_t& count, auto make_component) {
+    const auto add = [&](auto config, auto& slots, auto make_component) {
         const ComponentId id = config.id;
         if (id == kInvalidComponentId || id > kMaximumComponentId ||
             (slots.size() > id && slots[id] != nullptr)) {
@@ -84,45 +83,39 @@ bool ComponentManager::init(
         if (!component->init(context)) return false;
         if (slots.size() <= id) slots.resize(id + 1U);
         slots[id] = std::move(component);
-        ++count;
         return true;
     };
     for (const ComponentConfig& entry : components) {
         if (const auto* value = std::get_if<JointInfo>(&entry);
-            value != nullptr &&
-            !add(*value, joints_components_, joint_component_count_, [](JointInfo v) {
+            value != nullptr && !add(*value, joints_components_, [](JointInfo v) {
                 return std::make_unique<JointComponent>(std::move(v));
             })) {
             clear();
             return false;
         }
         if (const auto* value = std::get_if<ImuInfo>(&entry);
-            value != nullptr && !add(*value, imu_components_, imu_component_count_, [](ImuInfo v) {
+            value != nullptr && !add(*value, imu_components_, [](ImuInfo v) {
                 return std::make_unique<ImuComponent>(std::move(v));
             })) {
             clear();
             return false;
         }
         if (const auto* value = std::get_if<LidarInfo>(&entry);
-            value != nullptr &&
-            !add(*value, lidar_components_, lidar_component_count_, [](LidarInfo v) {
+            value != nullptr && !add(*value, lidar_components_, [](LidarInfo v) {
                 return std::make_unique<LidarComponent>(std::move(v));
             })) {
             clear();
             return false;
         }
         if (const auto* value = std::get_if<MobileBaseInfo>(&entry);
-            value != nullptr && !add(
-                                    *value, mobile_base_components_, mobile_base_component_count_,
-                                    [](MobileBaseInfo v) {
-                                        return std::make_unique<MobileBaseComponent>(std::move(v));
-                                    })) {
+            value != nullptr && !add(*value, mobile_base_components_, [](MobileBaseInfo v) {
+                return std::make_unique<MobileBaseComponent>(std::move(v));
+            })) {
             clear();
             return false;
         }
         if (const auto* value = std::get_if<CameraConfig>(&entry);
-            value != nullptr &&
-            !add(*value, camera_components_, camera_component_count_, [](CameraConfig v) {
+            value != nullptr && !add(*value, camera_components_, [](CameraConfig v) {
                 return std::make_unique<CameraComponent>(std::move(v));
             })) {
             clear();
@@ -141,14 +134,6 @@ bool ComponentManager::init(
     warn_sparse(camera_components_, "camera");
     warn_sparse(lidar_components_, "lidar");
     warn_sparse(mobile_base_components_, "mobile base");
-    register_command_applier<JointCommand>(
-        [this](const mjContext& command_context, const std::vector<JointCommand>& commands) {
-            return apply_joint_commands(command_context, commands);
-        });
-    register_command_applier<MobileBaseCommand>(
-        [this](const mjContext& command_context, const std::vector<MobileBaseCommand>& commands) {
-            return apply_mobile_base_commands(command_context, commands);
-        });
     return true;
 }
 
@@ -158,11 +143,6 @@ void ComponentManager::clear() {
     imu_components_.clear();
     lidar_components_.clear();
     mobile_base_components_.clear();
-    joint_component_count_ = 0;
-    camera_component_count_ = 0;
-    imu_component_count_ = 0;
-    lidar_component_count_ = 0;
-    mobile_base_component_count_ = 0;
     joints_.reset();
     mobile_bases_.reset();
     imus_.reset();
@@ -174,7 +154,6 @@ void ComponentManager::clear() {
     camera_request_sequence_ = 0;
     camera_generation_ = 1;
     simulation_step_ = 0;
-    command_appliers_.clear();
 }
 
 bool ComponentManager::reset(const mjContext& context) {
@@ -201,14 +180,11 @@ bool ComponentManager::reset(const mjContext& context) {
 bool ComponentManager::update(const mjContext& context) {
     if (!context.valid()) return false;
     ++simulation_step_;
-    if (!update_components<JointComponent, JointState>(
-            context, joints_components_, joint_component_count_, joints_) ||
+    if (!update_components<JointComponent, JointState>(context, joints_components_, joints_) ||
         !update_components<MobileBaseComponent, MobileBaseState>(
-            context, mobile_base_components_, mobile_base_component_count_, mobile_bases_) ||
-        !update_components<ImuComponent, ImuState>(
-            context, imu_components_, imu_component_count_, imus_) ||
-        !update_components<LidarComponent, LidarState>(
-            context, lidar_components_, lidar_component_count_, lidars_))
+            context, mobile_base_components_, mobile_bases_) ||
+        !update_components<ImuComponent, ImuState>(context, imu_components_, imus_) ||
+        !update_components<LidarComponent, LidarState>(context, lidar_components_, lidars_))
         return false;
     return consume_camera_results() && submit_due_cameras(context);
 }
@@ -236,7 +212,7 @@ bool ComponentManager::wait_for_camera_results() {
     return consume_camera_results();
 }
 
-bool ComponentManager::has_cameras() const noexcept { return camera_component_count_ != 0U; }
+bool ComponentManager::has_cameras() const noexcept { return !camera_components_.empty(); }
 void ComponentManager::clear_camera_states() noexcept {
     for (const auto& component : camera_components_)
         if (component != nullptr) component->clear_render_state();
@@ -325,14 +301,15 @@ bool ComponentManager::submit_due_cameras(const mjContext& context) {
     return true;
 }
 
-bool ComponentManager::apply_commands(const mjContext& context, const CommandSnapshot& snapshot) {
+bool ComponentManager::write_command(const mjContext& context, const RobotCommand& command) {
     if (!context.valid()) return false;
-    for (const CommandApplier& applier : command_appliers_)
-        if (!applier(context, snapshot)) return false;
+    if (!command.joints.empty() && !write_joint_commands(context, command.joints)) return false;
+    if (!command.mobile_bases.empty() && !write_mobile_base_commands(context, command.mobile_bases))
+        return false;
     return true;
 }
 
-bool ComponentManager::apply_joint_commands(
+bool ComponentManager::write_joint_commands(
     const mjContext& context, const std::vector<JointCommand>& commands) {
     for (JointId id = 0; id < commands.size(); ++id) {
         if (id >= joints_components_.size() || joints_components_[id] == nullptr) {
@@ -344,7 +321,7 @@ bool ComponentManager::apply_joint_commands(
     return true;
 }
 
-bool ComponentManager::apply_mobile_base_commands(
+bool ComponentManager::write_mobile_base_commands(
     const mjContext& context, const std::vector<MobileBaseCommand>& commands) {
     for (MobileBaseId id = 0; id < commands.size(); ++id) {
         if (id >= mobile_base_components_.size() || mobile_base_components_[id] == nullptr) {

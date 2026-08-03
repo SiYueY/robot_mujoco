@@ -7,7 +7,6 @@
 #include <mutex>
 #include <utility>
 
-#include "buffer/command_channel.hpp"
 #include "common/logging.hpp"
 #include "render/camera_render_service_impl.hpp"
 
@@ -106,16 +105,11 @@ bool Simulation::Impl::initialize_components() {
         LOG_ERROR << "failed to obtain the initial camera frame.";
         return false;
     }
-    if (!command_buffer_.configure_channel<JointCommand>(
-            command_valid_ids<JointInfo>(config_.components))) {
-        LOG_ERROR << "joint command channel requires contiguous component ids "
-                     "(0..N-1) for batch writes.";
-        return false;
-    }
-    if (!command_buffer_.configure_channel<MobileBaseCommand>(
+    if (!command_buffer_.configure_channels(
+            command_valid_ids<JointInfo>(config_.components),
             command_valid_ids<MobileBaseInfo>(config_.components))) {
-        LOG_ERROR << "mobile base command channel requires contiguous component "
-                     "ids (0..N-1) for batch writes.";
+        LOG_ERROR << "command channels require contiguous component ids "
+                     "(0..N-1) for batch writes.";
         return false;
     }
     if (!command_buffer_.finalize_configuration()) {
@@ -146,10 +140,8 @@ bool Simulation::Impl::scheduler_run_task() {
         LOG_ERROR << "simulation runtime is in the error state.";
         return false;
     }
-    if (!has_applied_command_ ||
-        command_buffer_.read_if_updated(applied_command_sequence_, applied_command_)) {
-        applied_command_sequence_ = applied_command_.sequence;
-        has_applied_command_ = true;
+    if (command_buffer_.read_if_updated(applied_command_sequence_, applied_command_)) {
+        applied_command_sequence_ = applied_command_->sequence;
     }
     {
         std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
@@ -161,7 +153,11 @@ bool Simulation::Impl::scheduler_run_task() {
             LOG_ERROR << "simulation runtime is not initialized.";
             return false;
         }
-        if (!component_manager_.apply_commands(runtime_->context(), applied_command_)) {
+        if (applied_command_ == nullptr) {
+            LOG_ERROR << "command snapshot is not available.";
+            return false;
+        }
+        if (!component_manager_.write_command(runtime_->context(), *applied_command_)) {
             LOG_ERROR << "component manager rejected a command snapshot.";
             return false;
         }

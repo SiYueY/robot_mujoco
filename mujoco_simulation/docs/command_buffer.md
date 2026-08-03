@@ -79,7 +79,7 @@ write_commands(MobileBaseCommands)
 
 ```cpp
 // 提议接口，尚未实现。
-bool command_handle(std::string_view name, CommandHandle& out) const;
+bool command_handle(const std::string& name, CommandHandle& out) const;
 bool write_command(CommandHandle handle, const JointCommand& command);
 ```
 

@@ -9,11 +9,12 @@
 #include <limits>
 #include <optional>
 #include <sstream>
-#include <string_view>
+#include <string>
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
 
+#include "common/compare.hpp"
 #include "tinyxml2.h"
 
 namespace mujoco_simulation {
@@ -110,7 +111,7 @@ bool validate_lidar(const LidarInfo& lidar, ConfigError* error) {
         set_error(error, nullptr, "angle_increment", "lidar angle_increment must be positive");
         return false;
     }
-    if (!(lidar.angle_min < lidar.angle_max)) {
+    if (!math::less(lidar.angle_min, lidar.angle_max)) {
         set_error(error, nullptr, "angle_min", "lidar angle_min must be less than angle_max");
         return false;
     }
@@ -118,7 +119,7 @@ bool validate_lidar(const LidarInfo& lidar, ConfigError* error) {
         set_error(error, nullptr, "range_min", "lidar range_min must be non-negative");
         return false;
     }
-    if (!(lidar.range_min < lidar.range_max)) {
+    if (!math::less(lidar.range_min, lidar.range_max)) {
         set_error(error, nullptr, "range_min", "lidar range_min must be less than range_max");
         return false;
     }
@@ -165,7 +166,7 @@ bool validate_mobile_base(const MobileBaseInfo& base, ConfigError* error) {
 }
 
 bool validate_limit(const JointLimit& limit, const char* name, ConfigError* error) {
-    if (std::isnan(limit.min) || std::isnan(limit.max) || limit.min > limit.max) {
+    if (std::isnan(limit.min) || std::isnan(limit.max) || math::greater(limit.min, limit.max)) {
         set_error(error, nullptr, name, "joint limit bounds are invalid");
         return false;
     }
@@ -224,10 +225,9 @@ bool validate_component_identity(
         set_error(error, nullptr, "name", std::string(kind) + " name is required");
         return false;
     }
-    if (!std::isfinite(period) || period < 0.0) {
+    if (!std::isfinite(period) || period <= 0.0) {
         set_error(
-            error, nullptr, "period",
-            std::string(kind) + " period must be finite and non-negative");
+            error, nullptr, "period", std::string(kind) + " period must be finite and positive");
         return false;
     }
     if (!ids.insert(id).second || !names.insert(name).second) {
@@ -263,7 +263,7 @@ bool required(const XMLElement& element, const char* attribute, std::string& out
     return !out.empty();
 }
 
-bool parse_finite_double(std::string_view value, double& out) {
+bool parse_finite_double(const std::string& value, double& out) {
     const std::string trimmed = trim_copy(std::string(value));
     std::size_t parsed = 0;
     try {
@@ -296,7 +296,7 @@ bool number_array(const XMLElement& element, const char* attribute, std::array<d
     std::string extra;
     return !std::getline(values, extra, ',');
 }
-bool parse_component_id_value(std::string_view raw, ComponentId maximum, ComponentId& out) {
+bool parse_component_id_value(const std::string& raw, ComponentId maximum, ComponentId& out) {
     const std::string value = trim_copy(std::string(raw));
     if (value.empty() || value.front() == '+' || value.front() == '-') return false;
     std::size_t parsed = 0;
@@ -672,6 +672,22 @@ bool SimulationConfigParser::load_file(
                 error, root->FirstChildElement("robot"), "",
                 "invalid robot component configuration");
         return false;
+    }
+    // Resolve config-layer period defaults.  A missing (or zero) period on
+    // Joint/IMU/MobileBase means "update every physics step", which here
+    // becomes the parsed physics period so components never see a sentinel 0.
+    const double physics_period = parsed.scheduler.physics_period;
+    for (ComponentConfig& component : parsed.components) {
+        std::visit(
+            [physics_period](auto& info) {
+                using Info = std::decay_t<decltype(info)>;
+                if constexpr (
+                    std::is_same_v<Info, JointInfo> || std::is_same_v<Info, ImuInfo> ||
+                    std::is_same_v<Info, MobileBaseInfo>) {
+                    if (info.period == 0.0) info.period = physics_period;
+                }
+            },
+            component);
     }
     ConfigError validation_error;
     if (!SimulationConfigValidator::validate(parsed, &validation_error)) {

@@ -59,7 +59,8 @@ int main() {
     }
 
     mujoco_simulation::mjContext context(model, data);
-    TestComponent every_step(0.0);
+    TestComponent every_step(0.001);
+    TestComponent zero_period(0.0);
     TestComponent every_third_step(0.003);
     TestComponent negative_period(-0.001);
     TestComponent infinite_period(std::numeric_limits<double>::infinity());
@@ -67,7 +68,8 @@ int main() {
     TestComponent misaligned(0.0025);
 
     bool success =
-        check(every_step.init(context), "period zero should configure successfully") &&
+        check(every_step.init(context), "physics-period component should configure successfully") &&
+        check(!zero_period.init(context), "zero period should be rejected") &&
         check(every_third_step.init(context), "aligned period should configure successfully") &&
         check(!negative_period.init(context), "negative period was accepted") &&
         check(!infinite_period.init(context), "infinite period was accepted") &&
@@ -75,8 +77,11 @@ int main() {
         check(!misaligned.init(context), "non-integral period multiple was accepted");
 
     success =
-        success && check(every_step.poll_update(0.0), "period zero should be due at time zero") &&
-        check(every_step.poll_update(0.001), "period zero should be due every physics step") &&
+        success &&
+        check(every_step.poll_update(0.0), "physics-period component should be due at time zero") &&
+        check(
+            every_step.poll_update(0.001),
+            "physics-period component should be due every physics step") &&
         check(every_third_step.poll_update(0.0), "periodic component should be due at time zero") &&
         check(!every_third_step.poll_update(0.001), "periodic component was due one step early") &&
         check(!every_third_step.poll_update(0.002), "periodic component was due two steps early") &&

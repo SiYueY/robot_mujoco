@@ -66,7 +66,7 @@ int main() {
     camera.camera_name = "test_camera";
     camera.width = 32;
     camera.height = 24;
-    camera.period = 0.0;
+    camera.period = 0.001;
     config.components.push_back(camera);
     mujoco_simulation::Simulation simulation;
 

@@ -35,7 +35,6 @@ bool Simulation::Impl::initialize(const SimulationConfig& config) {
         return false;
     }
     config_ = config;
-    has_applied_command_ = false;
     applied_command_ = {};
     command_buffer_.shutdown();
     state_buffer_.clear();
@@ -54,7 +53,6 @@ bool Simulation::Impl::initialize(const SimulationConfig& config) {
         step_.store(0);
         sequence_ = 0;
         command_buffer_.shutdown();
-        has_applied_command_ = false;
         applied_command_ = {};
     };
     if (!load_model(config.model)) {
@@ -126,7 +124,6 @@ bool Simulation::Impl::shutdown() {
     }
     command_buffer_.shutdown();
     state_buffer_.clear();
-    has_applied_command_ = false;
     applied_command_ = {};
     return true;
 }

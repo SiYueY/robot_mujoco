@@ -12,7 +12,6 @@
 #include "buffer/state_buffer.hpp"
 #include "component/camera/camera_render_service.hpp"
 #include "component/component_manager.hpp"
-#include "data/command_snapshot.hpp"
 #include "mujoco_simulation/simulation.hpp"
 #include "runtime/simulation_runtime.hpp"
 #include "runtime/simulation_scheduler.hpp"
@@ -80,9 +79,8 @@ public:
     std::atomic<bool> runtime_failed_{false};
     std::atomic<std::uint64_t> step_{0};
     std::uint64_t sequence_{0};
-    CommandSnapshot applied_command_;
+    std::shared_ptr<const RobotCommand> applied_command_;
     std::uint64_t applied_command_sequence_{0};
-    bool has_applied_command_{false};
 };
 
 }  // namespace mujoco_simulation

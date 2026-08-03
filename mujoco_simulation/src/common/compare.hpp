@@ -1,11 +1,10 @@
 #pragma once
-// Internal tolerant-comparison helpers.  The public common/math.hpp
-// intentionally carries only the value-type aliases; these templates are used
-// exclusively by internal source.
 
 #include <type_traits>
 
 namespace mujoco_simulation {
+
+namespace math {
 
 // 默认浮点误差
 template <typename T>
@@ -72,4 +71,5 @@ constexpr bool greater(T lhs, T rhs, T epsilon) {
     return lhs > rhs;
 }
 
+}  // namespace math
 }  // namespace mujoco_simulation

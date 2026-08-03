@@ -9,6 +9,7 @@
 #include <string>
 
 #include "component/component.hpp"
+#include "component/mobile_base/mecanum_kinematics.hpp"
 #include "mujoco_simulation/component/mobile_base.hpp"
 
 namespace mujoco_simulation {

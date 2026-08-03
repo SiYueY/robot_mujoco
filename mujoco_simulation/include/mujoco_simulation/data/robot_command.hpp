@@ -1,16 +1,19 @@
 #pragma once
 
+#include <cstdint>
+
 #include "mujoco_simulation/component/joint.hpp"
 #include "mujoco_simulation/component/mobile_base.hpp"
 
 namespace mujoco_simulation {
 
-// A cross-component command update.  Simulation::write_command() validates both
-// batches and publishes them as one command-buffer snapshot.  A batch is a
-// dense command vector indexed by component id: every slot is an explicit
-// command, and the batch must cover the configured command channel size.  An
-// empty batch is a no-op and preserves prior commands.
+// The cross-component command state, mirroring RobotState.  Simulation::
+// write_command() validates and publishes it as one command-buffer snapshot;
+// the buffer assigns the sequence.  Each batch is a dense command vector
+// indexed by component id, must cover the configured channel size, and an
+// empty batch is a no-op that preserves prior commands.
 struct RobotCommand {
+    std::uint64_t sequence{0};
     JointCommands joints;
     MobileBaseCommands mobile_bases;
 };

@@ -11,7 +11,12 @@ using JointId = std::size_t;
 
 enum class JointType { Revolute, Prismatic };
 
-enum class JointControlMode { Position, Velocity, Effort, Hybrid };
+enum class JointControlMode {
+    Position,  // 位置模式
+    Velocity,  // 速度模式
+    Effort,    // 力矩模式
+    Hybrid     // 力位混控模式
+};
 
 struct JointLimit {
     double min{-std::numeric_limits<double>::infinity()};

@@ -157,7 +157,8 @@ Simulation
   - 状态与单组件命令读写允许稀疏 ID（空洞为保留槽位）；批量命令通道要求连续 ID
   - 组件 ID 允许范围是 `0..65535`（编译期固定上限，不可配置）
   - Camera 的宽、高必须在 `1..8192`；单个 Camera 启用的 RGB8（3 B/像素）和 depth float（4 B/像素）输出合计不得超过 256 MiB
-  - 所有组件以 `period`（秒）配置采样周期；`period="0"` 表示每个 physics step 更新。
+  - 所有组件以 `period`（秒）配置采样周期；Joint/IMU/MobileBase 未配置或
+    `period="0"` 时，解析器默认填充为 `physics_period`（每个 physics step 更新）。
     正周期必须是 `physics.period` 的整数倍，且不得短于该物理周期。
     旧的 `update_rate`（Hz）属性不受支持。
 - `camera_renderer`

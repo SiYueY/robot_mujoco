@@ -130,6 +130,25 @@ int main() {
         return 1;
     }
 
+    const char* defaulted_period = R"(
+<robot_mujoco>
+  <mujoco><mjcf>model.xml</mjcf></mujoco>
+  <simulation>
+    <physics period="0.001"/>
+    <viewer period="0.02"/>
+  </simulation>
+  <robot><joint id="0" name="joint"/></robot>
+</robot_mujoco>)";
+    if (!check(write_file(path, defaulted_period), "failed to write default-period XML") ||
+        !check(parser.load_file(path.string(), config), "default-period XML was rejected") ||
+        !check(
+            std::abs(std::get<mujoco_simulation::JointInfo>(config.components[0]).period - 0.001) <
+                1e-12,
+            "missing joint period was not defaulted to the physics period")) {
+        cleanup();
+        return 1;
+    }
+
     const char* legacy_rate = R"(
 <robot_mujoco>
   <mujoco><mjcf>model.xml</mjcf></mujoco>
@@ -314,7 +333,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
 
     mujoco_simulation::SimulationConfig duplicate_config;
     duplicate_config.model.model_path = "model.xml";
-    invalid_period_joint.period = 0.0;
+    invalid_period_joint.period = 0.001;
     duplicate_config.components.emplace_back(invalid_period_joint);
     duplicate_config.components.emplace_back(invalid_period_joint);
     if (!check(
@@ -405,6 +424,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     mujoco_simulation::MobileBaseInfo missing_base_name;
     missing_base_name.id = 0;
     missing_base_name.mobile_base_name = "base";
+    missing_base_name.period = 0.001;
     missing_base_name.mecanum_info.wheel_radius = 1.0;
     missing_base_name.mecanum_info.wheel_base = 1.0;
     missing_base_name.mecanum_info.track_width = 1.0;

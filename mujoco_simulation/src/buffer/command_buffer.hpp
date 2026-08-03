@@ -1,20 +1,21 @@
 #pragma once
 // Internal command buffering contract; not part of the installed API.
 
-#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
-#include <typeindex>
-#include <unordered_map>
-#include <utility>
+#include <vector>
 
-#include "buffer/command_channel.hpp"
-#include "data/command_snapshot.hpp"
+#include "component/component.hpp"
 #include "mujoco_simulation/component/joint.hpp"
 #include "mujoco_simulation/component/mobile_base.hpp"
 #include "mujoco_simulation/data/robot_command.hpp"
 
 namespace mujoco_simulation {
+
+template <typename Command>
+struct CommandTraits;
 
 template <>
 struct CommandTraits<JointCommand> {
@@ -56,78 +57,37 @@ struct CommandTraits<MobileBaseCommand> {
     }
 };
 
+// Cold-path layout bitmap. Unlike vector<bool>, this has ordinary reference
+// semantics and remains easy to inspect in diagnostics and tests.
+using CommandChannelLayout = std::vector<std::uint8_t>;
+
 class CommandBuffer {
 public:
-    template <typename Command>
-    bool configure_channel(CommandChannelLayout valid_ids) {
-        static_assert(has_command_traits_v<Command>, "Command type needs CommandTraits::validate");
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (initialized_ || channels_.count(std::type_index(typeid(Command))) != 0) return false;
-        auto channel = std::make_unique<ChannelHolder<Command>>();
-        if (!channel->channel.initialize(std::move(valid_ids))) return false;
-        snapshot_.channels_[std::type_index(typeid(Command))] = channel->snapshot();
-        channels_.emplace(std::type_index(typeid(Command)), std::move(channel));
-        return true;
-    }
+    bool configure_channels(CommandChannelLayout joint_ids, CommandChannelLayout mobile_base_ids);
     bool finalize_configuration();
-    template <typename Command>
-    bool write(ComponentId id, const Command& command) {
-        static_assert(has_command_traits_v<Command>, "Command type needs CommandTraits::validate");
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!initialized_) return false;
-        auto* channel = find_channel<Command>();
-        if (channel == nullptr || !channel->channel.write(id, command)) return false;
-        publish(*channel);
-        return true;
-    }
-    template <typename Command>
-    bool write(const CommandBatch<Command>& batch) {
-        static_assert(has_command_traits_v<Command>, "Command type needs CommandTraits::validate");
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!initialized_) return false;
-        auto* channel = find_channel<Command>();
-        if (channel == nullptr) return false;
-        if (batch.slots.empty()) return true;
-        if (!channel->channel.apply(batch.slots)) return false;
-        publish(*channel);
-        return true;
-    }
+
+    bool write(ComponentId id, const JointCommand& command);
+    bool write(ComponentId id, const MobileBaseCommand& command);
+    bool write(const JointCommands& commands);
+    bool write(const MobileBaseCommands& commands);
     bool write(const RobotCommand& command);
-    CommandSnapshot read() const;
-    bool read_if_updated(std::uint64_t last_sequence, CommandSnapshot& out) const;
+
+    std::shared_ptr<const RobotCommand> read() const;
+    bool read_if_updated(
+        std::uint64_t last_sequence, std::shared_ptr<const RobotCommand>& out) const;
     void clear();
     void shutdown();
 
 private:
-    class ChannelBase {
-    public:
-        virtual ~ChannelBase() = default;
-        virtual std::shared_ptr<const void> snapshot() const = 0;
-        virtual void clear() = 0;
-        virtual void shutdown() = 0;
-    };
-    template <typename Command>
-    class ChannelHolder final : public ChannelBase {
-    public:
-        std::shared_ptr<const void> snapshot() const override { return channel.snapshot(); }
-        void clear() override { channel.clear(); }
-        void shutdown() override { channel.shutdown(); }
-        CommandChannel<Command> channel;
-    };
-    template <typename Command>
-    ChannelHolder<Command>* find_channel() {
-        const auto found = channels_.find(std::type_index(typeid(Command)));
-        return found == channels_.end() ? nullptr
-                                        : static_cast<ChannelHolder<Command>*>(found->second.get());
-    }
-    template <typename Command>
-    void publish(ChannelHolder<Command>& channel) {
-        snapshot_.channels_[std::type_index(typeid(Command))] = channel.snapshot();
-        ++snapshot_.sequence;
-    }
-    mutable std::mutex mutex_;
+    bool validate(const JointCommands& commands) const;
+    bool validate(const MobileBaseCommands& commands) const;
+
+    CommandChannelLayout joint_valid_ids_;
+    CommandChannelLayout mobile_base_valid_ids_;
+    std::uint64_t sequence_{0};
     bool initialized_{false};
-    std::unordered_map<std::type_index, std::unique_ptr<ChannelBase>> channels_;
-    CommandSnapshot snapshot_;
+    std::shared_ptr<const RobotCommand> current_;
+    mutable std::mutex mutex_;
 };
+
 }  // namespace mujoco_simulation

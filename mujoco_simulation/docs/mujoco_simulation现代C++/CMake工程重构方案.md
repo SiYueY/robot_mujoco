@@ -340,9 +340,6 @@ mujoco_simulation/
 │   │   ├── logging.hpp
 │   │   └── macro.hpp
 │   │
-│   ├── data/
-│   │   └── command_snapshot.hpp
-│   │
 │   ├── simulation/
 │   │   ├── simulation.cpp
 │   │   ├── simulation_impl.hpp
@@ -355,7 +352,6 @@ mujoco_simulation/
 │   ├── buffer/
 │   │   ├── command_buffer.hpp
 │   │   ├── command_buffer.cpp
-│   │   ├── command_channel.hpp
 │   │   ├── state_buffer.hpp
 │   │   └── state_buffer.cpp
 │   │
