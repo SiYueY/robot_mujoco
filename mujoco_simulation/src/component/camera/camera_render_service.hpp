@@ -8,6 +8,7 @@
 
 #include "mujoco_simulation/component/camera.hpp"
 #include "mujoco_simulation/config/simulation_config.hpp"
+
 #include "runtime/context.hpp"
 
 namespace mujoco_simulation {
@@ -171,4 +172,3 @@ protected:
 };
 
 }  // namespace mujoco_simulation
-#include <chrono>

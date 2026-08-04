@@ -1,16 +1,16 @@
 #pragma once
-// Internal mobile-base component contract.
-
-#include <mujoco/mujoco.h>
 
 #include <array>
 #include <memory>
 #include <optional>
 #include <string>
 
+#include <mujoco/mujoco.h>
+
+#include "mujoco_simulation/component/mobile_base.hpp"
+
 #include "component/component.hpp"
 #include "component/mobile_base/mecanum_kinematics.hpp"
-#include "mujoco_simulation/component/mobile_base.hpp"
 
 namespace mujoco_simulation {
 

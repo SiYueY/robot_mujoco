@@ -1,5 +1,4 @@
 #pragma once
-// Private Simulation PImpl contract. This header is never installed.
 
 #include <atomic>
 #include <chrono>
@@ -8,12 +7,13 @@
 #include <mutex>
 #include <string>
 
+#include "mujoco_simulation/simulation.hpp"
+
 #include "buffer/command_buffer.hpp"
 #include "buffer/state_buffer.hpp"
-#include "component/component_index.hpp"
 #include "component/camera/camera_render_service.hpp"
+#include "component/component_id.hpp"
 #include "component/component_manager.hpp"
-#include "mujoco_simulation/simulation.hpp"
 #include "runtime/simulation_runtime.hpp"
 #include "runtime/simulation_scheduler.hpp"
 #include "viewer/simulation_viewer.hpp"
@@ -69,7 +69,7 @@ public:
     std::unique_ptr<CameraRenderService> camera_render_service_;
     CommandBuffer command_buffer_;
     StateBuffer state_buffer_;
-    std::shared_ptr<const ComponentIndex> component_index_;
+    std::shared_ptr<const ComponentIdResolver> id_resolver_;
     std::unique_ptr<SimulationRuntime> runtime_;
     mutable std::mutex lifecycle_mutex_;
     mutable std::mutex mujoco_mutex_;

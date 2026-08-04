@@ -1,7 +1,4 @@
 #pragma once
-// Internal OpenGL camera renderer.
-
-#include <mujoco/mujoco.h>
 
 #include <atomic>
 #include <chrono>
@@ -15,8 +12,11 @@
 #include <thread>
 #include <vector>
 
-#include "component/camera/camera_render_service.hpp"
+#include <mujoco/mujoco.h>
+
 #include "mujoco_simulation/config/simulation_config.hpp"
+
+#include "component/camera/camera_render_service.hpp"
 #include "render/offscreen_gl_context.hpp"
 
 namespace mujoco_simulation {

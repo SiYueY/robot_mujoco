@@ -10,13 +10,14 @@
 
 namespace mujoco_simulation {
 
-class ComponentIndex {
+class ComponentIdResolver {
 public:
     using Indices = std::vector<std::size_t>;
     static constexpr std::size_t no_index = std::numeric_limits<std::size_t>::max();
 
-    static std::shared_ptr<const ComponentIndex> create(const ComponentConfigList& components) {
-        auto index = std::make_shared<ComponentIndex>();
+    static std::shared_ptr<const ComponentIdResolver> create(
+        const ComponentConfigList& components) {
+        auto index = std::make_shared<ComponentIdResolver>();
         std::vector<std::size_t> joints, mobile_bases, imus, cameras, lidars;
         for (const ComponentConfig& component : components) {
             if (const auto* value = std::get_if<JointInfo>(&component)) joints.push_back(value->id);

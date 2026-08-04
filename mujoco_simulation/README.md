@@ -343,7 +343,6 @@ cmake --install build/mujoco_simulation --prefix /desired/install/prefix
 
 - `MUJOCO_SIMULATION_BUILD_SHARED`：构建 shared（默认）或 static 库；
 - `MUJOCO_SIMULATION_BUILD_TESTS`：包含 `tests/`；
-- `MUJOCO_SIMULATION_BUILD_EXAMPLES`：包含 `examples/`；
 - `MUJOCO_SIMULATION_INSTALL`：生成安装规则（默认开启）；
 - `MUJOCO_SIMULATION_ENABLE_ASAN`：为库启用 AddressSanitizer。
 - `MUJOCO_SIMULATION_ENABLE_TSAN`：为库启用 ThreadSanitizer；不能与 ASan 同时启用。

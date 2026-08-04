@@ -1,5 +1,4 @@
 #pragma once
-// Internal MuJoCo type helpers.
 
 #include <cstdint>
 

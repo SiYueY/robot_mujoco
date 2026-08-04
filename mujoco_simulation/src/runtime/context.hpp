@@ -1,5 +1,4 @@
 #pragma once
-// Internal MuJoCo context wrapper.
 
 #include <mujoco/mujoco.h>
 

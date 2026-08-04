@@ -1,7 +1,4 @@
 #pragma once
-// Internal mecanum wheel kinematics.  Only MobileBaseComponent consumes this
-// implementation; the public component headers expose the configuration and
-// command contracts without this machinery.
 
 #include <cmath>
 #include <cstddef>

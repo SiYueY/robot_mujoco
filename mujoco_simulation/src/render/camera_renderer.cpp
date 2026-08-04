@@ -1,9 +1,5 @@
 #include "render/camera_renderer.hpp"
 
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-#include <GLFW/glfw3.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -11,6 +7,10 @@
 #include <limits>
 #include <unordered_set>
 #include <utility>
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLFW/glfw3.h>
 
 #include "common/logging.hpp"
 #include "common/macro.hpp"

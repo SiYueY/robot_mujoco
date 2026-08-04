@@ -6,51 +6,53 @@
 namespace mujoco_simulation {
 
 namespace {
-constexpr std::size_t kNoStateIndex = std::numeric_limits<std::size_t>::max();
+
+constexpr std::size_t kInvalidStateIndex = std::numeric_limits<std::size_t>::max();
 
 template <typename State>
 bool validate_states(const StateSnapshots<State>& states, const std::vector<std::size_t>& indices) {
     if (states == nullptr) return true;
     for (std::size_t index = 0; index < states->size(); ++index) {
         const StateSnapshot<State>& state = (*states)[index];
-        if (state == nullptr || state->id >= indices.size() || indices[state->id] != index)
-            return false;
+        if (state == nullptr) return false;
+        if (state->id >= indices.size()) return false;
+        if (indices[state->id] != index) return false;
     }
     return true;
 }
 
 template <typename State>
-bool read_by_index(
+bool read_state(
     const StateSnapshots<State>& states, const std::vector<std::size_t>& indices, State& state) {
     const std::size_t id = state.id;
-    if (states == nullptr || id >= indices.size()) return false;
+    if (states == nullptr) return false;
+    if (id >= indices.size()) return false;
     const std::size_t index = indices[id];
-    if (index == kNoStateIndex || index >= states->size() || (*states)[index] == nullptr ||
-        (*states)[index]->id != id)
-        return false;
+    if (index == kInvalidStateIndex) return false;
+    if (index >= states->size()) return false;
+    if ((*states)[index] == nullptr) return false;
+    if ((*states)[index]->id != id) return false;
     state = *(*states)[index];
     return true;
 }
+
 }  // namespace
 
-bool StateBuffer::configure(std::shared_ptr<const ComponentIndex> component_index) {
-    if (component_index == nullptr) return false;
-    component_index_ = std::move(component_index);
+bool StateBuffer::configure(std::shared_ptr<const ComponentIdResolver> id_resolver) {
+    if (id_resolver == nullptr) return false;
+    if (initialized_) return false;
+    id_resolver_ = std::move(id_resolver);
     std::atomic_store_explicit(
         &state_, std::shared_ptr<const RobotState>{}, std::memory_order_release);
+    initialized_ = true;
     return true;
 }
 
-bool StateBuffer::write(std::shared_ptr<const RobotState> snapshot) {
-    if (component_index_ == nullptr || snapshot == nullptr ||
-        !validate_states(snapshot->joints, component_index_->joints()) ||
-        !validate_states(snapshot->mobile_bases, component_index_->mobile_bases()) ||
-        !validate_states(snapshot->imus, component_index_->imus()) ||
-        !validate_states(snapshot->cameras, component_index_->cameras()) ||
-        !validate_states(snapshot->lidars, component_index_->lidars()))
-        return false;
-    std::atomic_store_explicit(&state_, std::move(snapshot), std::memory_order_release);
-    return true;
+void StateBuffer::shutdown() {
+    std::atomic_store_explicit(
+        &state_, std::shared_ptr<const RobotState>{}, std::memory_order_release);
+    id_resolver_.reset();
+    initialized_ = false;
 }
 
 std::shared_ptr<const RobotState> StateBuffer::read() const {
@@ -58,39 +60,90 @@ std::shared_ptr<const RobotState> StateBuffer::read() const {
 }
 
 bool StateBuffer::read(JointState& state) const {
-    const auto snapshot = read();
-    return snapshot != nullptr && component_index_ != nullptr &&
-           read_by_index(snapshot->joints, component_index_->joints(), state);
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    return read_state(robot_state->joints, id_resolver_->joints(), state);
+}
+
+bool StateBuffer::read(JointStates& states) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    states = robot_state->joints;
+    return true;
 }
 
 bool StateBuffer::read(MobileBaseState& state) const {
-    const auto snapshot = read();
-    return snapshot != nullptr && component_index_ != nullptr &&
-           read_by_index(snapshot->mobile_bases, component_index_->mobile_bases(), state);
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    return read_state(robot_state->mobile_bases, id_resolver_->mobile_bases(), state);
+}
+
+bool StateBuffer::read(MobileBaseStates& states) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    states = robot_state->mobile_bases;
+    return true;
 }
 
 bool StateBuffer::read(ImuState& state) const {
-    const auto snapshot = read();
-    return snapshot != nullptr && component_index_ != nullptr &&
-           read_by_index(snapshot->imus, component_index_->imus(), state);
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    return read_state(robot_state->imus, id_resolver_->imus(), state);
+}
+
+bool StateBuffer::read(ImuStates& states) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    states = robot_state->imus;
+    return true;
 }
 
 bool StateBuffer::read(CameraState& state) const {
-    const auto snapshot = read();
-    return snapshot != nullptr && component_index_ != nullptr &&
-           read_by_index(snapshot->cameras, component_index_->cameras(), state);
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    return read_state(robot_state->cameras, id_resolver_->cameras(), state);
+}
+
+bool StateBuffer::read(CameraStates& states) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    states = robot_state->cameras;
+    return true;
 }
 
 bool StateBuffer::read(LidarState& state) const {
-    const auto snapshot = read();
-    return snapshot != nullptr && component_index_ != nullptr &&
-           read_by_index(snapshot->lidars, component_index_->lidars(), state);
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    return read_state(robot_state->lidars, id_resolver_->lidars(), state);
 }
 
-void StateBuffer::shutdown() {
-    std::atomic_store_explicit(
-        &state_, std::shared_ptr<const RobotState>{}, std::memory_order_release);
-    component_index_.reset();
+bool StateBuffer::read(LidarStates& states) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    states = robot_state->lidars;
+    return true;
+}
+
+bool StateBuffer::write(std::shared_ptr<const RobotState> robot_state) {
+    if (id_resolver_ == nullptr || robot_state == nullptr ||
+        !validate_states(robot_state->joints, id_resolver_->joints()) ||
+        !validate_states(robot_state->mobile_bases, id_resolver_->mobile_bases()) ||
+        !validate_states(robot_state->imus, id_resolver_->imus()) ||
+        !validate_states(robot_state->cameras, id_resolver_->cameras()) ||
+        !validate_states(robot_state->lidars, id_resolver_->lidars()))
+        return false;
+    std::atomic_store_explicit(&state_, std::move(robot_state), std::memory_order_release);
+    return true;
 }
 
 }  // namespace mujoco_simulation

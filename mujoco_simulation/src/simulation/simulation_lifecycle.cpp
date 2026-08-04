@@ -38,7 +38,7 @@ bool Simulation::Impl::initialize(const SimulationConfig& config) {
     applied_command_ = {};
     command_buffer_.shutdown();
     state_buffer_.shutdown();
-    component_index_.reset();
+    id_resolver_.reset();
     const auto cleanup = [this] {
         if (scheduler_ != nullptr) {
             UNUSED(scheduler_->shutdown());
@@ -55,7 +55,7 @@ bool Simulation::Impl::initialize(const SimulationConfig& config) {
         sequence_ = 0;
         command_buffer_.shutdown();
         state_buffer_.shutdown();
-        component_index_.reset();
+        id_resolver_.reset();
         applied_command_ = {};
     };
     if (!load_model(config.model)) {
@@ -127,7 +127,7 @@ bool Simulation::Impl::shutdown() {
     }
     command_buffer_.shutdown();
     state_buffer_.shutdown();
-    component_index_.reset();
+    id_resolver_.reset();
     applied_command_ = {};
     return true;
 }

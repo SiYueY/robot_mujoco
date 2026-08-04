@@ -1,7 +1,4 @@
 #include "config/simulation_config_parser.hpp"
-#include "config/simulation_config_validator.hpp"
-
-#include "component/component.hpp"
 
 #include <cmath>
 #include <exception>
@@ -14,8 +11,11 @@
 #include <unordered_set>
 #include <utility>
 
-#include "common/compare.hpp"
 #include "tinyxml2.h"
+
+#include "common/compare.hpp"
+#include "component/component.hpp"
+#include "config/simulation_config_validator.hpp"
 
 namespace mujoco_simulation {
 namespace {

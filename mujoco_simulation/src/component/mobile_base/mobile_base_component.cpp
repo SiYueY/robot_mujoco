@@ -4,10 +4,11 @@
 #include <cmath>
 #include <utility>
 
+#include "mujoco_simulation/common/math.hpp"
+
+#include "common/compare.hpp"
 #include "common/logging.hpp"
 #include "common/macro.hpp"
-#include "common/compare.hpp"
-#include "mujoco_simulation/common/math.hpp"
 
 namespace mujoco_simulation {
 

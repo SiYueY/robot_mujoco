@@ -4,9 +4,9 @@
 #include <cmath>
 #include <utility>
 
+#include "common/compare.hpp"
 #include "common/logging.hpp"
 #include "common/macro.hpp"
-#include "common/compare.hpp"
 
 namespace mujoco_simulation {
 

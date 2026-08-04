@@ -4,8 +4,8 @@
 #include <cmath>
 #include <utility>
 
-#include "common/logging.hpp"
 #include "common/compare.hpp"
+#include "common/logging.hpp"
 
 namespace mujoco_simulation {
 

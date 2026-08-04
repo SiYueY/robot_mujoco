@@ -7,7 +7,7 @@
 #include <thread>
 
 #include "buffer/command_buffer.hpp"
-#include "component/component_index.hpp"
+#include "component/component_id.hpp"
 
 namespace {
 
@@ -30,7 +30,7 @@ const mujoco_simulation::MobileBaseCommand* find_mobile_base(
     return nullptr;
 }
 
-std::shared_ptr<const mujoco_simulation::ComponentIndex> make_index(
+std::shared_ptr<const mujoco_simulation::ComponentIdResolver> make_resolver(
     std::initializer_list<std::size_t> joint_ids, std::initializer_list<std::size_t> mobile_ids) {
     mujoco_simulation::ComponentConfigList components;
     for (std::size_t id : joint_ids) {
@@ -43,7 +43,7 @@ std::shared_ptr<const mujoco_simulation::ComponentIndex> make_index(
         info.id = id;
         components.push_back(std::move(info));
     }
-    return mujoco_simulation::ComponentIndex::create(components);
+    return mujoco_simulation::ComponentIdResolver::create(components);
 }
 
 }  // namespace
@@ -70,7 +70,7 @@ int main() {
     CommandBuffer buffer;
     if (!check(!buffer.write(effort), "uninitialized buffer accepted a command") ||
         !check(
-            buffer.configure(make_index({0, 2}, {0, 2})),
+            buffer.configure(make_resolver({0, 2}, {0, 2})),
             "sparse command channels were rejected")) {
         return 1;
     }
@@ -158,7 +158,8 @@ int main() {
     buffer.shutdown();
     if (!check(!buffer.write(update), "shutdown buffer accepted a command")) return 1;
 
-    if (!check(buffer.configure(make_index({0}, {0})), "failed to reinitialize command buffer")) {
+    if (!check(
+            buffer.configure(make_resolver({0}, {0})), "failed to reinitialize command buffer")) {
         return 1;
     }
     std::atomic<bool> writer_done{false};

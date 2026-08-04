@@ -1,5 +1,4 @@
 #pragma once
-// Internal OpenGL-backed CameraRenderService implementation.
 
 #include "component/camera/camera_render_service.hpp"
 #include "render/camera_renderer.hpp"

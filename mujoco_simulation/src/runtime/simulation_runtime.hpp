@@ -1,12 +1,12 @@
 #pragma once
-// Internal simulation runtime contract.
-
-#include <mujoco/mujoco.h>
 
 #include <cstddef>
 #include <string>
 
+#include <mujoco/mujoco.h>
+
 #include "mujoco_simulation/config/simulation_config.hpp"
+
 #include "runtime/context.hpp"
 
 namespace mujoco_simulation {

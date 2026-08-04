@@ -1,5 +1,4 @@
 #pragma once
-// Internal resources for the CameraRenderer-owned offscreen context.
 
 struct GLFWwindow;
 

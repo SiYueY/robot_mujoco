@@ -82,16 +82,16 @@ bool Simulation::Impl::initialize_components() {
         LOG_ERROR << "failed to obtain the initial camera frame.";
         return false;
     }
-    auto component_index = ComponentIndex::create(config_.components);
-    if (component_index == nullptr || !command_buffer_.configure(component_index)) {
+    auto id_resolver = ComponentIdResolver::create(config_.components);
+    if (id_resolver == nullptr || !command_buffer_.configure(id_resolver)) {
         LOG_ERROR << "failed to configure command channels.";
         return false;
     }
-    if (!state_buffer_.configure(component_index)) {
+    if (!state_buffer_.configure(id_resolver)) {
         LOG_ERROR << "failed to configure state channels.";
         return false;
     }
-    component_index_ = std::move(component_index);
+    id_resolver_ = std::move(id_resolver);
     return true;
 }
 

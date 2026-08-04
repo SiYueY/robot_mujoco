@@ -7,11 +7,11 @@
 #include <utility>
 #include <vector>
 
+#include "glfw_adapter.h"
+#include "simulate.h"
 #include <GLFW/glfw3.h>
 
 #include "common/logging.hpp"
-#include "glfw_adapter.h"
-#include "simulate.h"
 
 namespace mujoco_simulation {
 

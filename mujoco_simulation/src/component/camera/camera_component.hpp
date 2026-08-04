@@ -1,13 +1,13 @@
 #pragma once
-// Internal camera component contract.
-
-#include <mujoco/mujoco.h>
 
 #include <memory>
 
+#include <mujoco/mujoco.h>
+
+#include "mujoco_simulation/component/camera.hpp"
+
 #include "component/camera/camera_render_service.hpp"
 #include "component/component.hpp"
-#include "mujoco_simulation/component/camera.hpp"
 
 namespace mujoco_simulation {
 

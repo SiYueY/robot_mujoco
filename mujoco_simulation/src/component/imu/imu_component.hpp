@@ -1,13 +1,13 @@
 #pragma once
-// Internal IMU component contract.
-
-#include <mujoco/mujoco.h>
 
 #include <memory>
 #include <string>
 
-#include "component/component.hpp"
+#include <mujoco/mujoco.h>
+
 #include "mujoco_simulation/component/imu.hpp"
+
+#include "component/component.hpp"
 #include "runtime/context.hpp"
 
 namespace mujoco_simulation {

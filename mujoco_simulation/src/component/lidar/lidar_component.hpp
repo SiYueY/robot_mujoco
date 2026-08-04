@@ -1,13 +1,13 @@
 #pragma once
-// Internal lidar component contract.
 
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "component/component.hpp"
 #include "mujoco_simulation/component/lidar.hpp"
+
+#include "component/component.hpp"
 
 namespace mujoco_simulation {
 

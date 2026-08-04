@@ -1,13 +1,13 @@
 #pragma once
-// Internal joint component contract.
-
-#include <mujoco/mujoco.h>
 
 #include <memory>
 #include <string>
 
-#include "component/component.hpp"
+#include <mujoco/mujoco.h>
+
 #include "mujoco_simulation/component/joint.hpp"
+
+#include "component/component.hpp"
 
 namespace mujoco_simulation {
 
@@ -48,16 +48,12 @@ private:
     double clamp_ctrl_limits(const mjContext& context, double value) const;
     double clamp_force_limits(const mjContext& context, double value) const;
 
-    // 仿真信息
-    mjJoint joint_{};
-    // 关节信息
-    JointInfo info_;
-    // 最新关节指令
-    JointCommand command_{};
-    // 最新关节状态
-    std::shared_ptr<const JointState> state_;
-    // 初始化标志
+private:
     bool initialized_{false};
+    mjJoint joint_{};
+    JointInfo info_;
+    JointCommand command_{};
+    std::shared_ptr<const JointState> state_;
 };
 
 }  // namespace mujoco_simulation

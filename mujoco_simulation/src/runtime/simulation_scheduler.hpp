@@ -1,5 +1,4 @@
 #pragma once
-// Internal simulation scheduler contract.
 
 #include <chrono>
 #include <condition_variable>
@@ -58,4 +57,3 @@ private:
 };
 
 }  // namespace mujoco_simulation
-#include <chrono>

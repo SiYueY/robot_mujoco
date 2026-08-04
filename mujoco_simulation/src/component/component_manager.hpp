@@ -1,11 +1,14 @@
 #pragma once
-// Internal component orchestration contract.
 
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "mujoco_simulation/config/simulation_config.hpp"
+#include "mujoco_simulation/data/robot_command.hpp"
+#include "mujoco_simulation/data/robot_state.hpp"
 
 #include "component/camera/camera_component.hpp"
 #include "component/camera/camera_render_service.hpp"
@@ -14,9 +17,6 @@
 #include "component/joint/joint_component.hpp"
 #include "component/lidar/lidar_component.hpp"
 #include "component/mobile_base/mobile_base_component.hpp"
-#include "mujoco_simulation/config/simulation_config.hpp"
-#include "mujoco_simulation/data/robot_command.hpp"
-#include "mujoco_simulation/data/robot_state.hpp"
 
 namespace mujoco_simulation {
 

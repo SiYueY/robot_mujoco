@@ -1,7 +1,4 @@
 #pragma once
-// Internal GLFW viewer contract.
-
-#include <mujoco/mujoco.h>
 
 #include <chrono>
 #include <condition_variable>
@@ -9,6 +6,8 @@
 #include <mutex>
 #include <string>
 #include <thread>
+
+#include <mujoco/mujoco.h>
 
 #include "runtime/context.hpp"
 

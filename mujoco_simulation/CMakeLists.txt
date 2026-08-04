@@ -8,7 +8,7 @@ project(
 )
 
 if(NOT UNIX OR APPLE)
-  message(FATAL_ERROR "mujoco_simulation currently supports Linux only.")
+  message(FATAL_ERROR "mujoco_simulation supports Linux only.")
 endif()
 
 include(GNUInstallDirs)
@@ -22,10 +22,8 @@ else()
 endif()
 
 option(MUJOCO_SIMULATION_BUILD_SHARED
-       "Build mujoco_simulation as a shared library" ON)
+       "Build mujoco_simulation as shared library" ON)
 option(MUJOCO_SIMULATION_BUILD_TESTS "Build mujoco_simulation tests"
-       ${MUJOCO_SIMULATION_IS_TOP_LEVEL})
-option(MUJOCO_SIMULATION_BUILD_EXAMPLES "Build mujoco_simulation examples"
        ${MUJOCO_SIMULATION_IS_TOP_LEVEL})
 option(MUJOCO_SIMULATION_INSTALL "Generate installation rules"
        ${MUJOCO_SIMULATION_IS_TOP_LEVEL})
@@ -184,10 +182,6 @@ if(MUJOCO_SIMULATION_BUILD_TESTS)
   if(BUILD_TESTING)
     add_subdirectory(tests)
   endif()
-endif()
-
-if(MUJOCO_SIMULATION_BUILD_EXAMPLES)
-  add_subdirectory(examples)
 endif()
 
 if(MUJOCO_SIMULATION_INSTALL)
