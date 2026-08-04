@@ -209,7 +209,7 @@ int main() {
         {"oversized component id", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
-<joint id="65536" name="joint"/></robot></robot_mujoco>)"},
+<joint id="256" name="joint"/></robot></robot_mujoco>)"},
         {"invalid camera rgb bool", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>

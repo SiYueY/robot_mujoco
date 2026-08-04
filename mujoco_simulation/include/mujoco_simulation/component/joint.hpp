@@ -38,6 +38,7 @@ struct JointInfo {
 };
 
 struct JointCommand {
+    JointId id{0};
     JointControlMode mode{JointControlMode::Effort};
     double position{0.0};
     double velocity{0.0};
@@ -49,6 +50,7 @@ struct JointCommand {
 using JointCommands = std::vector<JointCommand>;
 
 struct JointState {
+    JointId id{0};
     double timestamp{0.0};
     JointControlMode mode{JointControlMode::Effort};
     double position{0.0};

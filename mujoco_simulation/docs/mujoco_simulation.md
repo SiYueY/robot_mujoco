@@ -79,8 +79,8 @@ Simulation
   - `reset()` / `reset(std::string keyframe_name)`
   - `step(std::size_t count = 1)`、`step_count()`、`status()` 与 `time()`
 - 组件与命令
-  - `write_command(JointId, const JointCommand&)`
-  - `write_command(MobileBaseId, const MobileBaseCommand&)`
+  - `write_command(const JointCommand&)`
+  - `write_command(const MobileBaseCommand&)`
   - `write_command(const RobotCommand&)`：跨类型原子提交
   - `write_commands(const JointCommands&)`
   - `write_commands(const MobileBaseCommands&)`

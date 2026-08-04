@@ -75,6 +75,19 @@ add_test(
   NAME mujoco_simulation.component_manager_camera_reset
   COMMAND mujoco_simulation_component_manager_camera_reset_test)
 
+add_executable(mujoco_simulation_component_manager_sparse_command_test
+  unit/component_manager_sparse_command_test.cpp)
+target_include_directories(mujoco_simulation_component_manager_sparse_command_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+target_sources(mujoco_simulation_component_manager_sparse_command_test PRIVATE
+  $<TARGET_OBJECTS:mujoco_simulation_runtime>)
+target_link_libraries(mujoco_simulation_component_manager_sparse_command_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.component_manager_sparse_command
+  COMMAND mujoco_simulation_component_manager_sparse_command_test)
+
 add_executable(mujoco_simulation_command_buffer_test
   unit/command_buffer_test.cpp)
 target_include_directories(mujoco_simulation_command_buffer_test PRIVATE
@@ -104,6 +117,14 @@ target_link_libraries(mujoco_simulation_component_header_contract_test PRIVATE
 add_test(
   NAME mujoco_simulation.component_header_contract
   COMMAND mujoco_simulation_component_header_contract_test)
+
+add_executable(mujoco_simulation_version_header_contract_test
+  public/version_header_contract_test.cpp)
+target_link_libraries(mujoco_simulation_version_header_contract_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.version_header_contract
+  COMMAND mujoco_simulation_version_header_contract_test)
 
 add_executable(mujoco_simulation_viewer_headless_test
   unit/simulation_viewer_headless_test.cpp)
@@ -154,6 +175,7 @@ foreach(test_target
     mujoco_simulation_config_timing_test
     mujoco_simulation_component_period_test
     mujoco_simulation_component_manager_camera_reset_test
+    mujoco_simulation_component_manager_sparse_command_test
     mujoco_simulation_command_buffer_test
     mujoco_simulation_lifecycle_test
     mujoco_simulation_component_header_contract_test

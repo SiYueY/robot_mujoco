@@ -53,6 +53,7 @@ struct CameraFrame {
 };
 
 struct CameraState {
+    CameraId id{0};
     std::uint64_t sequence{0};
     std::uint64_t timestamp{0};
     std::string frame_id;

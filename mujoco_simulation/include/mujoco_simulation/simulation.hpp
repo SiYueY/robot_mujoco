@@ -39,19 +39,19 @@ public:
     MUJOCO_SIMULATION_PUBLIC bool reset();
     MUJOCO_SIMULATION_PUBLIC bool reset(std::string keyframe_name);
 
-    MUJOCO_SIMULATION_PUBLIC bool write_command(JointId id, const JointCommand& command);
-    MUJOCO_SIMULATION_PUBLIC bool write_command(MobileBaseId id, const MobileBaseCommand& command);
+    MUJOCO_SIMULATION_PUBLIC bool write_command(const JointCommand& command);
+    MUJOCO_SIMULATION_PUBLIC bool write_command(const MobileBaseCommand& command);
     MUJOCO_SIMULATION_PUBLIC bool write_command(const RobotCommand& command);
     MUJOCO_SIMULATION_PUBLIC bool write_commands(const JointCommands& commands);
     MUJOCO_SIMULATION_PUBLIC bool write_commands(const MobileBaseCommands& commands);
 
     MUJOCO_SIMULATION_PUBLIC bool read_state(std::shared_ptr<const RobotState>& state) const;
     MUJOCO_SIMULATION_PUBLIC bool read_state(RobotState& state) const;
-    MUJOCO_SIMULATION_PUBLIC bool read_state(JointId id, JointState& state) const;
-    MUJOCO_SIMULATION_PUBLIC bool read_state(ImuId id, ImuState& state) const;
-    MUJOCO_SIMULATION_PUBLIC bool read_state(CameraId id, CameraState& state) const;
-    MUJOCO_SIMULATION_PUBLIC bool read_state(LidarId id, LidarState& state) const;
-    MUJOCO_SIMULATION_PUBLIC bool read_state(MobileBaseId id, MobileBaseState& state) const;
+    MUJOCO_SIMULATION_PUBLIC bool read_state(JointState& state) const;
+    MUJOCO_SIMULATION_PUBLIC bool read_state(ImuState& state) const;
+    MUJOCO_SIMULATION_PUBLIC bool read_state(CameraState& state) const;
+    MUJOCO_SIMULATION_PUBLIC bool read_state(LidarState& state) const;
+    MUJOCO_SIMULATION_PUBLIC bool read_state(MobileBaseState& state) const;
     MUJOCO_SIMULATION_PUBLIC bool read_state(JointStates& states) const;
     MUJOCO_SIMULATION_PUBLIC bool read_state(ImuStates& states) const;
     MUJOCO_SIMULATION_PUBLIC bool read_state(CameraStates& states) const;

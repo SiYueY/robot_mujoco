@@ -24,11 +24,11 @@ bool Simulation::resume() { return impl_->resume(); }
 bool Simulation::reset() { return impl_->reset(nullptr); }
 bool Simulation::reset(std::string keyframe_name) { return impl_->reset(&keyframe_name); }
 
-bool Simulation::write_command(JointId id, const JointCommand& command) {
-    return impl_->write_command(id, command);
+bool Simulation::write_command(const JointCommand& command) {
+    return impl_->write_command(command);
 }
-bool Simulation::write_command(MobileBaseId id, const MobileBaseCommand& command) {
-    return impl_->write_command(id, command);
+bool Simulation::write_command(const MobileBaseCommand& command) {
+    return impl_->write_command(command);
 }
 bool Simulation::write_command(const RobotCommand& command) {
     return impl_->write_command(command);
@@ -44,19 +44,11 @@ bool Simulation::read_state(std::shared_ptr<const RobotState>& out) const {
     return impl_->read_state(out);
 }
 bool Simulation::read_state(RobotState& out) const { return impl_->read_state(out); }
-bool Simulation::read_state(JointId id, JointState& out) const {
-    return impl_->read_state(id, out);
-}
-bool Simulation::read_state(ImuId id, ImuState& out) const { return impl_->read_state(id, out); }
-bool Simulation::read_state(CameraId id, CameraState& out) const {
-    return impl_->read_state(id, out);
-}
-bool Simulation::read_state(LidarId id, LidarState& out) const {
-    return impl_->read_state(id, out);
-}
-bool Simulation::read_state(MobileBaseId id, MobileBaseState& out) const {
-    return impl_->read_state(id, out);
-}
+bool Simulation::read_state(JointState& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(ImuState& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(CameraState& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(LidarState& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(MobileBaseState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(JointStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(ImuStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(CameraStates& out) const { return impl_->read_state(out); }

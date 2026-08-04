@@ -386,8 +386,8 @@ int main() {
         }
 
         mujoco_simulation::CameraRenderTask out_of_range = task;
-        out_of_range.config.id = 65536;
-        out_of_range.camera_id = 65536;
+        out_of_range.config.id = 256;
+        out_of_range.camera_id = 256;
         mujoco_simulation::CameraRenderTask duplicate = task;
         duplicate.sequence = 4;
         if (!check(

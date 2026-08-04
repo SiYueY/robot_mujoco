@@ -48,6 +48,7 @@ struct MobileBaseInfo {
 };
 
 struct MobileBaseCommand {
+    MobileBaseId id{0};
     MobileBaseControlMode mode{MobileBaseControlMode::Twist};
     Vector3d base_linear{};
     Vector3d base_angular{};
@@ -58,6 +59,7 @@ struct MobileBaseCommand {
 using MobileBaseCommands = std::vector<MobileBaseCommand>;
 
 struct MobileBaseState {
+    MobileBaseId id{0};
     double timestamp{0.0};
     std::string odom_frame_id;
     std::string base_frame_id;

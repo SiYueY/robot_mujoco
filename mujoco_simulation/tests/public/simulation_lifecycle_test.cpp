@@ -24,7 +24,8 @@ bool wait_for_camera_frame(
         [&] {
             std::shared_ptr<const mujoco_simulation::RobotState> state;
             if (!simulation.read_state(state) || state == nullptr || state->cameras == nullptr ||
-                state->cameras->empty() || (*state->cameras)[0] == nullptr) {
+                state->cameras->empty() || (*state->cameras)[0] == nullptr ||
+                (*state->cameras)[0]->id != 2U) {
                 return false;
             }
             const std::uint64_t observed = (*state->cameras)[0]->sequence;
@@ -59,7 +60,7 @@ int main() {
     config.camera_renderer.allow_glfw_backend = false;
     config.camera_renderer.allow_egl_backend = true;
     mujoco_simulation::CameraConfig camera;
-    camera.id = 0;
+    camera.id = 2;
     camera.name = "camera";
     camera.frame_id = "camera_frame";
     camera.optical_frame_id = "camera_optical_frame";
@@ -81,6 +82,8 @@ int main() {
     }
 
     std::shared_ptr<const mujoco_simulation::RobotState> state;
+    mujoco_simulation::CameraState camera_state;
+    camera_state.id = camera.id;
     std::uint64_t before_reset_camera_sequence = 0;
     std::uint64_t after_reset_camera_sequence = 0;
     if (!check(
@@ -92,6 +95,10 @@ int main() {
         !check(
             wait_for_camera_frame(simulation, 2, &before_reset_camera_sequence),
             "camera frame was not published before reset") ||
+        !check(
+            simulation.read_state(camera_state) && camera_state.id == camera.id &&
+                camera_state.sequence >= 2U,
+            "state lookup by embedded camera id failed") ||
         !check(simulation.pause(), "simulation pause failed") ||
         !check(
             simulation.status() == mujoco_simulation::SimulationStatus::Paused,

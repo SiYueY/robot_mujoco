@@ -25,7 +25,7 @@ using tinyxml2::XMLNode;
 
 // Hard bounds shared by the XML validation paths.  These limits are compile-time
 // constants and are intentionally not configurable through the config file.
-constexpr std::size_t kMaximumComponentId{65535};
+constexpr std::size_t kMaximumComponentId{255};
 constexpr int kMaximumCameraDimension{8192};
 constexpr std::size_t kMaximumCameraOutputBytes{256U * 1024U * 1024U};
 

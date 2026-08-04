@@ -38,6 +38,7 @@ bool MobileBaseComponent::init(const mjContext& context) {
 
     command_ = {};
     working_state_ = {};
+    working_state_.id = info_.id;
     working_state_.base_frame_id = info_.base_frame_id;
     working_state_.odom_frame_id = info_.odom_frame_id;
     state_ = std::make_shared<MobileBaseState>(working_state_);
@@ -62,6 +63,7 @@ bool MobileBaseComponent::reset(const mjContext& context) {
             return false;
     }
     command_ = {};
+    working_state_.id = info_.id;
     reset_odometry();
     state_ = std::make_shared<MobileBaseState>(working_state_);
     return true;

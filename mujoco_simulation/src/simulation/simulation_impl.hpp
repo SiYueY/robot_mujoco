@@ -10,6 +10,7 @@
 
 #include "buffer/command_buffer.hpp"
 #include "buffer/state_buffer.hpp"
+#include "component/component_index.hpp"
 #include "component/camera/camera_render_service.hpp"
 #include "component/component_manager.hpp"
 #include "mujoco_simulation/simulation.hpp"
@@ -30,18 +31,18 @@ public:
     bool resume();
     bool reset(const std::string* keyframe_name);
 
-    bool write_command(JointId id, const JointCommand& command);
-    bool write_command(MobileBaseId id, const MobileBaseCommand& command);
+    bool write_command(const JointCommand& command);
+    bool write_command(const MobileBaseCommand& command);
     bool write_command(const RobotCommand& command);
     bool write_commands(const JointCommands& commands);
     bool write_commands(const MobileBaseCommands& commands);
     bool read_state(std::shared_ptr<const RobotState>& out) const;
     bool read_state(RobotState& out) const;
-    bool read_state(JointId id, JointState& out) const;
-    bool read_state(ImuId id, ImuState& out) const;
-    bool read_state(CameraId id, CameraState& out) const;
-    bool read_state(LidarId id, LidarState& out) const;
-    bool read_state(MobileBaseId id, MobileBaseState& out) const;
+    bool read_state(JointState& out) const;
+    bool read_state(ImuState& out) const;
+    bool read_state(CameraState& out) const;
+    bool read_state(LidarState& out) const;
+    bool read_state(MobileBaseState& out) const;
     bool read_state(JointStates& out) const;
     bool read_state(ImuStates& out) const;
     bool read_state(CameraStates& out) const;
@@ -58,8 +59,8 @@ public:
     bool load_model(const ModelConfig& model_config);
     bool scheduler_run_task();
     bool write_state_snapshot_locked();
-    bool build_state_snapshot_locked(std::uint64_t step, double simulation_time);
-    bool build_state_snapshot(RobotState& snapshot) const;
+    bool create_state_snapshot_locked(std::uint64_t step, double simulation_time);
+    bool create_state_snapshot(RobotState& snapshot) const;
     bool start_viewer();
     bool stop_viewer();
     bool scheduler_submit_viewer_sync_if_due();
@@ -68,6 +69,7 @@ public:
     std::unique_ptr<CameraRenderService> camera_render_service_;
     CommandBuffer command_buffer_;
     StateBuffer state_buffer_;
+    std::shared_ptr<const ComponentIndex> component_index_;
     std::unique_ptr<SimulationRuntime> runtime_;
     mutable std::mutex lifecycle_mutex_;
     mutable std::mutex mujoco_mutex_;

@@ -16,21 +16,11 @@ bool Simulation::Impl::read_state(RobotState& out) const {
     return true;
 }
 
-bool Simulation::Impl::read_state(JointId id, JointState& out) const {
-    return state_buffer_.read_joint_state(id, out);
-}
-bool Simulation::Impl::read_state(ImuId id, ImuState& out) const {
-    return state_buffer_.read_imu_state(id, out);
-}
-bool Simulation::Impl::read_state(CameraId id, CameraState& out) const {
-    return state_buffer_.read_camera_state(id, out);
-}
-bool Simulation::Impl::read_state(LidarId id, LidarState& out) const {
-    return state_buffer_.read_lidar_state(id, out);
-}
-bool Simulation::Impl::read_state(MobileBaseId id, MobileBaseState& out) const {
-    return state_buffer_.read_mobile_base_state(id, out);
-}
+bool Simulation::Impl::read_state(JointState& out) const { return state_buffer_.read(out); }
+bool Simulation::Impl::read_state(ImuState& out) const { return state_buffer_.read(out); }
+bool Simulation::Impl::read_state(CameraState& out) const { return state_buffer_.read(out); }
+bool Simulation::Impl::read_state(LidarState& out) const { return state_buffer_.read(out); }
+bool Simulation::Impl::read_state(MobileBaseState& out) const { return state_buffer_.read(out); }
 
 bool Simulation::Impl::read_state(JointStates& out) const {
     const auto snapshot = state_buffer_.read();

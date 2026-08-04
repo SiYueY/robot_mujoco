@@ -1,32 +1,38 @@
 #pragma once
 // Internal state buffering contract.
 
+#include <cstddef>
 #include <memory>
+#include <vector>
 
+#include "component/component_index.hpp"
 #include "mujoco_simulation/data/robot_state.hpp"
 
 namespace mujoco_simulation {
 
 class StateBuffer {
 public:
-    void write(std::shared_ptr<const RobotState> snapshot);
+    bool configure(std::shared_ptr<const ComponentIndex> component_index);
+
+    bool write(std::shared_ptr<const RobotState> snapshot);
 
     std::shared_ptr<const RobotState> read() const;
 
-    bool read_joint_state(JointId id, JointState& out) const;
+    bool read(JointState& state) const;
 
-    bool read_mobile_base_state(MobileBaseId id, MobileBaseState& out) const;
+    bool read(MobileBaseState& state) const;
 
-    bool read_imu_state(ImuId id, ImuState& out) const;
+    bool read(ImuState& state) const;
 
-    bool read_camera_state(CameraId id, CameraState& out) const;
+    bool read(CameraState& state) const;
 
-    bool read_lidar_state(LidarId id, LidarState& out) const;
+    bool read(LidarState& state) const;
 
-    void clear();
+    void shutdown();
 
 private:
-    std::shared_ptr<const RobotState> current_;
+    std::shared_ptr<const ComponentIndex> component_index_;
+    std::shared_ptr<const RobotState> state_;
 };
 
 }  // namespace mujoco_simulation

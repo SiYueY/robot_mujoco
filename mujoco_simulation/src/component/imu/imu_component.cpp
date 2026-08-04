@@ -129,6 +129,7 @@ bool ImuComponent::init(const mjContext& context) {
 
     sequence_ = 0;
     auto state = std::make_shared<ImuState>();
+    state->id = info_.id;
     state->frame_id = info_.frame_id;
     state->orientation = {0.0, 0.0, 0.0, 1.0};
     state->orientation_covariance = info_.orientation_covariance;
@@ -148,6 +149,7 @@ bool ImuComponent::reset(const mjContext& context) {
 
     sequence_ = 0;
     auto state = std::make_shared<ImuState>();
+    state->id = info_.id;
     state->frame_id = info_.frame_id;
     state->orientation = {0.0, 0.0, 0.0, 1.0};
     state->orientation_covariance = info_.orientation_covariance;

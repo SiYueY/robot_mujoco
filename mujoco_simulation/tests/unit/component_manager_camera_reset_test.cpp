@@ -137,7 +137,8 @@ int main() {
     }
     mujoco_simulation::RobotState before_reset;
     if (!check(
-            manager.read_state(context, before_reset) && before_reset.cameras != nullptr,
+            manager.read_state(context, before_reset) && before_reset.cameras != nullptr &&
+                before_reset.cameras->size() == 1U && (*before_reset.cameras)[0]->id == camera.id,
             "initial camera state was not published")) {
         context.clear();
         return 1;

@@ -16,6 +16,7 @@ template <typename State>
 using StateSnapshot = std::shared_ptr<const State>;
 
 template <typename State>
+// Compact, ID-sorted state snapshots. Each state carries its own component ID.
 using StateSnapshots = std::shared_ptr<const std::vector<StateSnapshot<State>>>;
 
 using JointStates = StateSnapshots<JointState>;

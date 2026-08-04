@@ -1,5 +1,6 @@
 #include "component/component_manager.hpp"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -8,7 +9,7 @@
 namespace mujoco_simulation {
 namespace {
 
-constexpr ComponentId kMaximumComponentId{65535};
+constexpr ComponentId kMaximumComponentId{255};
 
 template <typename Component>
 bool reset_components(
@@ -46,17 +47,26 @@ bool update_components(
     }
     if (due.empty()) return true;
 
-    auto slots = std::make_shared<std::vector<StateSnapshot<State>>>(
-        published == nullptr ? 0U : published->size());
-    if (published != nullptr) *slots = *published;
+    auto states = std::make_shared<std::vector<StateSnapshot<State>>>();
+    if (published != nullptr) *states = *published;
     for (Component* component : due) {
         std::shared_ptr<const State> state;
         if (!component->read_state(state) || state == nullptr) return false;
-        const ComponentId id = component->info().id;
-        if (slots->size() <= id) slots->resize(id + 1U);
-        (*slots)[id] = std::move(state);
+        const auto existing =
+            std::find_if(states->begin(), states->end(), [&](const StateSnapshot<State>& current) {
+                return current != nullptr && current->id == state->id;
+            });
+        if (existing == states->end())
+            states->push_back(std::move(state));
+        else
+            *existing = std::move(state);
     }
-    published = std::static_pointer_cast<const std::vector<StateSnapshot<State>>>(slots);
+    std::sort(
+        states->begin(), states->end(),
+        [](const StateSnapshot<State>& left, const StateSnapshot<State>& right) {
+            return left->id < right->id;
+        });
+    published = std::static_pointer_cast<const std::vector<StateSnapshot<State>>>(states);
     return true;
 }
 
@@ -242,9 +252,8 @@ bool ComponentManager::consume_camera_results() {
                wait_status == CameraRenderWaitStatus::Cancelled;
     }
     active_camera_ticket_.reset();
-    auto slots = std::make_shared<std::vector<StateSnapshot<CameraState>>>(
-        cameras_ == nullptr ? 0U : cameras_->size());
-    if (cameras_ != nullptr) *slots = *cameras_;
+    auto states = std::make_shared<std::vector<StateSnapshot<CameraState>>>();
+    if (cameras_ != nullptr) *states = *cameras_;
     bool changed = false;
     for (const CameraRenderTaskResult& camera : result.cameras) {
         const CameraId id = camera.camera_id;
@@ -253,12 +262,23 @@ bool ComponentManager::consume_camera_results() {
         if (component == nullptr || !component->apply_render_result(camera)) continue;
         std::shared_ptr<const CameraState> state;
         if (!component->read_state(state)) return false;
-        if (slots->size() <= id) slots->resize(id + 1U);
-        (*slots)[id] = std::move(state);
+        const auto existing = std::find_if(
+            states->begin(), states->end(), [&](const StateSnapshot<CameraState>& current) {
+                return current != nullptr && current->id == state->id;
+            });
+        if (existing == states->end())
+            states->push_back(std::move(state));
+        else
+            *existing = std::move(state);
         changed = true;
     }
     if (changed)
-        cameras_ = std::static_pointer_cast<const std::vector<StateSnapshot<CameraState>>>(slots);
+        std::sort(
+            states->begin(), states->end(),
+            [](const StateSnapshot<CameraState>& left, const StateSnapshot<CameraState>& right) {
+                return left->id < right->id;
+            });
+    cameras_ = std::static_pointer_cast<const std::vector<StateSnapshot<CameraState>>>(states);
     if (pending_camera_ticket_.has_value()) {
         active_camera_ticket_ = pending_camera_ticket_;
         pending_camera_ticket_.reset();
@@ -311,24 +331,29 @@ bool ComponentManager::write_command(const mjContext& context, const RobotComman
 
 bool ComponentManager::write_joint_commands(
     const mjContext& context, const std::vector<JointCommand>& commands) {
-    for (JointId id = 0; id < commands.size(); ++id) {
-        if (id >= joints_components_.size() || joints_components_[id] == nullptr) {
+    for (const JointCommand& command : commands) {
+        const JointId id = command.id;
+        if (id >= joints_components_.size()) {
             LOG_ERROR << "joint command target id was not found.";
             return false;
         }
-        if (!joints_components_[id]->write(context, commands[id])) return false;
+        if (joints_components_[id] == nullptr || !joints_components_[id]->write(context, command))
+            return false;
     }
     return true;
 }
 
 bool ComponentManager::write_mobile_base_commands(
     const mjContext& context, const std::vector<MobileBaseCommand>& commands) {
-    for (MobileBaseId id = 0; id < commands.size(); ++id) {
-        if (id >= mobile_base_components_.size() || mobile_base_components_[id] == nullptr) {
+    for (const MobileBaseCommand& command : commands) {
+        const MobileBaseId id = command.id;
+        if (id >= mobile_base_components_.size()) {
             LOG_ERROR << "mobile base command target id was not found.";
             return false;
         }
-        if (!mobile_base_components_[id]->write(context, commands[id])) return false;
+        if (mobile_base_components_[id] == nullptr ||
+            !mobile_base_components_[id]->write(context, command))
+            return false;
     }
     return true;
 }

@@ -18,16 +18,16 @@
 公开层保留以下强类型写入口：
 
 ```cpp
-write_command(JointId, JointCommand)
-write_command(MobileBaseId, MobileBaseCommand)
+write_command(JointCommand)
+write_command(MobileBaseCommand)
 write_command(RobotCommand)
 write_commands(JointCommands)
 write_commands(MobileBaseCommands)
 ```
 
-`RobotCommand` 的空 batch 与 batch 中空槽均保留已有命令；两个 batch 都为空时为
-成功但不发布的无操作。单类型 batch 入口是优化机会，不是对调用方的强制要求，且
-不提供跨类型原子提交保证。
+`RobotCommand` 的空 batch 保留已有命令；每条命令携带组件 ID，批次可无序且不需要
+空槽占位。两个 batch 都为空时为成功但不发布的无操作。单类型 batch 入口是优化机会，
+不是对调用方的强制要求，且不提供跨类型原子提交保证。
 
 ## 2. 并发模型
 

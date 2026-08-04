@@ -88,6 +88,7 @@ bool LidarComponent::init(const mjContext& context) {
 
     sequence_ = 0;
     auto state = std::make_shared<LidarState>();
+    state->id = info_.id;
     state->frame_id = info_.frame_id;
     state->angle_min = info_.angle_min;
     state->angle_max = info_.angle_max;
@@ -110,6 +111,7 @@ bool LidarComponent::reset(const mjContext& context) {
 
     sequence_ = 0;
     auto state = std::make_shared<LidarState>();
+    state->id = info_.id;
     state->frame_id = info_.frame_id;
     state->angle_min = info_.angle_min;
     state->angle_max = info_.angle_max;
@@ -129,6 +131,7 @@ bool LidarComponent::update(const mjContext& context) {
     }
 
     auto state = std::make_shared<LidarState>();
+    state->id = info_.id;
     state->sequence = ++sequence_;
     state->timestamp = context.data->time;
     state->frame_id = info_.frame_id;

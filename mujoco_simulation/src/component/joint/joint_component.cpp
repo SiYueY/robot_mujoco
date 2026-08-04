@@ -150,6 +150,7 @@ bool JointComponent::update(const mjContext& context) {
     }
 
     auto state = std::make_shared<JointState>();
+    state->id = info_.id;
     state->timestamp = context.data->time;
     state->position = context.data->qpos[joint_.qpos_address];
     state->velocity = context.data->qvel[joint_.dof_address];

@@ -23,6 +23,7 @@ struct LidarInfo {
 };
 
 struct LaserScan {
+    LidarId id{0};
     std::uint64_t sequence{0};
     double timestamp{0.0};
     std::string frame_id;

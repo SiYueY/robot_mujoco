@@ -4,17 +4,17 @@
 
 namespace mujoco_simulation {
 
-bool Simulation::Impl::write_command(JointId id, const JointCommand& command) {
-    if (!command_buffer_.write(id, command)) {
-        LOG_ERROR << "joint command was rejected for component id " << id << ".";
+bool Simulation::Impl::write_command(const JointCommand& command) {
+    if (!command_buffer_.write(command)) {
+        LOG_ERROR << "joint command was rejected for component id " << command.id << ".";
         return false;
     }
     return true;
 }
 
-bool Simulation::Impl::write_command(MobileBaseId id, const MobileBaseCommand& command) {
-    if (!command_buffer_.write(id, command)) {
-        LOG_ERROR << "mobile base command was rejected for component id " << id << ".";
+bool Simulation::Impl::write_command(const MobileBaseCommand& command) {
+    if (!command_buffer_.write(command)) {
+        LOG_ERROR << "mobile base command was rejected for component id " << command.id << ".";
         return false;
     }
     return true;

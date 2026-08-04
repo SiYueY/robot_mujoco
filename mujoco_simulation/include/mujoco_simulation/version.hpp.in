@@ -1,6 +1,10 @@
 #pragma once
 
-#define MUJOCO_SIMULATION_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
-#define MUJOCO_SIMULATION_VERSION_MINOR @PROJECT_VERSION_MINOR@
-#define MUJOCO_SIMULATION_VERSION_PATCH @PROJECT_VERSION_PATCH@
-#define MUJOCO_SIMULATION_VERSION_STRING "@PROJECT_VERSION@"
+namespace mujoco_simulation::version {
+
+inline constexpr int major = @PROJECT_VERSION_MAJOR@;
+inline constexpr int minor = @PROJECT_VERSION_MINOR@;
+inline constexpr int patch = @PROJECT_VERSION_PATCH@;
+inline constexpr char string[] = "@PROJECT_VERSION@";
+
+}  // namespace mujoco_simulation::version

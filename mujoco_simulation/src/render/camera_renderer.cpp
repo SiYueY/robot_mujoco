@@ -25,7 +25,7 @@ constexpr int kEglColorBits = 8;
 constexpr int kEglDepthBits = 24;
 constexpr int kFontScale = mjFONTSCALE_150;
 constexpr double kPi = 3.14159265358979323846;
-constexpr CameraId kMaximumCameraId{65535};
+constexpr CameraId kMaximumCameraId{255};
 
 template <typename Callback>
 class ScopeExit {

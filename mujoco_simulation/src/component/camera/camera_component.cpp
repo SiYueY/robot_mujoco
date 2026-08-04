@@ -85,6 +85,7 @@ bool CameraComponent::apply_render_result(const CameraRenderTaskResult& result) 
         return false;
     }
     auto state = std::make_shared<CameraState>();
+    state->id = config_.id;
     state->sequence = result.sequence;
     state->timestamp = result.timestamp;
     state->frame_id = config_.frame_id;

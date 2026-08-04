@@ -11,29 +11,6 @@
 #include "render/camera_render_service_impl.hpp"
 
 namespace mujoco_simulation {
-namespace {
-
-template <typename Info>
-CommandChannelLayout command_valid_ids(const ComponentConfigList& components) {
-    std::size_t largest_id = 0;
-    bool found = false;
-    for (const ComponentConfig& component : components) {
-        const Info* info = std::get_if<Info>(&component);
-        if (info != nullptr) {
-            largest_id = std::max(largest_id, info->id);
-            found = true;
-        }
-    }
-    CommandChannelLayout valid_ids(found ? largest_id + 1U : 0U, 0U);
-    for (const ComponentConfig& component : components) {
-        const Info* info = std::get_if<Info>(&component);
-        if (info != nullptr) valid_ids[info->id] = 1U;
-    }
-    return valid_ids;
-}
-
-}  // namespace
-
 bool Simulation::Impl::initialize_camera_renderer() {
     if (camera_render_service_ != nullptr) {
         LOG_ERROR << "camera renderer is already initialized.";
@@ -105,17 +82,16 @@ bool Simulation::Impl::initialize_components() {
         LOG_ERROR << "failed to obtain the initial camera frame.";
         return false;
     }
-    if (!command_buffer_.configure_channels(
-            command_valid_ids<JointInfo>(config_.components),
-            command_valid_ids<MobileBaseInfo>(config_.components))) {
-        LOG_ERROR << "command channels require contiguous component ids "
-                     "(0..N-1) for batch writes.";
+    auto component_index = ComponentIndex::create(config_.components);
+    if (component_index == nullptr || !command_buffer_.configure(component_index)) {
+        LOG_ERROR << "failed to configure command channels.";
         return false;
     }
-    if (!command_buffer_.finalize_configuration()) {
-        LOG_ERROR << "failed to initialize the command bus.";
+    if (!state_buffer_.configure(component_index)) {
+        LOG_ERROR << "failed to configure state channels.";
         return false;
     }
+    component_index_ = std::move(component_index);
     return true;
 }
 
@@ -140,7 +116,7 @@ bool Simulation::Impl::scheduler_run_task() {
         LOG_ERROR << "simulation runtime is in the error state.";
         return false;
     }
-    if (command_buffer_.read_if_updated(applied_command_sequence_, applied_command_)) {
+    if (command_buffer_.read(applied_command_sequence_, applied_command_)) {
         applied_command_sequence_ = applied_command_->sequence;
     }
     {
@@ -205,13 +181,13 @@ bool Simulation::Impl::write_state_snapshot_locked() {
         LOG_ERROR << "simulation runtime is not initialized.";
         return false;
     }
-    return build_state_snapshot_locked(step_.load(), runtime_->time());
+    return create_state_snapshot_locked(step_.load(), runtime_->time());
 }
 
-bool Simulation::Impl::build_state_snapshot_locked(std::uint64_t step, double simulation_time) {
+bool Simulation::Impl::create_state_snapshot_locked(std::uint64_t step, double simulation_time) {
     auto snapshot = std::make_shared<RobotState>();
-    if (!build_state_snapshot(*snapshot)) {
-        LOG_ERROR << "component manager failed to build the state snapshot.";
+    if (!create_state_snapshot(*snapshot)) {
+        LOG_ERROR << "component manager failed to create the state snapshot.";
         return false;
     }
     snapshot->sequence = ++sequence_;
@@ -219,11 +195,14 @@ bool Simulation::Impl::build_state_snapshot_locked(std::uint64_t step, double si
     snapshot->timestamp =
         simulation_time > 0.0 ? static_cast<std::uint64_t>(simulation_time * 1.0e9) : 0;
     snapshot->step = step;
-    state_buffer_.write(std::move(snapshot));
+    if (!state_buffer_.write(std::move(snapshot))) {
+        LOG_ERROR << "state snapshot does not match configured component IDs.";
+        return false;
+    }
     return true;
 }
 
-bool Simulation::Impl::build_state_snapshot(RobotState& snapshot) const {
+bool Simulation::Impl::create_state_snapshot(RobotState& snapshot) const {
     if (runtime_ == nullptr) {
         LOG_ERROR << "simulation runtime is not available.";
         return false;
