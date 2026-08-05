@@ -13,13 +13,8 @@
 namespace mujoco_simulation {
 bool Simulation::Impl::initialize(const std::string& config_path) {
     SimulationConfig config;
-    ConfigError error;
     SimulationConfigParser parser;
-    if (!parser.load_file(config_path, config, &error)) {
-        LOG_ERROR << "failed to initialize simulation from '" << config_path
-                  << "': " << error.message;
-        return false;
-    }
+    if (!parser.load_file(config_path, config)) return false;
     return initialize(config);
 }
 
@@ -29,11 +24,7 @@ bool Simulation::Impl::initialize(const SimulationConfig& config) {
         LOG_ERROR << "simulation is already initialized.";
         return false;
     }
-    ConfigError config_error;
-    if (!SimulationConfigValidator::validate(config, &config_error)) {
-        LOG_ERROR << "invalid simulation configuration: " << config_error.message;
-        return false;
-    }
+    if (!SimulationConfigValidator::validate(config)) return false;
     config_ = config;
     applied_command_ = {};
     command_buffer_.shutdown();

@@ -62,15 +62,8 @@ int main() {
   <mujoco><mjcf>model.xml</mjcf></mujoco>
   <simulation><physics period="0.001"/></simulation>
 </robot_mujoco>)";
-    mujoco_simulation::ConfigError timing_error;
     if (!check(write_file(path, invalid), "failed to write invalid XML") ||
-        !check(
-            !parser.load_file(path.string(), config, &timing_error),
-            "missing viewer period was accepted") ||
-        !check(
-            timing_error.element == "simulation" && timing_error.attribute == "viewer" &&
-                !timing_error.message.empty(),
-            "missing viewer period had no precise diagnostic")) {
+        !check(!parser.load_file(path.string(), config), "missing viewer period was accepted")) {
         cleanup();
         return 1;
     }
@@ -149,6 +142,87 @@ int main() {
         return 1;
     }
 
+    const char* attribute_limits = R"(
+<robot_mujoco>
+  <mujoco><mjcf>model.xml</mjcf></mujoco>
+  <simulation><physics period="0.001"/><viewer period="0.02"/></simulation>
+  <robot>
+    <joint id="0" name="joint"><control>
+      <position stiffness="300" damping="10"/>
+      <velocity damping="20"/>
+    </control><limit>
+      <position min="-2.8" max="2.8"/>
+      <velocity min="-5" max="5"/>
+      <effort min="-100" max="100"/>
+    </limit></joint>
+  </robot>
+</robot_mujoco>)";
+    if (!check(write_file(path, attribute_limits), "failed to write attribute-limit XML") ||
+        !check(parser.load_file(path.string(), config), "attribute limits were rejected")) {
+        cleanup();
+        return 1;
+    }
+    const auto& attribute_limit_joint =
+        std::get<mujoco_simulation::JointInfo>(config.components[0]);
+    if (!check(
+            attribute_limit_joint.position_stiffness == 300.0 &&
+                attribute_limit_joint.position_damping == 10.0 &&
+                attribute_limit_joint.velocity_damping == 20.0 &&
+                attribute_limit_joint.position_limits.min == -2.8 &&
+                attribute_limit_joint.position_limits.max == 2.8 &&
+                attribute_limit_joint.velocity_limits.min == -5.0 &&
+                attribute_limit_joint.velocity_limits.max == 5.0 &&
+                attribute_limit_joint.effort_limits.min == -100.0 &&
+                attribute_limit_joint.effort_limits.max == 100.0,
+            "attribute limits were not parsed")) {
+        cleanup();
+        return 1;
+    }
+
+    const char* defaulted_control = R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint"><control><position/><velocity/></control></joint>
+</robot></robot_mujoco>)";
+    if (!check(write_file(path, defaulted_control), "failed to write default-control XML") ||
+        !check(parser.load_file(path.string(), config), "default-control XML was rejected")) {
+        cleanup();
+        return 1;
+    }
+    const auto& defaulted_control_joint =
+        std::get<mujoco_simulation::JointInfo>(config.components[0]);
+    if (!check(
+            defaulted_control_joint.position_stiffness == 0.0 &&
+                defaulted_control_joint.position_damping == 0.0 &&
+                defaulted_control_joint.velocity_damping == 0.0,
+            "missing control attributes were not defaulted to zero")) {
+        cleanup();
+        return 1;
+    }
+
+    const char* one_sided_limit = R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint"><limit><position min="-2.8"/><velocity max="5"/></limit></joint>
+</robot></robot_mujoco>)";
+    if (!check(write_file(path, one_sided_limit), "failed to write one-sided limit XML") ||
+        !check(parser.load_file(path.string(), config), "one-sided limits were rejected")) {
+        cleanup();
+        return 1;
+    }
+    const auto& one_sided_joint = std::get<mujoco_simulation::JointInfo>(config.components[0]);
+    if (!check(
+            one_sided_joint.position_limits.min == -2.8 &&
+                std::isinf(one_sided_joint.position_limits.max) &&
+                one_sided_joint.position_limits.max > 0.0 &&
+                std::isinf(one_sided_joint.velocity_limits.min) &&
+                one_sided_joint.velocity_limits.min < 0.0 &&
+                one_sided_joint.velocity_limits.max == 5.0,
+            "one-sided limits did not preserve unbounded sides")) {
+        cleanup();
+        return 1;
+    }
+
     const char* legacy_rate = R"(
 <robot_mujoco>
   <mujoco><mjcf>model.xml</mjcf></mujoco>
@@ -170,12 +244,9 @@ int main() {
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02" enabled="maybe"/>
 </simulation></robot_mujoco>)";
-    mujoco_simulation::ConfigError invalid_viewer_error;
     if (!check(write_file(path, invalid_viewer_enabled), "failed to write invalid viewer XML") ||
         !check(
-            !parser.load_file(path.string(), config, &invalid_viewer_error) &&
-                invalid_viewer_error.element == "viewer" &&
-                invalid_viewer_error.attribute == "enabled",
+            !parser.load_file(path.string(), config),
             "invalid viewer enabled attribute was accepted")) {
         cleanup();
         return 1;
@@ -185,26 +256,51 @@ int main() {
         const char* name;
         const char* content;
     };
-    const std::array<InvalidConfig, 7> invalid_configs = {{
+    const std::array<InvalidConfig, 12> invalid_configs = {{
         {"trailing joint numeric text", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
-<joint id="0" name="joint"><position><stiffness>100abc</stiffness></position></joint>
+<joint id="0" name="joint"><control><position stiffness="100abc"/></control></joint>
 </robot></robot_mujoco>)"},
         {"infinite joint numeric text", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
-<joint id="0" name="joint"><limit><effort><max>inf</max></effort></limit></joint>
+<joint id="0" name="joint"><limit><effort max="inf"/></limit></joint>
 </robot></robot_mujoco>)"},
-        {"negative stiffness", R"(
+        {"infinite control attribute", R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint"><control><position stiffness="inf"/></control></joint>
+</robot></robot_mujoco>)"},
+        {"legacy joint limit child elements", R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint"><limit><position><min>-1</min></position></limit></joint>
+</robot></robot_mujoco>)"},
+        {"reversed joint limit attributes", R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint"><limit><position min="1" max="0"/></limit></joint>
+</robot></robot_mujoco>)"},
+        {"legacy direct joint control", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
 <joint id="0" name="joint"><position><stiffness>-1</stiffness></position></joint>
 </robot></robot_mujoco>)"},
+        {"negative stiffness", R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint"><control><position stiffness="-1"/></control></joint>
+</robot></robot_mujoco>)"},
         {"negative damping", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
-<joint id="0" name="joint"><velocity><damping>-1</damping></velocity></joint>
+<joint id="0" name="joint"><control><velocity damping="-1"/></control></joint>
+</robot></robot_mujoco>)"},
+        {"unknown control mode", R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint"><control><effort/></control></joint>
 </robot></robot_mujoco>)"},
         {"oversized component id", R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
@@ -257,13 +353,8 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
                          R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" wheel_radius="1" wheel_base="1" track_width="1"><wheel name="a" actuator="x"/><wheel name="b" actuator="x"/><wheel name="c" actuator="c"/><wheel name="d" actuator="d"/></mobile_base></robot></robot_mujoco>)"},
                     }};
     for (const InvalidConfig& invalid_config : semantic_invalid_configs) {
-        mujoco_simulation::ConfigError error;
         if (!check(write_file(path, invalid_config.content), invalid_config.name) ||
-            !check(!parser.load_file(path.string(), config, &error), invalid_config.name) ||
-            !check(
-                error.line > 0 && !error.element.empty() && !error.attribute.empty() &&
-                    !error.message.empty(),
-                "semantic parse failure did not provide a complete diagnostic")) {
+            !check(!parser.load_file(path.string(), config), invalid_config.name)) {
             cleanup();
             return 1;
         }
@@ -287,13 +378,8 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
   <joint id="0" name="second"/>
 </robot>
 </robot_mujoco>)";
-    mujoco_simulation::ConfigError duplicate_error;
     if (!check(write_file(path, duplicate_joint), "failed to write duplicate XML") ||
-        !check(
-            !parser.load_file(path.string(), config, &duplicate_error) &&
-                duplicate_error.line == 6 && duplicate_error.element == "joint" &&
-                duplicate_error.attribute == "id",
-            "duplicate component did not retain its XML source location")) {
+        !check(!parser.load_file(path.string(), config), "duplicate component was accepted")) {
         cleanup();
         return 1;
     }
@@ -304,11 +390,8 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     invalid_camera.width = 0;
     invalid_camera.height = 1;
     direct_config.components.emplace_back(invalid_camera);
-    mujoco_simulation::ConfigError validation_error;
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                direct_config, &validation_error) &&
-                validation_error.attribute == "width",
+            !mujoco_simulation::SimulationConfigValidator::validate(direct_config),
             "validator accepted an invalid direct C++ camera configuration")) {
         cleanup();
         return 1;
@@ -323,9 +406,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     invalid_period_joint.period = -0.001;
     invalid_period_config.components.emplace_back(invalid_period_joint);
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                invalid_period_config, &validation_error) &&
-                validation_error.attribute == "period",
+            !mujoco_simulation::SimulationConfigValidator::validate(invalid_period_config),
             "validator accepted a negative direct C++ component period")) {
         cleanup();
         return 1;
@@ -337,9 +418,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     duplicate_config.components.emplace_back(invalid_period_joint);
     duplicate_config.components.emplace_back(invalid_period_joint);
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                duplicate_config, &validation_error) &&
-                validation_error.attribute == "id",
+            !mujoco_simulation::SimulationConfigValidator::validate(duplicate_config),
             "validator accepted duplicate direct C++ component IDs")) {
         cleanup();
         return 1;
@@ -347,9 +426,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
 
     mujoco_simulation::SimulationConfig missing_model_config;
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                missing_model_config, &validation_error) &&
-                validation_error.attribute == "model_path",
+            !mujoco_simulation::SimulationConfigValidator::validate(missing_model_config),
             "validator accepted an empty direct C++ model path")) {
         cleanup();
         return 1;
@@ -367,9 +444,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     missing_camera_name.optical_frame_id = "camera_optical";
     missing_camera_name_config.components.emplace_back(missing_camera_name);
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                missing_camera_name_config, &validation_error) &&
-                validation_error.attribute == "frame_id" && !validation_error.message.empty(),
+            !mujoco_simulation::SimulationConfigValidator::validate(missing_camera_name_config),
             "validator omitted a camera name diagnostic")) {
         cleanup();
         return 1;
@@ -379,9 +454,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     invalid_renderer_config.model.model_path = "model.xml";
     invalid_renderer_config.camera_renderer.completed_ticket_history = 0U;
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                invalid_renderer_config, &validation_error) &&
-                validation_error.attribute == "completed_ticket_history",
+            !mujoco_simulation::SimulationConfigValidator::validate(invalid_renderer_config),
             "validator accepted zero camera ticket history")) {
         cleanup();
         return 1;
@@ -392,9 +465,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     no_backend_config.camera_renderer.allow_glfw_backend = false;
     no_backend_config.camera_renderer.allow_egl_backend = false;
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                no_backend_config, &validation_error) &&
-                validation_error.attribute == "camera_renderer",
+            !mujoco_simulation::SimulationConfigValidator::validate(no_backend_config),
             "validator accepted a camera renderer without a backend")) {
         cleanup();
         return 1;
@@ -411,9 +482,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     missing_lidar_name.range_max = 1.0;
     missing_lidar_name_config.components.emplace_back(missing_lidar_name);
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                missing_lidar_name_config, &validation_error) &&
-                validation_error.attribute == "frame_id" && !validation_error.message.empty(),
+            !mujoco_simulation::SimulationConfigValidator::validate(missing_lidar_name_config),
             "validator omitted a lidar name diagnostic")) {
         cleanup();
         return 1;
@@ -434,9 +503,7 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     }
     missing_base_name_config.components.emplace_back(missing_base_name);
     if (!check(
-            !mujoco_simulation::SimulationConfigValidator::validate(
-                missing_base_name_config, &validation_error) &&
-                validation_error.attribute == "base_body" && !validation_error.message.empty(),
+            !mujoco_simulation::SimulationConfigValidator::validate(missing_base_name_config),
             "validator omitted a mobile-base name diagnostic")) {
         cleanup();
         return 1;

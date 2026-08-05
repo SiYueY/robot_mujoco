@@ -162,10 +162,9 @@ struct JointState
 配置：
 
 ``` xml
-<position>
-    <stiffness>300</stiffness>
-    <damping>10</damping>
-</position>
+<control>
+    <position stiffness="300" damping="10"/>
+</control>
 ```
 
 控制：
@@ -184,9 +183,9 @@ struct JointState
 配置：
 
 ``` xml
-<velocity>
-    <damping>20</damping>
-</velocity>
+<control>
+    <velocity damping="20"/>
+</control>
 ```
 
 控制：
@@ -232,39 +231,27 @@ struct JointState
 
 ``` xml
 <limit>
-
-    <position>
-        <min>-2.8</min>
-        <max>2.8</max>
-    </position>
-    <velocity>
-        <max>5</max>
-    </velocity>
-    <effort>
-        <max>100</max>
-    </effort>
+    <position min="-2.8" max="2.8"/>
+    <velocity min="0" max="5"/>
+    <effort min="0" max="100"/>
 </limit>
 ```
+
+`min` 和 `max` 均为可选属性；未提供的一侧表示该侧不限制。例如：
+
+``` xml
+<limit>
+    <velocity max="5"/>
+</limit>
+```
+
+未配置的 `position`、`velocity` 或 `effort` 元素表示该类别不限制。
+`min` 与 `max` 必须是有限数值，且同时存在时必须满足 `min <= max`。
+旧的 `<min>`、`<max>` 子元素格式不再支持。
 
 ------------------------------------------------------------------------
 
 ## 14. XML规范
-
-### 参数值
-
-使用：
-
-``` xml
-<tag>
-    value
-</tag>
-```
-
-例如：
-
-``` xml
-<stiffness>300</stiffness>
-```
 
 ### 属性
 
@@ -273,6 +260,7 @@ struct JointState
 -   名称；
 -   默认值；
 -   标识。
+-   紧凑的数值范围、控制参数和开关配置。
 
 例如：
 
@@ -280,6 +268,10 @@ struct JointState
 <joint name="xxx"/>
 
 <mode default="hybrid"/>
+
+<position min="-2.8" max="2.8"/>
+
+<position stiffness="300" damping="10"/>
 ```
 
 ------------------------------------------------------------------------
@@ -342,9 +334,9 @@ robot_mujoco负责：
 - `<robot>` 下的 Joint、IMU、Camera、Lidar、MobileBase 配置；每个组件具有显式 `id` 与类型内唯一名称
   - 各组件可选使用 `period="秒"` 指定采样周期；`period="0"` 表示每个 physics step 更新。
     正周期必须是 `physics.period` 的整数倍且不短于它。`update_rate`（Hz）已删除且会被拒绝。
-- `<position><stiffness>` / `<position><damping>`
-- `<velocity><damping>`
-- `<limit><position|velocity|effort><min|max>`
+- `<control><position stiffness="..." damping="..."/>`
+- `<control><velocity damping="..."/>`
+- `<limit><position|velocity|effort min="..." max="..."/>`
 
 当前未解析：
 
