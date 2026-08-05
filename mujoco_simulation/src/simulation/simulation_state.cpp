@@ -4,53 +4,59 @@
 
 namespace mujoco_simulation {
 
-bool Simulation::Impl::read_state(std::shared_ptr<const RobotState>& out) const {
-    out = state_buffer_.read();
-    return out != nullptr;
+bool Simulation::Impl::read_state(std::shared_ptr<const RobotState>& state) const {
+    state = state_buffer_.read();
+    return state != nullptr;
 }
 
-bool Simulation::Impl::read_state(RobotState& out) const {
-    std::shared_ptr<const RobotState> snapshot;
-    if (!read_state(snapshot)) return false;
-    out = *snapshot;
+bool Simulation::Impl::read_state(RobotState& state) const {
+    std::shared_ptr<const RobotState> robot_state;
+    if (!read_state(robot_state)) return false;
+    state = *robot_state;
     return true;
 }
 
-bool Simulation::Impl::read_state(JointState& out) const { return state_buffer_.read(out); }
-bool Simulation::Impl::read_state(ImuState& out) const { return state_buffer_.read(out); }
-bool Simulation::Impl::read_state(CameraState& out) const { return state_buffer_.read(out); }
-bool Simulation::Impl::read_state(LidarState& out) const { return state_buffer_.read(out); }
-bool Simulation::Impl::read_state(MobileBaseState& out) const { return state_buffer_.read(out); }
+bool Simulation::Impl::read_state(JointState& state) const { return state_buffer_.read(state); }
 
-bool Simulation::Impl::read_state(JointStates& out) const {
-    const auto snapshot = state_buffer_.read();
-    if (snapshot == nullptr) return false;
-    out = snapshot->joints;
-    return out != nullptr;
+bool Simulation::Impl::read_state(ImuState& state) const { return state_buffer_.read(state); }
+
+bool Simulation::Impl::read_state(CameraState& state) const { return state_buffer_.read(state); }
+
+bool Simulation::Impl::read_state(LidarState& state) const { return state_buffer_.read(state); }
+
+bool Simulation::Impl::read_state(MobileBaseState& state) const {
+    return state_buffer_.read(state);
 }
-bool Simulation::Impl::read_state(ImuStates& out) const {
-    const auto snapshot = state_buffer_.read();
-    if (snapshot == nullptr) return false;
-    out = snapshot->imus;
-    return out != nullptr;
+
+bool Simulation::Impl::read_state(JointStates& state) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    state = robot_state->joints;
+    return state != nullptr;
 }
-bool Simulation::Impl::read_state(CameraStates& out) const {
-    const auto snapshot = state_buffer_.read();
-    if (snapshot == nullptr) return false;
-    out = snapshot->cameras;
-    return out != nullptr;
+bool Simulation::Impl::read_state(ImuStates& state) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    state = robot_state->imus;
+    return state != nullptr;
 }
-bool Simulation::Impl::read_state(LidarStates& out) const {
-    const auto snapshot = state_buffer_.read();
-    if (snapshot == nullptr) return false;
-    out = snapshot->lidars;
-    return out != nullptr;
+bool Simulation::Impl::read_state(CameraStates& state) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    state = robot_state->cameras;
+    return state != nullptr;
 }
-bool Simulation::Impl::read_state(MobileBaseStates& out) const {
-    const auto snapshot = state_buffer_.read();
-    if (snapshot == nullptr) return false;
-    out = snapshot->mobile_bases;
-    return out != nullptr;
+bool Simulation::Impl::read_state(LidarStates& state) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    state = robot_state->lidars;
+    return state != nullptr;
+}
+bool Simulation::Impl::read_state(MobileBaseStates& state) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    state = robot_state->mobile_bases;
+    return state != nullptr;
 }
 
 std::uint64_t Simulation::Impl::step_count() const { return step_.load(); }

@@ -135,13 +135,13 @@ bool StateBuffer::read(LidarStates& states) const {
 }
 
 bool StateBuffer::write(std::shared_ptr<const RobotState> robot_state) {
-    if (id_resolver_ == nullptr || robot_state == nullptr ||
-        !validate_states(robot_state->joints, id_resolver_->joints()) ||
-        !validate_states(robot_state->mobile_bases, id_resolver_->mobile_bases()) ||
-        !validate_states(robot_state->imus, id_resolver_->imus()) ||
-        !validate_states(robot_state->cameras, id_resolver_->cameras()) ||
-        !validate_states(robot_state->lidars, id_resolver_->lidars()))
-        return false;
+    if (id_resolver_ == nullptr) return false;
+    if (robot_state == nullptr) return false;
+    if (!validate_states(robot_state->joints, id_resolver_->joints())) return false;
+    if (!validate_states(robot_state->mobile_bases, id_resolver_->mobile_bases())) return false;
+    if (!validate_states(robot_state->imus, id_resolver_->imus())) return false;
+    if (!validate_states(robot_state->cameras, id_resolver_->cameras())) return false;
+    if (!validate_states(robot_state->lidars, id_resolver_->lidars())) return false;
     std::atomic_store_explicit(&state_, std::move(robot_state), std::memory_order_release);
     return true;
 }

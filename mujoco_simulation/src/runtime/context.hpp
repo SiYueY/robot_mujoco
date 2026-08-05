@@ -42,10 +42,10 @@ struct mjContext {
         data = nullptr;
     }
 
+    bool valid() const noexcept { return model != nullptr && data != nullptr; }
+
     const mjModel* model{nullptr};
     mjData* data{nullptr};
-
-    bool valid() const noexcept { return model != nullptr && data != nullptr; }
 };
 
 }  // namespace mujoco_simulation

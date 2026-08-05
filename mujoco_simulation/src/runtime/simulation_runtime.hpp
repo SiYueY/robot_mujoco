@@ -48,8 +48,8 @@ private:
     bool reset_to_keyframe(int keyframe_id);
     const mjContext& context() const noexcept;
 
-    mjContext context_{};
     bool initialized_{false};
+    mjContext context_{};
 };
 
 }  // namespace mujoco_simulation
