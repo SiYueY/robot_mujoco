@@ -64,6 +64,7 @@ public:
     bool start_viewer();
     bool stop_viewer();
     bool scheduler_submit_viewer_sync_if_due();
+    void stop_after_viewer_closed();
 
     SimulationConfig config_;
     std::unique_ptr<CameraRenderService> camera_render_service_;
@@ -79,6 +80,7 @@ public:
     mutable std::mutex viewer_mutex_;
     std::chrono::steady_clock::time_point next_sync_time_{};
     std::atomic<bool> runtime_failed_{false};
+    std::atomic<bool> viewer_stop_requested_{false};
     std::atomic<std::uint64_t> step_{0};
     std::uint64_t sequence_{0};
     std::shared_ptr<const RobotCommand> applied_command_;

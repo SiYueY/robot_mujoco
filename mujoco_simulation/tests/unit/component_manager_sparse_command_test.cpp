@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 
@@ -107,10 +108,10 @@ int main() {
     mujoco_simulation::RobotCommand command;
     command.joints.resize(2);
     command.joints[0].id = 2;
-    command.joints[0].mode = mujoco_simulation::JointControlMode::Effort;
+    command.joints[0].mode = static_cast<std::uint8_t>(mujoco_simulation::JointControlMode::Effort);
     command.joints[0].effort = 2.5;
     command.joints[1].id = 0;
-    command.joints[1].mode = mujoco_simulation::JointControlMode::Effort;
+    command.joints[1].mode = static_cast<std::uint8_t>(mujoco_simulation::JointControlMode::Effort);
     command.joints[1].effort = 1.5;
     if (!check(manager.write_command(context, command), "sparse command snapshot was rejected")) {
         context.clear();

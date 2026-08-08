@@ -57,7 +57,7 @@ int main() {
 
     JointCommand effort;
     effort.id = 0;
-    effort.mode = JointControlMode::Effort;
+    effort.mode = static_cast<std::uint8_t>(JointControlMode::Effort);
     effort.effort = 2.5;
     JointCommand lighter = effort;
     lighter.id = 2;

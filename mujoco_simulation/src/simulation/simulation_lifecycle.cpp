@@ -42,6 +42,7 @@ bool Simulation::Impl::initialize(const SimulationConfig& config) {
         component_manager_.clear();
         runtime_.reset();
         runtime_failed_.store(false);
+        viewer_stop_requested_.store(false);
         step_.store(0);
         sequence_ = 0;
         command_buffer_.shutdown();
@@ -113,6 +114,7 @@ bool Simulation::Impl::shutdown() {
         component_manager_.clear();
         runtime_.reset();
         runtime_failed_.store(false);
+        viewer_stop_requested_.store(false);
         step_.store(0);
         sequence_ = 0;
     }
@@ -149,6 +151,7 @@ bool Simulation::Impl::start() {
     if (needs_viewer) {
         if (start_viewer()) {
             viewer_started_here = true;
+            viewer_stop_requested_.store(false);
         } else {
             LOG_ERROR << "failed to restart the simulation viewer.";
             runtime_failed_.store(true);

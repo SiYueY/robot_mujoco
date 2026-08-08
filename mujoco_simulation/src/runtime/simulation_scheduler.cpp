@@ -91,6 +91,7 @@ bool SimulationScheduler::shutdown() {
 }
 
 bool SimulationScheduler::start() {
+    if (!join_completed_worker()) return false;
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
         LOG_ERROR << "scheduler is not initialized.";
@@ -116,7 +117,24 @@ bool SimulationScheduler::start() {
     return true;
 }
 
+bool SimulationScheduler::join_completed_worker() {
+    std::thread completed_worker;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!worker_thread_.joinable()) return true;
+        if (worker_thread_.get_id() == std::this_thread::get_id()) {
+            LOG_ERROR << "scheduler worker cannot join itself.";
+            return false;
+        }
+        if (status_ != SimulationStatus::Stopped) return true;
+        completed_worker = std::move(worker_thread_);
+    }
+    completed_worker.join();
+    return true;
+}
+
 bool SimulationScheduler::start_paused() {
+    if (!join_completed_worker()) return false;
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
         LOG_ERROR << "scheduler is not initialized.";
@@ -174,6 +192,22 @@ bool SimulationScheduler::stop() {
     if (status_ != SimulationStatus::Uninitialized) {
         status_ = SimulationStatus::Stopped;
     }
+    return true;
+}
+
+bool SimulationScheduler::request_stop() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (status_ == SimulationStatus::Uninitialized) {
+            LOG_ERROR << "scheduler is not initialized.";
+            return false;
+        }
+        stop_requested_ = true;
+        if (status_ == SimulationStatus::Running || status_ == SimulationStatus::Paused) {
+            status_ = SimulationStatus::Stopping;
+        }
+    }
+    cv_.notify_all();
     return true;
 }
 
@@ -239,9 +273,15 @@ bool SimulationScheduler::step(std::size_t count) {
     }
 
     for (std::size_t i = 0; i < count; ++i) {
-        if (!execute_task_once()) {
-            std::lock_guard<std::mutex> lock(mutex_);
+        const bool task_succeeded = execute_task_once();
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!task_succeeded) {
             set_error_locked();
+            return false;
+        }
+        if (stop_requested_) {
+            stop_requested_ = false;
+            status_ = SimulationStatus::Stopped;
             return false;
         }
     }
@@ -255,13 +295,8 @@ SimulationStatus SimulationScheduler::status() const {
 }
 
 bool SimulationScheduler::execute_task_once() {
-    {
-        std::lock_guard<std::mutex> execution_lock(execution_mutex_);
-        if (!invoke_task(task_)) {
-            return false;
-        }
-    }
-    return true;
+    std::lock_guard<std::mutex> execution_lock(execution_mutex_);
+    return invoke_task(task_);
 }
 
 void SimulationScheduler::worker_loop() {

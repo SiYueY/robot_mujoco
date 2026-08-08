@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "common/logging.hpp"
+#include "common/macro.hpp"
 
 namespace mujoco_simulation {
 
@@ -44,7 +45,9 @@ bool Simulation::Impl::scheduler_submit_viewer_sync_if_due() {
         std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
         viewer = viewer_;
     }
-    if (viewer != nullptr) {
+    if (viewer != nullptr && !viewer->is_ready()) {
+        stop_after_viewer_closed();
+    } else if (viewer != nullptr) {
         SimulationViewer::ViewerSnapshot snapshot;
         {
             std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
@@ -60,6 +63,25 @@ bool Simulation::Impl::scheduler_submit_viewer_sync_if_due() {
         std::chrono::duration<double>(config_.scheduler.viewer_period));
     next_sync_time_ = now + period;
     return true;
+}
+
+void Simulation::Impl::stop_after_viewer_closed() {
+    bool expected = false;
+    if (!viewer_stop_requested_.compare_exchange_strong(expected, true)) return;
+
+    LOG_INFO << "simulation viewer closed; stopping simulation.";
+    std::shared_ptr<SimulationViewer> viewer;
+    {
+        std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
+        viewer = std::move(viewer_);
+    }
+    if (viewer != nullptr) viewer->stop();
+    if (camera_render_service_ != nullptr) UNUSED(camera_render_service_->reset());
+    {
+        std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
+        component_manager_.clear_camera_states();
+    }
+    command_buffer_.clear();
 }
 
 bool Simulation::Impl::stop_viewer() {

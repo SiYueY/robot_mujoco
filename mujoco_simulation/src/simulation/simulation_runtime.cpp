@@ -106,12 +106,16 @@ bool Simulation::Impl::load_model(const ModelConfig& model_config) {
     component_manager_.clear();
     next_sync_time_ = std::chrono::steady_clock::now();
     runtime_failed_.store(false);
+    viewer_stop_requested_.store(false);
     step_.store(0);
     sequence_ = 0;
     return true;
 }
 
 bool Simulation::Impl::scheduler_run_task() {
+    if (viewer_stop_requested_.load()) {
+        return scheduler_ != nullptr && scheduler_->request_stop();
+    }
     if (runtime_failed_.load()) {
         LOG_ERROR << "simulation runtime is in the error state.";
         return false;
@@ -155,7 +159,7 @@ bool Simulation::Impl::scheduler_run_task() {
         LOG_ERROR << "failed to submit a simulation viewer synchronization request.";
         return false;
     }
-    return true;
+    return !viewer_stop_requested_.load() || (scheduler_ != nullptr && scheduler_->request_stop());
 }
 
 bool Simulation::Impl::step(std::size_t count) {

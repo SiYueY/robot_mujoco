@@ -168,17 +168,17 @@ bool JointComponent::write(const mjContext& context, const JointCommand& command
 
     bool result = false;
     switch (command.mode) {
-        case JointControlMode::Position:
+        case static_cast<std::uint8_t>(JointControlMode::Hybrid):
+            result = write_hybrid_command(context, command);
+            break;
+        case static_cast<std::uint8_t>(JointControlMode::Position):
             result = write_position_command(context, command);
             break;
-        case JointControlMode::Velocity:
+        case static_cast<std::uint8_t>(JointControlMode::Velocity):
             result = write_velocity_command(context, command);
             break;
-        case JointControlMode::Effort:
+        case static_cast<std::uint8_t>(JointControlMode::Effort):
             result = write_effort_command(context, command);
-            break;
-        case JointControlMode::Hybrid:
-            result = write_hybrid_command(context, command);
             break;
         default:
             LOG_ERROR << "joint '" << info_.joint_name << "' received unsupported control mode "

@@ -21,6 +21,7 @@ public:
     bool start();
     bool start_paused();
     bool stop();
+    bool request_stop();
     bool pause();
     bool resume();
     bool step(std::size_t count = 1);
@@ -33,6 +34,7 @@ private:
     void worker_loop();
     void set_error_locked();
     void reset_timing_locked();
+    bool join_completed_worker();
     void log_deadline_miss(
         std::chrono::steady_clock::time_point now, std::chrono::steady_clock::time_point deadline);
 

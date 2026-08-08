@@ -184,7 +184,7 @@ enum class JointControlMode
 ``` cpp
 struct JointCommand
 {
-    JointControlMode mode;
+    uint8_t mode;  // 0: Position, 1: Velocity, 2: Effort, 3: Hybrid
 
     double position;
 
@@ -215,7 +215,7 @@ struct JointCommand
 ``` cpp
 struct JointState
 {
-    JointControlMode mode;
+    uint8_t mode;  // 0: Position, 1: Velocity, 2: Effort, 3: Hybrid
 
     double position;
 
@@ -448,7 +448,7 @@ joints:
 ## JointCommand
 
 ``` cpp
-JointControlMode mode;
+uint8_t mode;  // 0: Position, 1: Velocity, 2: Effort, 3: Hybrid
 
 double position;
 
@@ -464,7 +464,7 @@ double damping;
 ## JointState
 
 ``` cpp
-JointControlMode mode;
+uint8_t mode;  // 0: Position, 1: Velocity, 2: Effort, 3: Hybrid
 
 double position;
 

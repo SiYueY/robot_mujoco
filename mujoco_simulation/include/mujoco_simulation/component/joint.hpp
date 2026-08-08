@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <vector>
@@ -9,13 +10,16 @@ namespace mujoco_simulation {
 
 using JointId = std::size_t;
 
-enum class JointType { Revolute, Prismatic };
+enum class JointType : uint8_t {
+    Revolute = 0,   // 旋转关节
+    Prismatic = 1,  // 平移关节
+};
 
-enum class JointControlMode {
-    Position,  // 位置模式
-    Velocity,  // 速度模式
-    Effort,    // 力矩模式
-    Hybrid     // 力位混控模式
+enum class JointControlMode : uint8_t {
+    Hybrid = 0,    // 力位混控模式
+    Position = 1,  // 位置模式
+    Velocity = 2,  // 速度模式
+    Effort = 3,    // 力矩模式
 };
 
 struct JointLimit {
@@ -39,7 +43,7 @@ struct JointInfo {
 
 struct JointCommand {
     JointId id{0};
-    JointControlMode mode{JointControlMode::Effort};
+    std::uint8_t mode{static_cast<std::uint8_t>(JointControlMode::Hybrid)};
     double position{0.0};
     double velocity{0.0};
     double effort{0.0};
@@ -52,7 +56,7 @@ using JointCommands = std::vector<JointCommand>;
 struct JointState {
     JointId id{0};
     double timestamp{0.0};
-    JointControlMode mode{JointControlMode::Effort};
+    std::uint8_t mode{static_cast<std::uint8_t>(JointControlMode::Hybrid)};
     double position{0.0};
     double velocity{0.0};
     double effort{0.0};

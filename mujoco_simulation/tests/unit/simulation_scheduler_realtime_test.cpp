@@ -195,6 +195,39 @@ int main() {
         return 1;
     }
 
+    mujoco_simulation::SimulationScheduler normal_stop_scheduler;
+    std::atomic<std::size_t> normal_stop_invocations{0};
+    if (!check(
+            normal_stop_scheduler.initialize(std::chrono::duration<double>(1ms)),
+            "normal-stop scheduler initialization failed") ||
+        !check(
+            normal_stop_scheduler.register_task([&] {
+                ++normal_stop_invocations;
+                return normal_stop_invocations != 1U || normal_stop_scheduler.request_stop();
+            }),
+            "normal-stop scheduler task registration failed") ||
+        !check(normal_stop_scheduler.start(), "normal-stop scheduler start failed") ||
+        !check(
+            mujoco_simulation_test::wait_until(
+                [&] {
+                    return normal_stop_scheduler.status() ==
+                           mujoco_simulation::SimulationStatus::Stopped;
+                },
+                std::chrono::seconds(1)),
+            "normal stop did not leave the scheduler stopped") ||
+        !check(
+            normal_stop_scheduler.status() != mujoco_simulation::SimulationStatus::Error,
+            "normal stop incorrectly entered the error state") ||
+        !check(normal_stop_scheduler.start(), "normal-stop scheduler did not restart") ||
+        !check(
+            mujoco_simulation_test::wait_until(
+                [&] { return normal_stop_invocations.load() >= 2U; }, std::chrono::seconds(1)),
+            "restarted scheduler did not invoke its task") ||
+        !check(normal_stop_scheduler.stop(), "normal-stop scheduler stop failed") ||
+        !check(normal_stop_scheduler.shutdown(), "normal-stop scheduler shutdown failed")) {
+        return 1;
+    }
+
     mujoco_simulation::SimulationScheduler failing_scheduler;
     if (!check(
             failing_scheduler.initialize(std::chrono::duration<double>(1ms)),
