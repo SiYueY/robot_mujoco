@@ -5,22 +5,22 @@
 #include <utility>
 
 #include "common/compare.hpp"
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "common/macro.hpp"
 
 namespace mujoco_simulation {
 
 bool SimulationScheduler::invoke_task(const std::function<bool()>& task) {
     if (!task) {
-        LOG_ERROR << "required scheduler task host is not configured.";
+        SIM_ERROR << "required scheduler task host is not configured.";
         return false;
     }
     try {
         return task();
     } catch (const std::exception&) {
-        LOG_ERROR << "scheduler task threw an exception.";
+        SIM_ERROR << "scheduler task threw an exception.";
     } catch (...) {
-        LOG_ERROR << "scheduler task threw an unknown exception.";
+        SIM_ERROR << "scheduler task threw an unknown exception.";
     }
     return false;
 }
@@ -28,18 +28,18 @@ bool SimulationScheduler::invoke_task(const std::function<bool()>& task) {
 bool SimulationScheduler::initialize(std::chrono::duration<double> physics_period) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ != SimulationStatus::Uninitialized) {
-        LOG_ERROR << "scheduler is already initialized.";
+        SIM_ERROR << "scheduler is already initialized.";
         return false;
     }
 
     if (!std::isfinite(physics_period.count()) || physics_period.count() <= 0.0) {
-        LOG_ERROR << "scheduler physics period must be finite and positive.";
+        SIM_ERROR << "scheduler physics period must be finite and positive.";
         return false;
     }
     physics_period_ =
         std::chrono::duration_cast<std::chrono::steady_clock::duration>(physics_period);
     if (physics_period_ <= std::chrono::steady_clock::duration::zero()) {
-        LOG_ERROR << "scheduler physics period is below clock resolution.";
+        SIM_ERROR << "scheduler physics period is below clock resolution.";
         return false;
     }
     task_ = {};
@@ -52,19 +52,19 @@ bool SimulationScheduler::initialize(std::chrono::duration<double> physics_perio
 
 bool SimulationScheduler::register_task(std::function<bool()> task) {
     if (!task) {
-        LOG_ERROR << "scheduler task must not be empty.";
+        SIM_ERROR << "scheduler task must not be empty.";
         return false;
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-        LOG_ERROR << "scheduler must be initialized before registering operations.";
+        SIM_ERROR << "scheduler must be initialized before registering operations.";
         return false;
     }
     if (worker_thread_.joinable() || status_ == SimulationStatus::Running ||
         status_ == SimulationStatus::Paused || status_ == SimulationStatus::Stopping ||
         status_ == SimulationStatus::Error) {
-        LOG_ERROR << "scheduler cannot register operations after execution has started.";
+        SIM_ERROR << "scheduler cannot register operations after execution has started.";
         return false;
     }
     task_ = std::move(task);
@@ -94,11 +94,11 @@ bool SimulationScheduler::start() {
     if (!join_completed_worker()) return false;
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-        LOG_ERROR << "scheduler is not initialized.";
+        SIM_ERROR << "scheduler is not initialized.";
         return false;
     }
     if (status_ != SimulationStatus::Stopped) {
-        LOG_ERROR << "scheduler is not stopped.";
+        SIM_ERROR << "scheduler is not stopped.";
         return false;
     }
 
@@ -110,7 +110,7 @@ bool SimulationScheduler::start() {
         worker_thread_ = std::thread([this]() { worker_loop(); });
     } catch (const std::exception&) {
         status_ = SimulationStatus::Stopped;
-        LOG_ERROR << "failed to start scheduler thread.";
+        SIM_ERROR << "failed to start scheduler thread.";
         return false;
     }
 
@@ -123,7 +123,7 @@ bool SimulationScheduler::join_completed_worker() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!worker_thread_.joinable()) return true;
         if (worker_thread_.get_id() == std::this_thread::get_id()) {
-            LOG_ERROR << "scheduler worker cannot join itself.";
+            SIM_ERROR << "scheduler worker cannot join itself.";
             return false;
         }
         if (status_ != SimulationStatus::Stopped) return true;
@@ -137,11 +137,11 @@ bool SimulationScheduler::start_paused() {
     if (!join_completed_worker()) return false;
     std::lock_guard<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-        LOG_ERROR << "scheduler is not initialized.";
+        SIM_ERROR << "scheduler is not initialized.";
         return false;
     }
     if (status_ != SimulationStatus::Stopped) {
-        LOG_ERROR << "scheduler is not stopped.";
+        SIM_ERROR << "scheduler is not stopped.";
         return false;
     }
 
@@ -152,7 +152,7 @@ bool SimulationScheduler::start_paused() {
         worker_thread_ = std::thread([this]() { worker_loop(); });
     } catch (const std::exception&) {
         status_ = SimulationStatus::Stopped;
-        LOG_ERROR << "failed to start paused scheduler thread.";
+        SIM_ERROR << "failed to start paused scheduler thread.";
         return false;
     }
     return true;
@@ -164,7 +164,7 @@ bool SimulationScheduler::stop() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (status_ == SimulationStatus::Uninitialized) {
-            LOG_ERROR << "scheduler is not initialized.";
+            SIM_ERROR << "scheduler is not initialized.";
             return false;
         }
         if (status_ != SimulationStatus::Stopped) {
@@ -179,7 +179,7 @@ bool SimulationScheduler::stop() {
     cv_.notify_all();
 
     if (self_join) {
-        LOG_ERROR << "scheduler worker cannot join itself.";
+        SIM_ERROR << "scheduler worker cannot join itself.";
         return false;
     }
 
@@ -199,7 +199,7 @@ bool SimulationScheduler::request_stop() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (status_ == SimulationStatus::Uninitialized) {
-            LOG_ERROR << "scheduler is not initialized.";
+            SIM_ERROR << "scheduler is not initialized.";
             return false;
         }
         stop_requested_ = true;
@@ -214,15 +214,15 @@ bool SimulationScheduler::request_stop() {
 bool SimulationScheduler::pause() {
     std::unique_lock<std::mutex> lock(mutex_);
     if (status_ == SimulationStatus::Uninitialized) {
-        LOG_ERROR << "scheduler is not initialized.";
+        SIM_ERROR << "scheduler is not initialized.";
         return false;
     }
     if (status_ != SimulationStatus::Running) {
-        LOG_ERROR << "scheduler is not running.";
+        SIM_ERROR << "scheduler is not running.";
         return false;
     }
     if (worker_thread_.joinable() && worker_thread_.get_id() == std::this_thread::get_id()) {
-        LOG_ERROR << "scheduler worker cannot synchronously pause itself.";
+        SIM_ERROR << "scheduler worker cannot synchronously pause itself.";
         return false;
     }
     status_ = SimulationStatus::Paused;
@@ -236,11 +236,11 @@ bool SimulationScheduler::resume() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (status_ == SimulationStatus::Uninitialized) {
-            LOG_ERROR << "scheduler is not initialized.";
+            SIM_ERROR << "scheduler is not initialized.";
             return false;
         }
         if (status_ != SimulationStatus::Paused) {
-            LOG_ERROR << "scheduler is not paused.";
+            SIM_ERROR << "scheduler is not paused.";
             return false;
         }
         status_ = SimulationStatus::Running;
@@ -252,22 +252,22 @@ bool SimulationScheduler::resume() {
 
 bool SimulationScheduler::step(std::size_t count) {
     if (count == 0) {
-        LOG_ERROR << "scheduler step count must be positive.";
+        SIM_ERROR << "scheduler step count must be positive.";
         return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (status_ == SimulationStatus::Uninitialized) {
-            LOG_ERROR << "scheduler is not initialized.";
+            SIM_ERROR << "scheduler is not initialized.";
             return false;
         }
         if (status_ == SimulationStatus::Running || status_ == SimulationStatus::Stopping) {
-            LOG_ERROR << "scheduler cannot step while running.";
+            SIM_ERROR << "scheduler cannot step while running.";
             return false;
         }
         if (status_ == SimulationStatus::Error) {
-            LOG_ERROR << "scheduler is in an error state.";
+            SIM_ERROR << "scheduler is in an error state.";
             return false;
         }
     }
@@ -354,13 +354,13 @@ void SimulationScheduler::worker_loop() {
             }
         }
     } catch (const std::exception&) {
-        LOG_ERROR << "scheduler worker thread threw an exception.";
+        SIM_ERROR << "scheduler worker thread threw an exception.";
         std::lock_guard<std::mutex> lock(mutex_);
         worker_task_executing_ = false;
         cv_.notify_all();
         set_error_locked();
     } catch (...) {
-        LOG_ERROR << "scheduler worker thread threw an unknown exception.";
+        SIM_ERROR << "scheduler worker thread threw an unknown exception.";
         std::lock_guard<std::mutex> lock(mutex_);
         worker_task_executing_ = false;
         cv_.notify_all();
@@ -398,8 +398,8 @@ void SimulationScheduler::log_deadline_miss(
         std::chrono::duration<double>(physics_period_).count() * completed_steps_;
     const double realtime_factor = wall_seconds > 0.0 ? simulation_seconds / wall_seconds : 0.0;
     const double lateness = std::chrono::duration<double>(now - deadline).count();
-    LOG_WARNING << "physics deadline miss: lateness=" << lateness
-                << " s, realtime_factor=" << realtime_factor << ", misses=" << deadline_misses_;
+    SIM_WARN << "physics deadline miss: lateness=" << lateness
+             << " s, realtime_factor=" << realtime_factor << ", misses=" << deadline_misses_;
     last_deadline_log_ = now;
 }
 

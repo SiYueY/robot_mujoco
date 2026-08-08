@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "common/compare.hpp"
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "common/macro.hpp"
 
 namespace mujoco_simulation {
@@ -22,28 +22,28 @@ bool LidarComponent::init(const mjContext& context) {
 
     const mjModel& model = *context.model;
     if (info_.sensor_prefix.empty()) {
-        LOG_ERROR << "lidar '" << info_.name << "' sensor prefix must not be empty.";
+        SIM_ERROR << "lidar '" << info_.name << "' sensor prefix must not be empty.";
         return false;
     }
     if (!std::isfinite(info_.angle_min) || !std::isfinite(info_.angle_max) ||
         !std::isfinite(info_.angle_increment)) {
-        LOG_ERROR << "lidar '" << info_.name << "' angular configuration must be finite.";
+        SIM_ERROR << "lidar '" << info_.name << "' angular configuration must be finite.";
         return false;
     }
     if (!std::isfinite(info_.range_min) || !std::isfinite(info_.range_max)) {
-        LOG_ERROR << "lidar '" << info_.name << "' range configuration must be finite.";
+        SIM_ERROR << "lidar '" << info_.name << "' range configuration must be finite.";
         return false;
     }
     if (info_.angle_increment <= 0.0) {
-        LOG_ERROR << "lidar '" << info_.name << "' angle increment must be positive.";
+        SIM_ERROR << "lidar '" << info_.name << "' angle increment must be positive.";
         return false;
     }
     if (math::less(info_.angle_max, info_.angle_min)) {
-        LOG_ERROR << "lidar '" << info_.name << "' angle maximum is less than angle minimum.";
+        SIM_ERROR << "lidar '" << info_.name << "' angle maximum is less than angle minimum.";
         return false;
     }
     if (math::less(info_.range_max, info_.range_min)) {
-        LOG_ERROR << "lidar '" << info_.name << "' range maximum is less than range minimum.";
+        SIM_ERROR << "lidar '" << info_.name << "' range maximum is less than range minimum.";
         return false;
     }
 
@@ -51,7 +51,7 @@ bool LidarComponent::init(const mjContext& context) {
     const double rounded_span = std::round(span);
     if (!math::equal(span, rounded_span) ||
         rounded_span > static_cast<double>(std::numeric_limits<int>::max() - 1)) {
-        LOG_ERROR << "lidar '" << info_.name
+        SIM_ERROR << "lidar '" << info_.name
                   << "' angle span must be an integral number of increments.";
         return false;
     }
@@ -62,24 +62,24 @@ bool LidarComponent::init(const mjContext& context) {
         const std::string sensor_name = info_.sensor_prefix + "-" + std::to_string(beam_index);
         const int sensor_id = mj_name2id(&model, mjOBJ_SENSOR, sensor_name.c_str());
         if (sensor_id < 0) {
-            LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
+            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
                       << "' was not found in the model.";
             return false;
         }
         if (model.sensor_type[sensor_id] != mjSENS_RANGEFINDER) {
-            LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
+            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
                       << "' has type " << model.sensor_type[sensor_id] << ", expected "
                       << mjSENS_RANGEFINDER << ".";
             return false;
         }
         if (model.sensor_dim[sensor_id] != 1) {
-            LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
+            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
                       << "' has dimension " << model.sensor_dim[sensor_id] << ", expected 1.";
             return false;
         }
         const int address = model.sensor_adr[sensor_id];
         if (address < 0 || address >= model.nsensordata) {
-            LOG_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
+            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
                       << "' has an out-of-range sensor address.";
             return false;
         }
@@ -105,7 +105,7 @@ bool LidarComponent::init(const mjContext& context) {
 bool LidarComponent::reset(const mjContext& context) {
     UNUSED(context);
     if (!initialized_) {
-        LOG_ERROR << "lidar '" << info_.name << "' is not initialized.";
+        SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
         return false;
     }
 
@@ -126,7 +126,7 @@ bool LidarComponent::reset(const mjContext& context) {
 
 bool LidarComponent::update(const mjContext& context) {
     if (!initialized_) {
-        LOG_ERROR << "lidar '" << info_.name << "' is not initialized.";
+        SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
         return false;
     }
 
@@ -160,7 +160,7 @@ bool LidarComponent::update(const mjContext& context) {
 
 bool LidarComponent::read_state(std::shared_ptr<const LidarState>& state) const {
     if (!initialized_) {
-        LOG_ERROR << "lidar '" << info_.name << "' is not initialized.";
+        SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
         return false;
     }
     state = state_;

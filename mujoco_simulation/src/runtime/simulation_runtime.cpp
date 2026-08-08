@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 
 namespace mujoco_simulation {
 
@@ -25,18 +25,18 @@ SimulationRuntime& SimulationRuntime::operator=(SimulationRuntime&& other) noexc
 bool SimulationRuntime::load_model(const std::string& file_path, mjModel*& model) {
     model = nullptr;
     if (file_path.empty()) {
-        LOG_ERROR << "model file path must not be empty.";
+        SIM_ERROR << "model file path must not be empty.";
         return false;
     }
 
     const std::filesystem::path path(file_path);
     if (!std::filesystem::is_regular_file(path)) {
-        LOG_ERROR << "model path '" << path << "' is not a regular file.";
+        SIM_ERROR << "model path '" << path << "' is not a regular file.";
         return false;
     }
 
     if (path.extension() == ".mjb") {
-        LOG_ERROR << "binary MuJoCo model files are not supported: '" << path << "'.";
+        SIM_ERROR << "binary MuJoCo model files are not supported: '" << path << "'.";
         return false;
     }
 
@@ -45,12 +45,12 @@ bool SimulationRuntime::load_model(const std::string& file_path, mjModel*& model
     char error_message[error_message_length] = {0};
     mj_model = mj_loadXML(path.c_str(), nullptr, error_message, error_message_length);
     if (mj_model == nullptr) {
-        LOG_ERROR << "failed to load xml model file '" << path << "': " << error_message;
+        SIM_ERROR << "failed to load xml model file '" << path << "': " << error_message;
         return false;
     }
 
     if (!(mj_model->opt.timestep > 0.0)) {
-        LOG_ERROR << "model timestep must be positive.";
+        SIM_ERROR << "model timestep must be positive.";
         mj_deleteModel(mj_model);
         return false;
     }
@@ -71,7 +71,7 @@ bool SimulationRuntime::init(const ModelConfig& config) {
     mjData* data = mj_makeData(mj_model);
     if (data == nullptr) {
         mj_deleteModel(mj_model);
-        LOG_ERROR << "failed to allocate MuJoCo data.";
+        SIM_ERROR << "failed to allocate MuJoCo data.";
         return false;
     }
 
@@ -81,7 +81,7 @@ bool SimulationRuntime::init(const ModelConfig& config) {
         const int keyframe_id =
             mj_name2id(context_.model, mjOBJ_KEY, config.initial_keyframe.c_str());
         if (keyframe_id < 0) {
-            LOG_ERROR << "keyframe '" << config.initial_keyframe << "' was not found.";
+            SIM_ERROR << "keyframe '" << config.initial_keyframe << "' was not found.";
             context_.clear();
             return false;
         }
@@ -115,11 +115,11 @@ bool SimulationRuntime::step() { return step(1); }
 
 bool SimulationRuntime::step(std::size_t count) {
     if (count == 0) {
-        LOG_ERROR << "step count must be greater than zero.";
+        SIM_ERROR << "step count must be greater than zero.";
         return false;
     }
     if (!is_initialized()) {
-        LOG_ERROR << "model runtime is not loaded.";
+        SIM_ERROR << "model runtime is not loaded.";
         return false;
     }
 
@@ -131,7 +131,7 @@ bool SimulationRuntime::step(std::size_t count) {
 
 bool SimulationRuntime::forward() {
     if (!is_initialized()) {
-        LOG_ERROR << "model runtime is not loaded.";
+        SIM_ERROR << "model runtime is not loaded.";
         return false;
     }
     mj_forward(context_.model, context_.data);
@@ -140,11 +140,11 @@ bool SimulationRuntime::forward() {
 
 bool SimulationRuntime::set_timestep(double timestep) {
     if (!is_initialized()) {
-        LOG_ERROR << "model runtime is not loaded.";
+        SIM_ERROR << "model runtime is not loaded.";
         return false;
     }
     if (!std::isfinite(timestep) || timestep <= 0.0) {
-        LOG_ERROR << "MuJoCo timestep must be finite and positive.";
+        SIM_ERROR << "MuJoCo timestep must be finite and positive.";
         return false;
     }
     mjModel* model = const_cast<mjModel*>(context_.model);
@@ -154,7 +154,7 @@ bool SimulationRuntime::set_timestep(double timestep) {
 
 bool SimulationRuntime::reset() {
     if (!is_initialized()) {
-        LOG_ERROR << "model runtime is not loaded.";
+        SIM_ERROR << "model runtime is not loaded.";
         return false;
     }
     return reset_to_default();
@@ -162,17 +162,17 @@ bool SimulationRuntime::reset() {
 
 bool SimulationRuntime::reset(std::string keyframe_name) {
     if (!is_initialized()) {
-        LOG_ERROR << "model runtime is not loaded.";
+        SIM_ERROR << "model runtime is not loaded.";
         return false;
     }
     if (keyframe_name.empty()) {
-        LOG_ERROR << "keyframe name must not be empty.";
+        SIM_ERROR << "keyframe name must not be empty.";
         return false;
     }
     const int keyframe_id =
         mj_name2id(context_.model, mjOBJ_KEY, std::string(keyframe_name).c_str());
     if (keyframe_id < 0) {
-        LOG_ERROR << "keyframe '" << keyframe_name << "' was not found.";
+        SIM_ERROR << "keyframe '" << keyframe_name << "' was not found.";
         return false;
     }
     return reset_to_keyframe(keyframe_id);

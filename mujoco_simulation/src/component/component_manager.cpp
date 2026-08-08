@@ -4,7 +4,7 @@
 #include <utility>
 #include <vector>
 
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 
 namespace mujoco_simulation {
 namespace {
@@ -76,7 +76,7 @@ bool ComponentManager::init(
     const mjContext& context, const ComponentConfigList& components,
     CameraRenderService& camera_render_service) {
     if (!context.valid()) {
-        LOG_ERROR << "component manager requires a valid MuJoCo context.";
+        SIM_ERROR << "component manager requires a valid MuJoCo context.";
         return false;
     }
     clear();
@@ -86,7 +86,7 @@ bool ComponentManager::init(
         const ComponentId id = config.id;
         if (id == kInvalidComponentId || id > kMaximumComponentId ||
             (slots.size() > id && slots[id] != nullptr)) {
-            LOG_ERROR << "component id is invalid or duplicated.";
+            SIM_ERROR << "component id is invalid or duplicated.";
             return false;
         }
         auto component = make_component(std::move(config));
@@ -136,7 +136,7 @@ bool ComponentManager::init(
         const std::size_t count = component_count(slots);
         if (count == 0U) return;
         if (slots.front() == nullptr || count != slots.size()) {
-            LOG_WARNING << type << " component IDs are sparse; empty slots are reserved.";
+            SIM_WARN << type << " component IDs are sparse; empty slots are reserved.";
         }
     };
     warn_sparse(joints_components_, "joint");
@@ -310,7 +310,7 @@ bool ComponentManager::submit_due_cameras(const mjContext& context) {
             camera_render_service_->submit(request, ticket);
         if (submit_result != CameraRenderSubmitResult::Accepted &&
             submit_result != CameraRenderSubmitResult::ReplacedPendingBatch) {
-            LOG_WARNING << "failed to submit camera render job; keeping prior frames.";
+            SIM_WARN << "failed to submit camera render job; keeping prior frames.";
         } else {
             if (!active_camera_ticket_.has_value())
                 active_camera_ticket_ = ticket;
@@ -334,7 +334,7 @@ bool ComponentManager::write_joint_commands(
     for (const JointCommand& command : commands) {
         const JointId id = command.id;
         if (id >= joints_components_.size()) {
-            LOG_ERROR << "joint command target id was not found.";
+            SIM_ERROR << "joint command target id was not found.";
             return false;
         }
         if (joints_components_[id] == nullptr || !joints_components_[id]->write(context, command))
@@ -348,7 +348,7 @@ bool ComponentManager::write_mobile_base_commands(
     for (const MobileBaseCommand& command : commands) {
         const MobileBaseId id = command.id;
         if (id >= mobile_base_components_.size()) {
-            LOG_ERROR << "mobile base command target id was not found.";
+            SIM_ERROR << "mobile base command target id was not found.";
             return false;
         }
         if (mobile_base_components_[id] == nullptr ||

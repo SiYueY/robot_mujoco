@@ -11,7 +11,7 @@
 #include "simulate.h"
 #include <GLFW/glfw3.h>
 
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 
 namespace mujoco_simulation {
 
@@ -84,18 +84,18 @@ SimulationViewer::~SimulationViewer() { stop(); }
 
 bool SimulationViewer::create_viewer_data(const mjContext& context) {
     if (!context.valid()) {
-        LOG_ERROR << "cannot create viewer data from an invalid context.";
+        SIM_ERROR << "cannot create viewer data from an invalid context.";
         return false;
     }
     viewer_model_ = mj_copyModel(nullptr, context.model);
     if (viewer_model_ == nullptr) {
-        LOG_ERROR << "failed to copy the MuJoCo model for the viewer.";
+        SIM_ERROR << "failed to copy the MuJoCo model for the viewer.";
         return false;
     }
     viewer_data_ = mj_makeData(viewer_model_);
     if (viewer_data_ == nullptr ||
         mj_copyData(viewer_data_, viewer_model_, context.data) == nullptr) {
-        LOG_ERROR << "failed to create viewer data buffers.";
+        SIM_ERROR << "failed to create viewer data buffers.";
         release_viewer_data();
         return false;
     }
@@ -103,7 +103,7 @@ bool SimulationViewer::create_viewer_data(const mjContext& context) {
     for (std::size_t index = 0; index < 3U; ++index) {
         mjData* snapshot = mj_makeData(viewer_model_);
         if (snapshot == nullptr) {
-            LOG_ERROR << "failed to allocate viewer snapshot buffers.";
+            SIM_ERROR << "failed to allocate viewer snapshot buffers.";
             release_viewer_data();
             return false;
         }
@@ -210,7 +210,7 @@ bool SimulationViewer::start_sync_worker() {
         }
         sync_thread_ = std::thread([this] { sync_worker_loop(); });
     } catch (const std::exception&) {
-        LOG_ERROR << "failed to start viewer synchronization worker.";
+        SIM_ERROR << "failed to start viewer synchronization worker.";
         return false;
     }
     return true;
@@ -242,7 +242,7 @@ void SimulationViewer::sync_worker_loop() {
             sync_pending_ = false;
         }
         if (snapshot != nullptr && !sync_render_data(*snapshot->data)) {
-            LOG_WARNING << "viewer synchronization failed; disabling viewer.";
+            SIM_WARN << "viewer synchronization failed; disabling viewer.";
             stop_viewer();
             return;
         }
@@ -253,7 +253,7 @@ void SimulationViewer::render_task(
     const mjModel* model, mjData* data, std::string displayed_filename) {
     try {
         if (model == nullptr || data == nullptr) {
-            LOG_ERROR << "viewer runtime became invalid.";
+            SIM_ERROR << "viewer runtime became invalid.";
             set_failed();
             return;
         }
@@ -284,17 +284,17 @@ void SimulationViewer::render_task(
         simulate_->RenderLoop();
         finish_render_thread();
     } catch (const std::exception&) {
-        LOG_ERROR << "viewer render thread failed.";
+        SIM_ERROR << "viewer render thread failed.";
         set_failed();
     } catch (...) {
-        LOG_ERROR << "viewer render thread failed.";
+        SIM_ERROR << "viewer render thread failed.";
         set_failed();
     }
 }
 
 bool SimulationViewer::prepare(const mjContext& context) {
     if (!context.valid()) {
-        LOG_ERROR << "cannot prepare simulation viewer from an invalid context.";
+        SIM_ERROR << "cannot prepare simulation viewer from an invalid context.";
         return false;
     }
 
@@ -302,12 +302,12 @@ bool SimulationViewer::prepare(const mjContext& context) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (state_ != ViewerState::Stopped) {
-            LOG_ERROR << "simulation viewer must be stopped before preparation.";
+            SIM_ERROR << "simulation viewer must be stopped before preparation.";
             return false;
         }
     }
     if (viewer_model_ != nullptr || viewer_data_ != nullptr || snapshot_pool_ != nullptr) {
-        LOG_ERROR << "simulation viewer data is already prepared.";
+        SIM_ERROR << "simulation viewer data is already prepared.";
         return false;
     }
     if (!create_viewer_data(context)) {
@@ -319,7 +319,7 @@ bool SimulationViewer::prepare(const mjContext& context) {
 bool SimulationViewer::start(const std::string& displayed_filename) {
     std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
     if (viewer_model_ == nullptr || viewer_data_ == nullptr) {
-        LOG_ERROR << "simulation viewer must be prepared before it is started.";
+        SIM_ERROR << "simulation viewer must be prepared before it is started.";
         return false;
     }
     {
@@ -329,7 +329,7 @@ bool SimulationViewer::start(const std::string& displayed_filename) {
     // GLFW is process-lifetime state.  Do not call glfwTerminate() here: the
     // unmodified vendored viewer registers the process-exit termination hook.
     if (glfwInit() == GLFW_FALSE) {
-        LOG_ERROR << "failed to initialize GLFW for the simulation viewer.";
+        SIM_ERROR << "failed to initialize GLFW for the simulation viewer.";
         return false;
     }
 
@@ -350,7 +350,7 @@ bool SimulationViewer::start(const std::string& displayed_filename) {
             render_thread_ = std::move(render_thread);
         }
     } catch (const std::exception&) {
-        LOG_ERROR << "failed to start viewer render thread.";
+        SIM_ERROR << "failed to start viewer render thread.";
         cleanup();
         release_viewer_data();
         return false;
@@ -366,7 +366,7 @@ bool SimulationViewer::start(const std::string& displayed_filename) {
     lock.unlock();
     if (!ready) {
         if (!completed) {
-            LOG_ERROR << "viewer startup timed out.";
+            SIM_ERROR << "viewer startup timed out.";
         }
         stop_viewer();
         release_viewer_data();
@@ -397,7 +397,7 @@ void SimulationViewer::stop() {
 bool SimulationViewer::capture_snapshot(const mjContext& context, ViewerSnapshot& snapshot) {
     snapshot = ViewerSnapshot{};
     if (!context.valid()) {
-        LOG_WARNING << "viewer synchronization request has an invalid context.";
+        SIM_WARN << "viewer synchronization request has an invalid context.";
         return false;
     }
     std::lock_guard<std::mutex> lock(sync_mutex_);
@@ -406,11 +406,11 @@ bool SimulationViewer::capture_snapshot(const mjContext& context, ViewerSnapshot
     }
     auto lease = snapshot_pool_->acquire();
     if (lease == nullptr) {
-        LOG_WARNING << "viewer snapshot pool is exhausted; dropped synchronization.";
+        SIM_WARN << "viewer snapshot pool is exhausted; dropped synchronization.";
         return false;
     }
     if (mj_copyData(lease->data, viewer_model_, context.data) == nullptr) {
-        LOG_WARNING << "failed to copy simulation data for viewer synchronization.";
+        SIM_WARN << "failed to copy simulation data for viewer synchronization.";
         return false;
     }
     snapshot = ViewerSnapshot(std::move(lease));

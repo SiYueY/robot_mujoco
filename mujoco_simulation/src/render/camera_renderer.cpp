@@ -12,7 +12,7 @@
 #include <EGL/eglext.h>
 #include <GLFW/glfw3.h>
 
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "common/macro.hpp"
 
 namespace mujoco_simulation {
@@ -93,7 +93,7 @@ CameraRenderer::~CameraRenderer() { UNUSED(release()); }
 
 bool CameraRenderer::initialize(const mjContext& context) {
     if (!context.valid()) {
-        LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
+        SIM_ERROR << "camera renderer requires a valid MuJoCo context.";
         return false;
     }
     return initialize(context.model);
@@ -117,19 +117,19 @@ bool CameraRenderer::initialize(const mjModel* model) {
         }
     }
     if (model == nullptr) {
-        LOG_ERROR << "camera renderer requires a valid MuJoCo model.";
+        SIM_ERROR << "camera renderer requires a valid MuJoCo model.";
         return false;
     }
     if (config_.max_scene_geometries <= 0) {
-        LOG_ERROR << "max_scene_geometries must be positive.";
+        SIM_ERROR << "max_scene_geometries must be positive.";
         return false;
     }
     if (!config_.allow_glfw_backend && !config_.allow_egl_backend) {
-        LOG_ERROR << "camera renderer requires a GLFW or EGL backend.";
+        SIM_ERROR << "camera renderer requires a GLFW or EGL backend.";
         return false;
     }
     if (config_.completed_ticket_history == 0U) {
-        LOG_ERROR << "camera renderer ticket history must be positive.";
+        SIM_ERROR << "camera renderer ticket history must be positive.";
         return false;
     }
 
@@ -137,7 +137,7 @@ bool CameraRenderer::initialize(const mjModel* model) {
     pending_data_ = mj_makeData(model_);
     render_data_ = mj_makeData(model_);
     if (pending_data_ == nullptr || render_data_ == nullptr) {
-        LOG_ERROR << "failed to allocate camera render data buffers.";
+        SIM_ERROR << "failed to allocate camera render data buffers.";
         UNUSED(release_locked());
         return false;
     }
@@ -160,7 +160,7 @@ bool CameraRenderer::initialize(const mjModel* model) {
     try {
         worker_thread_ = std::thread(&CameraRenderer::worker_loop, this);
     } catch (const std::exception&) {
-        LOG_ERROR << "failed to start the camera render worker.";
+        SIM_ERROR << "failed to start the camera render worker.";
         UNUSED(release_locked());
         return false;
     }
@@ -171,13 +171,13 @@ bool CameraRenderer::initialize(const mjModel* model) {
         std::this_thread::yield();
     }
     if (!worker_ready_.load() || worker_initialization_failed_.load()) {
-        LOG_ERROR << "camera render worker initialization timed out or failed.";
+        SIM_ERROR << "camera render worker initialization timed out or failed.";
         UNUSED(release_locked());
         return false;
     }
     const std::uint64_t prior_generation = ticket_epoch_.load();
     if (prior_generation == std::numeric_limits<std::uint64_t>::max()) {
-        LOG_ERROR << "camera renderer ticket epoch overflowed.";
+        SIM_ERROR << "camera renderer ticket epoch overflowed.";
         UNUSED(release_locked());
         return false;
     }
@@ -189,7 +189,7 @@ bool CameraRenderer::initialize(const mjModel* model) {
 std::optional<CameraRenderTicket> CameraRenderer::submit(
     const mjContext& context, std::vector<CameraRenderTask> tasks) {
     if (!context.valid()) {
-        LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
+        SIM_ERROR << "camera renderer requires a valid MuJoCo context.";
         return std::nullopt;
     }
     CameraRenderBatchRequest request;
@@ -218,11 +218,11 @@ std::optional<CameraRenderTicket> CameraRenderer::submit(
     }
     std::lock_guard<std::mutex> lifecycle_lock(lifecycle_mutex_);
     if (request.model == nullptr || request.data == nullptr) {
-        LOG_ERROR << "camera renderer requires a valid MuJoCo context.";
+        SIM_ERROR << "camera renderer requires a valid MuJoCo context.";
         return std::nullopt;
     }
     if (!initialized_.load() || !running_.load()) {
-        LOG_ERROR << "camera renderer is not initialized.";
+        SIM_ERROR << "camera renderer is not initialized.";
         return std::nullopt;
     }
     std::unordered_set<CameraId> ids;
@@ -231,7 +231,7 @@ std::optional<CameraRenderTicket> CameraRenderer::submit(
         // legacy rendering payload and carries no id authority.
         const CameraId id = task.camera_id;
         if (id > kMaximumCameraId || !ids.insert(id).second) {
-            LOG_ERROR << "camera render task id is invalid, outside range, or duplicated.";
+            SIM_ERROR << "camera render task id is invalid, outside range, or duplicated.";
             return std::nullopt;
         }
     }
@@ -239,11 +239,11 @@ std::optional<CameraRenderTicket> CameraRenderer::submit(
     {
         std::lock_guard<std::mutex> lock(job_mutex_);
         if (stopping_ || pending_data_ == nullptr) {
-            LOG_WARNING << "camera renderer is stopping; dropped render request.";
+            SIM_WARN << "camera renderer is stopping; dropped render request.";
             return std::nullopt;
         }
         if (mj_copyData(pending_data_, request.model, request.data) == nullptr) {
-            LOG_ERROR << "failed to copy MuJoCo simulation data for camera rendering.";
+            SIM_ERROR << "failed to copy MuJoCo simulation data for camera rendering.";
             return std::nullopt;
         }
         snapshot_copy_count_.fetch_add(1);
@@ -306,20 +306,20 @@ CameraRenderWaitStatus CameraRenderer::wait_result(
         // waiter released during that boundary has a stopped lifecycle and must
         // receive the shutdown terminal status.
         if (stopping_ || !initialized_.load() || !running_.load()) {
-            LOG_WARNING << "camera render worker stopped before completing the "
-                           "submitted frame.";
+            SIM_WARN << "camera render worker stopped before completing the "
+                        "submitted frame.";
             return CameraRenderWaitStatus::Stopped;
         }
-        LOG_ERROR << "camera render ticket belongs to another renderer lifecycle.";
+        SIM_ERROR << "camera render ticket belongs to another renderer lifecycle.";
         return CameraRenderWaitStatus::InvalidTicket;
     }
     if (requested.sequence > submitted_ticket_) {
-        LOG_ERROR << "camera render ticket was not submitted by this renderer.";
+        SIM_ERROR << "camera render ticket was not submitted by this renderer.";
         return CameraRenderWaitStatus::InvalidTicket;
     }
     if (requested.generation == expired_through_ticket_.generation &&
         requested.sequence <= expired_through_ticket_.sequence) {
-        LOG_ERROR << "camera render ticket has expired.";
+        SIM_ERROR << "camera render ticket has expired.";
         return CameraRenderWaitStatus::Stale;
     }
     const bool completed =
@@ -329,26 +329,26 @@ CameraRenderWaitStatus CameraRenderer::wait_result(
                    worker_initialization_failed_;
         });
     if (!completed) {
-        LOG_ERROR << "camera render worker timed out for the submitted frame.";
+        SIM_ERROR << "camera render worker timed out for the submitted frame.";
         return CameraRenderWaitStatus::Timeout;
     }
     if (ticket_epoch_.load() != requested_generation) {
-        LOG_ERROR << "camera render ticket belongs to another renderer lifecycle.";
+        SIM_ERROR << "camera render ticket belongs to another renderer lifecycle.";
         return CameraRenderWaitStatus::InvalidTicket;
     }
     if (stopping_ || worker_initialization_failed_) {
-        LOG_ERROR << "camera render worker stopped before completing the frame.";
+        SIM_ERROR << "camera render worker stopped before completing the frame.";
         return CameraRenderWaitStatus::Stopped;
     }
     const auto completed_batch = completed_results_.find(requested_key);
     if (completed_batch == completed_results_.end()) {
-        LOG_ERROR << "camera render worker did not complete the submitted frame.";
+        SIM_ERROR << "camera render worker did not complete the submitted frame.";
         return CameraRenderWaitStatus::Stopped;
     }
     const CameraBatchResult& batch = completed_batch->second;
     if (result != nullptr) *result = batch;
     if (!batch.all_succeeded) {
-        LOG_ERROR << "camera render worker failed to render the submitted frame.";
+        SIM_ERROR << "camera render worker failed to render the submitted frame.";
         const bool superseded =
             !batch.cameras.empty() && std::all_of(
                                           batch.cameras.begin(), batch.cameras.end(),
@@ -422,7 +422,7 @@ bool CameraRenderer::release_locked() {
 
     if (worker_thread_.joinable()) {
         if (worker_thread_.get_id() == std::this_thread::get_id()) {
-            LOG_ERROR << "camera render worker cannot join itself.";
+            SIM_ERROR << "camera render worker cannot join itself.";
             return false;
         }
         worker_thread_.join();
@@ -460,9 +460,9 @@ void CameraRenderer::worker_loop() {
     try {
         resources_ready = initialize_worker_resources();
     } catch (const std::exception&) {
-        LOG_ERROR << "camera render worker threw during initialization.";
+        SIM_ERROR << "camera render worker threw during initialization.";
     } catch (...) {
-        LOG_ERROR << "camera render worker threw an unknown initialization error.";
+        SIM_ERROR << "camera render worker threw an unknown initialization error.";
     }
     running_.store(resources_ready);
     worker_ready_.store(resources_ready);
@@ -500,7 +500,7 @@ void CameraRenderer::worker_loop() {
             batch.simulation_time = simulation_time;
             bool succeeded = activate_context();
             if (!succeeded) {
-                LOG_ERROR << "failed to activate the camera render context.";
+                SIM_ERROR << "failed to activate the camera render context.";
             }
             if (succeeded) {
                 const ScopeExit deactivate([this] { deactivate_context(); });
@@ -520,7 +520,7 @@ void CameraRenderer::worker_loop() {
                              task.sequence,
                              task.timestamp,
                              std::move(error)});
-                        LOG_WARNING << "camera render request failed; keeping the prior frame.";
+                        SIM_WARN << "camera render request failed; keeping the prior frame.";
                         continue;
                     }
                     batch.cameras.push_back(
@@ -584,12 +584,12 @@ void CameraRenderer::worker_loop() {
             completion_condition_.notify_all();
         }
     } catch (const std::exception&) {
-        LOG_ERROR << "camera render worker threw while rendering.";
+        SIM_ERROR << "camera render worker threw while rendering.";
         std::lock_guard<std::mutex> lock(job_mutex_);
         worker_initialization_failed_.store(true);
         stopping_ = true;
     } catch (...) {
-        LOG_ERROR << "camera render worker threw an unknown rendering error.";
+        SIM_ERROR << "camera render worker threw an unknown rendering error.";
         std::lock_guard<std::mutex> lock(job_mutex_);
         worker_initialization_failed_.store(true);
         stopping_ = true;
@@ -626,7 +626,7 @@ void CameraRenderer::release_worker_resources() {
     const bool context_active =
         gl_context_.backend != OffscreenGlBackend::None && activate_context();
     if (!context_active && gl_context_.backend != OffscreenGlBackend::None) {
-        LOG_ERROR << "failed to activate offscreen context during worker release.";
+        SIM_ERROR << "failed to activate offscreen context during worker release.";
     }
     destroy_render_resources();
     if (context_active) {
@@ -645,29 +645,29 @@ bool CameraRenderer::render_task(
     };
     const CameraConfig& spec = task.config;
     if (model_ == nullptr || render_data_ == nullptr) {
-        LOG_ERROR << "camera render resources are not initialized.";
+        SIM_ERROR << "camera render resources are not initialized.";
         return fail("camera render resources are not initialized");
     }
     if (spec.name.empty() || spec.camera_name.empty()) {
-        LOG_ERROR << "camera component and MuJoCo camera names must not be empty.";
+        SIM_ERROR << "camera component and MuJoCo camera names must not be empty.";
         return fail("camera component and MuJoCo camera names must not be empty");
     }
     if (spec.width <= 0 || spec.height <= 0) {
-        LOG_ERROR << "camera width and height must be positive.";
+        SIM_ERROR << "camera width and height must be positive.";
         return fail("camera width and height must be positive");
     }
     if (!spec.enable_rgb && !spec.enable_depth) {
-        LOG_ERROR << "camera must enable rgb or depth output.";
+        SIM_ERROR << "camera must enable rgb or depth output.";
         return fail("camera must enable RGB or depth output");
     }
     const int camera_id = mj_name2id(model_, mjOBJ_CAMERA, spec.camera_name.c_str());
     if (camera_id < 0) {
-        LOG_ERROR << "camera was not found in model.";
+        SIM_ERROR << "camera was not found in model.";
         return fail("camera was not found in the MuJoCo model");
     }
     const double fovy_degrees = static_cast<double>(model_->cam_fovy[camera_id]);
     if (!std::isfinite(fovy_degrees) || fovy_degrees <= 0.0 || fovy_degrees >= 180.0) {
-        LOG_ERROR << "camera field of view must be in the range (0, 180) degrees.";
+        SIM_ERROR << "camera field of view must be in the range (0, 180) degrees.";
         return fail("camera field of view must be in (0, 180) degrees");
     }
     if (!resize_offscreen_buffer(spec.width, spec.height)) {
@@ -677,7 +677,7 @@ bool CameraRenderer::render_task(
     std::size_t pixel_count = 0;
     if (!pixel_count_for(spec.width, spec.height, pixel_count) ||
         pixel_count > std::numeric_limits<std::size_t>::max() / kColorChannelCount) {
-        LOG_ERROR << "camera image dimensions exceed the supported pixel capacity.";
+        SIM_ERROR << "camera image dimensions exceed the supported pixel capacity.";
         return fail("camera image dimensions exceed supported pixel capacity");
     }
 
@@ -742,7 +742,7 @@ bool CameraRenderer::create_context() {
         return true;
     }
     if (!config_.allow_egl_backend) {
-        LOG_ERROR << "no usable offscreen rendering backend is available.";
+        SIM_ERROR << "no usable offscreen rendering backend is available.";
         return false;
     }
     return create_egl_context();
@@ -752,7 +752,7 @@ bool CameraRenderer::create_glfw_context() {
     // GLFW is process-lifetime state. This module never terminates it because
     // the unmodified vendored viewer owns the process-exit termination hook.
     if (glfwInit() == GLFW_FALSE) {
-        LOG_WARNING << "failed to initialize GLFW; trying EGL.";
+        SIM_WARN << "failed to initialize GLFW; trying EGL.";
         return false;
     }
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -760,7 +760,7 @@ bool CameraRenderer::create_glfw_context() {
     gl_context_.window =
         glfwCreateWindow(kHiddenContextWidth, kHiddenContextHeight, "", nullptr, nullptr);
     if (gl_context_.window == nullptr) {
-        LOG_WARNING << "failed to create hidden GLFW OpenGL context; trying EGL.";
+        SIM_WARN << "failed to create hidden GLFW OpenGL context; trying EGL.";
         return false;
     }
     gl_context_.backend = OffscreenGlBackend::Glfw;
@@ -781,14 +781,14 @@ bool CameraRenderer::activate_context() {
             static_cast<::EGLSurface>(gl_context_.egl_surface),
             static_cast<::EGLContext>(gl_context_.egl_context));
     }
-    LOG_ERROR << "offscreen OpenGL context is not available.";
+    SIM_ERROR << "offscreen OpenGL context is not available.";
     return false;
 }
 
 bool CameraRenderer::resize_offscreen_buffer(int width, int height) {
     std::size_t pixel_count = 0;
     if (!pixel_count_for(width, height, pixel_count)) {
-        LOG_ERROR << "offscreen image dimensions must be positive.";
+        SIM_ERROR << "offscreen image dimensions must be positive.";
         return false;
     }
     if (width <= offscreen_width_ && height <= offscreen_height_) {
@@ -804,7 +804,7 @@ bool CameraRenderer::resize_offscreen_buffer(int width, int height) {
 
 bool CameraRenderer::create_render_resources() {
     if (model_ == nullptr) {
-        LOG_ERROR << "camera renderer model is not available.";
+        SIM_ERROR << "camera renderer model is not available.";
         return false;
     }
     mjv_defaultScene(&scene_);
@@ -855,17 +855,17 @@ bool CameraRenderer::transform_depth(
     const std::vector<float>& source, std::uint32_t width, std::uint32_t height,
     std::vector<float>& dest) const {
     if (model_ == nullptr) {
-        LOG_ERROR << "camera renderer model is not available.";
+        SIM_ERROR << "camera renderer model is not available.";
         return false;
     }
     const float near = static_cast<float>(model_->vis.map.znear * model_->stat.extent);
     const float far = static_cast<float>(model_->vis.map.zfar * model_->stat.extent);
     if (!std::isfinite(near) || !std::isfinite(far) || near <= 0.0F || far <= near) {
-        LOG_ERROR << "MuJoCo camera depth range must satisfy 0 < near < far.";
+        SIM_ERROR << "MuJoCo camera depth range must satisfy 0 < near < far.";
         return false;
     }
     if (source.size() != dest.size() || source.size() != static_cast<std::size_t>(width) * height) {
-        LOG_ERROR << "camera depth buffer has an unexpected size.";
+        SIM_ERROR << "camera depth buffer has an unexpected size.";
         return false;
     }
     const float depth_scale = 1.0F - near / far;
@@ -876,7 +876,7 @@ bool CameraRenderer::transform_depth(
                 static_cast<std::size_t>(height - 1U - row) * width + column;
             const float denominator = 1.0F - source[src_index] * depth_scale;
             if (!std::isfinite(denominator) || denominator <= 0.0F) {
-                LOG_ERROR << "camera depth buffer contains an invalid normalized depth "
+                SIM_ERROR << "camera depth buffer contains an invalid normalized depth "
                              "value.";
                 return false;
             }
@@ -893,13 +893,13 @@ bool CameraRenderer::create_egl_context() {
         gl_context_.egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     }
     if (gl_context_.egl_display == EGL_NO_DISPLAY) {
-        LOG_ERROR << "failed to acquire EGL display.";
+        SIM_ERROR << "failed to acquire EGL display.";
         return false;
     }
     EGLint major = 0;
     EGLint minor = 0;
     if (!eglInitialize(static_cast<::EGLDisplay>(gl_context_.egl_display), &major, &minor)) {
-        LOG_ERROR << "failed to initialize EGL.";
+        SIM_ERROR << "failed to initialize EGL.";
         destroy_egl_context();
         return false;
     }
@@ -913,19 +913,19 @@ bool CameraRenderer::create_egl_context() {
             static_cast<::EGLDisplay>(gl_context_.egl_display), config_attribs, &egl_config, 1,
             &num_configs) ||
         num_configs == 0) {
-        LOG_ERROR << "failed to choose EGL config.";
+        SIM_ERROR << "failed to choose EGL config.";
         destroy_egl_context();
         return false;
     }
     if (!eglBindAPI(EGL_OPENGL_API)) {
-        LOG_ERROR << "failed to bind EGL OpenGL API.";
+        SIM_ERROR << "failed to bind EGL OpenGL API.";
         destroy_egl_context();
         return false;
     }
     gl_context_.egl_context = eglCreateContext(
         static_cast<::EGLDisplay>(gl_context_.egl_display), egl_config, EGL_NO_CONTEXT, nullptr);
     if (gl_context_.egl_context == EGL_NO_CONTEXT) {
-        LOG_ERROR << "failed to create EGL context.";
+        SIM_ERROR << "failed to create EGL context.";
         destroy_egl_context();
         return false;
     }
@@ -934,7 +934,7 @@ bool CameraRenderer::create_egl_context() {
     gl_context_.egl_surface = eglCreatePbufferSurface(
         static_cast<::EGLDisplay>(gl_context_.egl_display), egl_config, pbuffer_attribs);
     if (gl_context_.egl_surface == EGL_NO_SURFACE) {
-        LOG_ERROR << "failed to create EGL pbuffer surface.";
+        SIM_ERROR << "failed to create EGL pbuffer surface.";
         destroy_egl_context();
         return false;
     }

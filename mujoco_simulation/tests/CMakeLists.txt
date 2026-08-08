@@ -126,6 +126,125 @@ add_test(
   NAME mujoco_simulation.version_header_contract
   COMMAND mujoco_simulation_version_header_contract_test)
 
+add_executable(mujoco_simulation_logging_header_contract_test
+  public/logging_header_contract_test.cpp)
+target_link_libraries(mujoco_simulation_logging_header_contract_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_header_contract
+  COMMAND mujoco_simulation_logging_header_contract_test)
+
+add_executable(mujoco_simulation_logging_record_contract_test
+  public/logging_record_contract_test.cpp)
+target_link_libraries(mujoco_simulation_logging_record_contract_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_record_contract
+  COMMAND mujoco_simulation_logging_record_contract_test)
+
+add_executable(mujoco_simulation_logging_frontend_contract_test
+  public/logging_frontend_contract_test.cpp)
+target_link_libraries(mujoco_simulation_logging_frontend_contract_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_frontend_contract
+  COMMAND mujoco_simulation_logging_frontend_contract_test)
+
+add_executable(mujoco_simulation_logging_console_contract_test
+  public/logging_console_contract_test.cpp)
+target_link_libraries(mujoco_simulation_logging_console_contract_test PRIVATE
+  mujoco_simulation::mujoco_simulation util)
+add_test(
+  NAME mujoco_simulation.logging_console_contract
+  COMMAND mujoco_simulation_logging_console_contract_test)
+
+add_executable(mujoco_simulation_logging_record_atomicity_test
+  public/logging_record_atomicity_test.cpp)
+target_link_libraries(mujoco_simulation_logging_record_atomicity_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_record_atomicity
+  COMMAND mujoco_simulation_logging_record_atomicity_test)
+
+add_executable(mujoco_simulation_logging_integration_test
+  public/logging_integration_test.cpp)
+target_link_libraries(mujoco_simulation_logging_integration_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_integration
+  COMMAND mujoco_simulation_logging_integration_test)
+
+add_executable(mujoco_simulation_logging_compile_gate_test
+  public/logging_compile_gate_test.cpp)
+target_link_libraries(mujoco_simulation_logging_compile_gate_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_compile_gate
+  COMMAND mujoco_simulation_logging_compile_gate_test)
+
+add_executable(mujoco_simulation_logging_invalid_abi_test
+  public/logging_invalid_abi_test.cpp)
+target_link_libraries(mujoco_simulation_logging_invalid_abi_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_invalid_abi
+  COMMAND mujoco_simulation_logging_invalid_abi_test)
+
+add_test(
+  NAME mujoco_simulation.logging_compile_failures
+  COMMAND ${CMAKE_COMMAND}
+    -DCXX=${CMAKE_CXX_COMPILER}
+    -DINCLUDE_DIR=${PROJECT_SOURCE_DIR}/include
+    -DGENERATED_INCLUDE_DIR=${PROJECT_BINARY_DIR}/generated
+    -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/public/logging_compile_fail_source.cpp
+    -DINVALID_TOKEN_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/public/logging_invalid_token_source.cpp
+    -DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/compile_failure_objects
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_logging_compile_failure.cmake)
+
+add_executable(mujoco_simulation_logging_default_bootstrap_test
+  public/logging_default_bootstrap_test.cpp)
+target_link_libraries(mujoco_simulation_logging_default_bootstrap_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_default_bootstrap
+  COMMAND mujoco_simulation_logging_default_bootstrap_test)
+
+add_executable(mujoco_simulation_logging_file_contract_test
+  public/logging_file_contract_test.cpp)
+target_link_libraries(mujoco_simulation_logging_file_contract_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_file_contract
+  COMMAND mujoco_simulation_logging_file_contract_test)
+
+add_executable(mujoco_simulation_easylogging_adapter_test
+  unit/easylogging_adapter_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/log/impl/easylogging_adapter.cpp
+  ${PROJECT_SOURCE_DIR}/third_party/easyloggingpp/easylogging++.cc)
+target_include_directories(mujoco_simulation_easylogging_adapter_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_BINARY_DIR}/generated
+  ${PROJECT_SOURCE_DIR}/include/mujoco_simulation
+  ${PROJECT_SOURCE_DIR}/src
+  ${PROJECT_SOURCE_DIR}/third_party/easyloggingpp)
+target_compile_features(mujoco_simulation_easylogging_adapter_test PRIVATE cxx_std_17)
+target_compile_definitions(mujoco_simulation_easylogging_adapter_test PRIVATE
+  ELPP_THREAD_SAFE
+  ELPP_DISABLE_DEFAULT_CRASH_HANDLING
+  ELPP_NO_DEFAULT_LOG_FILE)
+target_link_libraries(mujoco_simulation_easylogging_adapter_test PRIVATE Threads::Threads)
+add_test(
+  NAME mujoco_simulation.easylogging_adapter
+  COMMAND mujoco_simulation_easylogging_adapter_test)
+
+add_executable(mujoco_simulation_logging_concurrency_test
+  public/logging_concurrency_test.cpp)
+target_link_libraries(mujoco_simulation_logging_concurrency_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.logging_concurrency
+  COMMAND mujoco_simulation_logging_concurrency_test)
+
 add_executable(mujoco_simulation_viewer_headless_test
   unit/simulation_viewer_headless_test.cpp)
 target_include_directories(mujoco_simulation_viewer_headless_test PRIVATE
@@ -155,6 +274,18 @@ add_test(
 set_tests_properties(
   mujoco_simulation.camera_snapshot_tsan
   mujoco_simulation.command_buffer
+  mujoco_simulation.logging_header_contract
+  mujoco_simulation.logging_record_contract
+  mujoco_simulation.logging_frontend_contract
+  mujoco_simulation.logging_console_contract
+  mujoco_simulation.logging_record_atomicity
+  mujoco_simulation.logging_integration
+  mujoco_simulation.logging_compile_gate
+  mujoco_simulation.logging_invalid_abi
+  mujoco_simulation.logging_default_bootstrap
+  mujoco_simulation.logging_file_contract
+  mujoco_simulation.easylogging_adapter
+  mujoco_simulation.logging_concurrency
   mujoco_simulation.state_buffer_concurrency
   PROPERTIES LABELS tsan)
 
@@ -166,8 +297,8 @@ if(MUJOCO_SIMULATION_ENABLE_TSAN AND
     PROPERTIES DISABLED TRUE)
 endif()
 
-# Internal tests intentionally exercise hidden implementation classes.  Supply
-# their support objects explicitly instead of widening the installed ABI.
+# Link sanitizer instrumentation into every test executable so it is loaded
+# before the shared library in sanitizer builds.
 foreach(test_target
     mujoco_simulation_camera_renderer_async_test
     mujoco_simulation_camera_snapshot_tsan_test
@@ -179,10 +310,20 @@ foreach(test_target
     mujoco_simulation_command_buffer_test
     mujoco_simulation_lifecycle_test
     mujoco_simulation_component_header_contract_test
+    mujoco_simulation_logging_header_contract_test
+    mujoco_simulation_logging_record_contract_test
+    mujoco_simulation_logging_frontend_contract_test
+    mujoco_simulation_logging_console_contract_test
+    mujoco_simulation_logging_record_atomicity_test
+    mujoco_simulation_logging_integration_test
+    mujoco_simulation_logging_compile_gate_test
+    mujoco_simulation_logging_invalid_abi_test
+    mujoco_simulation_logging_default_bootstrap_test
+    mujoco_simulation_logging_file_contract_test
+    mujoco_simulation_easylogging_adapter_test
+    mujoco_simulation_logging_concurrency_test
     mujoco_simulation_viewer_headless_test
     mujoco_simulation_state_buffer_concurrency_test)
-  target_sources(${test_target} PRIVATE
-    $<TARGET_OBJECTS:mujoco_simulation_logging>)
   target_link_libraries(${test_target} PRIVATE mujoco_simulation_sanitizers)
 endforeach()
 

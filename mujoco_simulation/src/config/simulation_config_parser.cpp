@@ -13,7 +13,7 @@
 
 #include "tinyxml2.h"
 
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "component/component.hpp"
 #include "config/simulation_config_data.hpp"
 #include "config/simulation_config_validator.hpp"
@@ -30,7 +30,7 @@ struct SimulationConfigParser::ParseFailure {
 void SimulationConfigParser::log_error(
     const ParseFailure& failure, const tinyxml2::XMLElement* element, const std::string& attribute,
     const std::string& message) {
-    LOG_ERROR << "failed to parse simulation configuration '" << failure.path << "'"
+    SIM_ERROR << "failed to parse simulation configuration '" << failure.path << "'"
               << (element == nullptr ? "" : " at line " + std::to_string(element->GetLineNum()))
               << (element == nullptr || element->Name() == nullptr
                       ? ""
@@ -353,7 +353,7 @@ bool SimulationConfigParser::load_file(const std::string& path, SimulationConfig
         return false;
     }
     if (document.LoadFile(path.c_str()) != tinyxml2::XML_SUCCESS) {
-        LOG_ERROR << "failed to load simulation configuration '" << path << "' at line "
+        SIM_ERROR << "failed to load simulation configuration '" << path << "' at line "
                   << document.ErrorLineNum() << ": "
                   << (document.ErrorStr() == nullptr ? "failed to load XML" : document.ErrorStr());
         return false;

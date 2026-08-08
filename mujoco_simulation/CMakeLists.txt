@@ -71,10 +71,6 @@ else()
   set(MUJOCO_SIMULATION_LIBRARY_TYPE STATIC)
 endif()
 
-set_source_files_properties(
-  third_party/easyloggingpp/easylogging++.cc
-  PROPERTIES COMPILE_DEFINITIONS AUTO_INITIALIZE_EASYLOGGINGPP)
-
 add_library(mujoco_simulation_runtime OBJECT
   ${MUJOCO_SIMULATION_RUNTIME_SOURCES})
 add_library(mujoco_simulation_render OBJECT
@@ -82,7 +78,10 @@ add_library(mujoco_simulation_render OBJECT
 add_library(mujoco_simulation_viewer OBJECT
   ${MUJOCO_SIMULATION_VIEWER_SOURCES})
 add_library(mujoco_simulation_tinyxml2 OBJECT third_party/tinyxml2/tinyxml2.cpp)
-add_library(mujoco_simulation_logging OBJECT third_party/easyloggingpp/easylogging++.cc)
+add_library(mujoco_simulation_logging OBJECT
+  src/log/impl/easylogging_adapter.cpp
+  src/log/impl/logger.cpp
+  third_party/easyloggingpp/easylogging++.cc)
 add_library(mujoco_simulation_viewer_backend OBJECT
   ${MUJOCO_SIMULATION_VIEWER_BACKEND_SOURCES})
 
@@ -94,6 +93,7 @@ configure_file(
   @ONLY)
 
 set(MUJOCO_SIMULATION_PRIVATE_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/mujoco_simulation
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/viewer/simulate
     ${CMAKE_CURRENT_SOURCE_DIR}/src/viewer/lodepng
@@ -133,6 +133,7 @@ add_library(mujoco_simulation ${MUJOCO_SIMULATION_LIBRARY_TYPE}
   src/simulation/simulation_viewer.cpp
   src/simulation/simulation_commands.cpp
   src/simulation/simulation_state.cpp
+  src/log/logging.cpp
   $<TARGET_OBJECTS:mujoco_simulation_runtime>
   $<TARGET_OBJECTS:mujoco_simulation_render>
   $<TARGET_OBJECTS:mujoco_simulation_viewer>
@@ -159,6 +160,10 @@ target_link_libraries(mujoco_simulation
   PUBLIC mujoco::mujoco Threads::Threads OpenGL::GL OpenGL::EGL ${MUJOCO_SIMULATION_GLFW_TARGET}
   PRIVATE ${CMAKE_DL_LIBS})
 target_compile_definitions(mujoco_simulation PRIVATE MUJOCO_SIMULATION_BUILDING_LIBRARY)
+target_compile_definitions(mujoco_simulation_logging PRIVATE
+  ELPP_THREAD_SAFE
+  ELPP_DISABLE_DEFAULT_CRASH_HANDLING
+  ELPP_NO_DEFAULT_LOG_FILE)
 
 if(NOT MUJOCO_SIMULATION_BUILD_SHARED)
   target_compile_definitions(mujoco_simulation PUBLIC

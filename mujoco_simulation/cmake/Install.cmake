@@ -14,6 +14,8 @@ install(FILES
   include/mujoco_simulation/simulation.hpp
   include/mujoco_simulation/simulation_status.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation)
+install(FILES include/mujoco_simulation/log/logging.hpp
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/log)
 install(FILES
   include/mujoco_simulation/component/joint.hpp
   include/mujoco_simulation/component/imu.hpp

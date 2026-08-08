@@ -2,7 +2,7 @@
 
 #include <utility>
 
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "common/macro.hpp"
 
 namespace mujoco_simulation {
@@ -17,25 +17,25 @@ bool CameraComponent::init(const mjContext& context) {
 
     const mjModel& model = *context.model;
     if (model.opt.timestep <= 0.0) {
-        LOG_ERROR << "model timestep must be positive.";
+        SIM_ERROR << "model timestep must be positive.";
         return false;
     }
     if (config_.camera_name.empty()) {
-        LOG_ERROR << "camera name must not be empty.";
+        SIM_ERROR << "camera name must not be empty.";
         return false;
     }
     if (config_.width <= 0 || config_.height <= 0) {
-        LOG_ERROR << "camera width and height must be positive.";
+        SIM_ERROR << "camera width and height must be positive.";
         return false;
     }
     if (!config_.enable_rgb && !config_.enable_depth) {
-        LOG_ERROR << "camera must enable rgb or depth output.";
+        SIM_ERROR << "camera must enable rgb or depth output.";
         return false;
     }
 
     camera_id_ = mj_name2id(&model, mjOBJ_CAMERA, config_.camera_name.c_str());
     if (camera_id_ < 0) {
-        LOG_ERROR << "camera was not found in model.";
+        SIM_ERROR << "camera was not found in model.";
         return false;
     }
     sample_sequence_ = 0;
@@ -60,7 +60,7 @@ bool CameraComponent::read_state(std::shared_ptr<const CameraState>& state) cons
 bool CameraComponent::update(const mjContext& context) {
     UNUSED(context);
     if (camera_id_ < 0) {
-        LOG_ERROR << "camera must be bound before update.";
+        SIM_ERROR << "camera must be bound before update.";
         return false;
     }
     return true;

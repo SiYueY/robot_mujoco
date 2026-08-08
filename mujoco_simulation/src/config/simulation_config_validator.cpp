@@ -6,7 +6,7 @@
 #include <unordered_set>
 
 #include "common/compare.hpp"
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "config/simulation_config_data.hpp"
 
 namespace mujoco_simulation {
@@ -24,7 +24,7 @@ bool values_are_finite(const Values& values) {
 }  // namespace
 
 void SimulationConfigValidator::log_error(const std::string& field, const std::string& message) {
-    LOG_ERROR << "invalid simulation configuration" << (field.empty() ? "" : " (" + field + ")")
+    SIM_ERROR << "invalid simulation configuration" << (field.empty() ? "" : " (" + field + ")")
               << ": " << message;
 }
 

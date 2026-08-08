@@ -7,7 +7,7 @@
 #include "mujoco_simulation/common/math.hpp"
 
 #include "common/compare.hpp"
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "common/macro.hpp"
 
 namespace mujoco_simulation {
@@ -33,7 +33,7 @@ bool MobileBaseComponent::init(const mjContext& context) {
             }
             break;
         default:
-            LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
+            SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
             return false;
     }
 
@@ -50,7 +50,7 @@ bool MobileBaseComponent::init(const mjContext& context) {
 
 bool MobileBaseComponent::reset(const mjContext& context) {
     if (!is_initialized()) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
         return false;
     }
     switch (info_.type) {
@@ -60,7 +60,7 @@ bool MobileBaseComponent::reset(const mjContext& context) {
             }
             break;
         default:
-            LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
+            SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
             return false;
     }
     command_ = {};
@@ -72,7 +72,7 @@ bool MobileBaseComponent::reset(const mjContext& context) {
 
 bool MobileBaseComponent::update(const mjContext& context) {
     if (!is_initialized()) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
         return false;
     }
 
@@ -83,7 +83,7 @@ bool MobileBaseComponent::update(const mjContext& context) {
             }
             break;
         default:
-            LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
+            SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
             return false;
     }
     if (!update_ground_truth_pose(*context.data)) {
@@ -96,7 +96,7 @@ bool MobileBaseComponent::update(const mjContext& context) {
 
 bool MobileBaseComponent::write(const mjContext& context, const MobileBaseCommand& command) {
     if (!is_initialized()) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
         return false;
     }
 
@@ -106,7 +106,7 @@ bool MobileBaseComponent::write(const mjContext& context, const MobileBaseComman
             result = write_mecanum_command(context, command);
             break;
         default:
-            LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
+            SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' type is not supported.";
             return false;
     }
     if (!result) {
@@ -118,7 +118,7 @@ bool MobileBaseComponent::write(const mjContext& context, const MobileBaseComman
 
 bool MobileBaseComponent::read_state(std::shared_ptr<const MobileBaseState>& state) const {
     if (!is_initialized()) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' is not initialized.";
         return false;
     }
     state = state_;
@@ -139,13 +139,13 @@ bool MobileBaseComponent::is_initialized() const noexcept { return initialized_;
 
 bool MobileBaseComponent::configure_base_body(const mjContext& context) {
     if (info_.base_body_name.empty()) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' base_body_name is required for ground-truth odometry.";
         return false;
     }
     base_body_id_ = mj_name2id(context.model, mjOBJ_BODY, info_.base_body_name.c_str());
     if (base_body_id_ < 0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' body '" << info_.base_body_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' body '" << info_.base_body_name
                   << "' was not found.";
         return false;
     }
@@ -155,23 +155,23 @@ bool MobileBaseComponent::configure_base_body(const mjContext& context) {
 bool MobileBaseComponent::init_mecanum(const mjContext& context) {
     const MecanumInfo& info = info_.mecanum_info;
     if (!std::isfinite(info.wheel_radius) || info.wheel_radius <= 0.0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' mecanum wheel_radius must be finite and positive.";
         return false;
     }
     if (!std::isfinite(info.wheel_base) || info.wheel_base <= 0.0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' mecanum wheel_base must be finite and positive.";
         return false;
     }
     if (!std::isfinite(info.track_width) || info.track_width <= 0.0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' mecanum track_width must be finite and positive.";
         return false;
     }
     const double rotation_coefficient = (info.wheel_base + info.track_width) * 0.5;
     if (!std::isfinite(rotation_coefficient) || rotation_coefficient <= 0.0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' mecanum rotation coefficient must be finite and positive.";
         return false;
     }
@@ -196,7 +196,7 @@ bool MobileBaseComponent::reset_mecanum(const mjContext& context) {
 
 bool MobileBaseComponent::update_mecanum_state(const mjContext& context) {
     if (!mecanum_kinematics_) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' mecanum kinematics are not initialized.";
         return false;
     }
@@ -222,7 +222,7 @@ bool MobileBaseComponent::write_mecanum_command(
         case MobileBaseControlMode::WheelAngular:
             return write_wheel_angular_command(context, command);
         default:
-            LOG_ERROR << "mobile base '" << info_.mobile_base_name
+            SIM_ERROR << "mobile base '" << info_.mobile_base_name
                       << "' received unsupported mecanum control mode "
                       << static_cast<int>(command.mode) << ".";
             return false;
@@ -232,16 +232,16 @@ bool MobileBaseComponent::write_mecanum_command(
 bool MobileBaseComponent::configure_wheel(
     const mjContext& context, const WheelInfo& info, mjWheel& wheel) const {
     if (info.wheel_name.empty()) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel name must not be empty.";
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel name must not be empty.";
         return false;
     }
     if (info.actuator_name.empty()) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
                   << "' actuator name must not be empty.";
         return false;
     }
     if (!std::isfinite(info.damping) || info.damping <= 0.0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
                   << "' damping must be finite and positive.";
         return false;
     }
@@ -249,62 +249,62 @@ bool MobileBaseComponent::configure_wheel(
     mjWheel binding{};
     binding.wheel_id = mj_name2id(context.model, mjOBJ_JOINT, info.wheel_name.c_str());
     if (binding.wheel_id < 0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
                   << "' was not found.";
         return false;
     }
     if (context.model->jnt_type[binding.wheel_id] != mjJNT_HINGE) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
                   << "' must be a MuJoCo hinge joint.";
         return false;
     }
     binding.dof_address = context.model->jnt_dofadr[binding.wheel_id];
     if (binding.dof_address < 0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' wheel '" << info.wheel_name
                   << "' has an invalid DOF address.";
         return false;
     }
 
     binding.actuator_id = mj_name2id(context.model, mjOBJ_ACTUATOR, info.actuator_name.c_str());
     if (binding.actuator_id < 0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' was not found.";
         return false;
     }
     if (context.model->actuator_trntype[binding.actuator_id] != mjTRN_JOINT) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' must use joint transmission.";
         return false;
     }
     if (context.model->actuator_trnid[2 * binding.actuator_id] != binding.wheel_id) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' must drive wheel '" << info.wheel_name << "'.";
         return false;
     }
     if (context.model->actuator_dyntype[binding.actuator_id] != mjDYN_NONE) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' must not use internal dynamics.";
         return false;
     }
     if (context.model->actuator_gaintype[binding.actuator_id] != mjGAIN_FIXED) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' must use fixed gain.";
         return false;
     }
     const mjtNum* gain = context.model->actuator_gainprm + binding.actuator_id * mjNGAIN;
     if (!math::equal(static_cast<double>(gain[0]), 1.0)) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' gain must be 1.";
         return false;
     }
     if (context.model->actuator_biastype[binding.actuator_id] != mjBIAS_NONE) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' must not use bias.";
         return false;
     }
     const mjtNum* gear = context.model->actuator_gear + binding.actuator_id * 6;
     if (!math::equal(static_cast<double>(gear[0]), 1.0)) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' actuator '"
                   << info.actuator_name << "' gear must be 1.";
         return false;
     }
@@ -317,12 +317,12 @@ bool MobileBaseComponent::write_twist_command(
     const mjContext& context, const MobileBaseCommand& command) {
     if (!std::isfinite(command.base_linear[0]) || !std::isfinite(command.base_linear[1]) ||
         !std::isfinite(command.base_angular[2])) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' twist command must contain finite x, y, and yaw values.";
         return false;
     }
     if (!mecanum_kinematics_) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name
                   << "' mecanum kinematics are not initialized.";
         return false;
     }
@@ -336,7 +336,7 @@ bool MobileBaseComponent::write_wheel_linear_command(
     Vector4d wheel_angular{};
     for (std::size_t wheel_index = 0; wheel_index < MecanumWheelCount; ++wheel_index) {
         if (!std::isfinite(command.wheel_linear[wheel_index])) {
-            LOG_ERROR << "mobile base '" << info_.mobile_base_name
+            SIM_ERROR << "mobile base '" << info_.mobile_base_name
                       << "' wheel linear velocity must be finite.";
             return false;
         }
@@ -350,7 +350,7 @@ bool MobileBaseComponent::write_wheel_angular_command(
     const mjContext& context, const MobileBaseCommand& command) {
     for (std::size_t wheel_index = 0; wheel_index < MecanumWheelCount; ++wheel_index) {
         if (!std::isfinite(command.wheel_angular[wheel_index])) {
-            LOG_ERROR << "mobile base '" << info_.mobile_base_name
+            SIM_ERROR << "mobile base '" << info_.mobile_base_name
                       << "' wheel angular velocity must be finite.";
             return false;
         }
@@ -399,7 +399,7 @@ void MobileBaseComponent::reset_odometry() {
 
 bool MobileBaseComponent::update_ground_truth_pose(const mjData& data) {
     if (base_body_id_ < 0) {
-        LOG_ERROR << "mobile base '" << info_.mobile_base_name << "' body binding is missing.";
+        SIM_ERROR << "mobile base '" << info_.mobile_base_name << "' body binding is missing.";
         return false;
     }
     const mjtNum* xpos = data.xpos + 3 * base_body_id_;

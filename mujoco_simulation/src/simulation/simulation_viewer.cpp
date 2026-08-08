@@ -5,7 +5,7 @@
 #include <mutex>
 #include <utility>
 
-#include "common/logging.hpp"
+#include "log/logging.hpp"
 #include "common/macro.hpp"
 
 namespace mujoco_simulation {
@@ -15,20 +15,20 @@ bool Simulation::Impl::start_viewer() {
     {
         std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
         if (runtime_ == nullptr) {
-            LOG_ERROR << "simulation runtime is not available.";
+            SIM_ERROR << "simulation runtime is not available.";
             return false;
         }
         if (!runtime_->is_initialized()) {
-            LOG_ERROR << "simulation runtime is not initialized.";
+            SIM_ERROR << "simulation runtime is not initialized.";
             return false;
         }
         if (!viewer->prepare(runtime_->context())) {
-            LOG_ERROR << "viewer preparation failed.";
+            SIM_ERROR << "viewer preparation failed.";
             return false;
         }
     }
     if (!viewer->start(config_.model.model_path)) {
-        LOG_ERROR << "viewer startup failed.";
+        SIM_ERROR << "viewer startup failed.";
         return false;
     }
     std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
@@ -53,11 +53,11 @@ bool Simulation::Impl::scheduler_submit_viewer_sync_if_due() {
             std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
             if (runtime_ != nullptr && runtime_->is_initialized() &&
                 !viewer->capture_snapshot(runtime_->context(), snapshot)) {
-                LOG_WARNING << "failed to capture a viewer synchronization snapshot.";
+                SIM_WARN << "failed to capture a viewer synchronization snapshot.";
             }
         }
         if (snapshot && !viewer->submit(std::move(snapshot)))
-            LOG_WARNING << "failed to enqueue a viewer synchronization request.";
+            SIM_WARN << "failed to enqueue a viewer synchronization request.";
     }
     const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::duration<double>(config_.scheduler.viewer_period));
@@ -69,7 +69,7 @@ void Simulation::Impl::stop_after_viewer_closed() {
     bool expected = false;
     if (!viewer_stop_requested_.compare_exchange_strong(expected, true)) return;
 
-    LOG_INFO << "simulation viewer closed; stopping simulation.";
+    SIM_INFO << "simulation viewer closed; stopping simulation.";
     std::shared_ptr<SimulationViewer> viewer;
     {
         std::lock_guard<std::mutex> viewer_lock(viewer_mutex_);
