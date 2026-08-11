@@ -141,6 +141,14 @@ bool Simulation::Impl::scheduler_run_task() {
             SIM_ERROR << "component manager rejected a command snapshot.";
             return false;
         }
+        // MobileBaseComponent prescribes the planar free-base state.  Apply that
+        // kinematic update before integration: writing it after mj_step() would
+        // overwrite a state that has already been solved by MuJoCo and, for this
+        // free-base model, suppresses the articulated body's gravity response.
+        if (!component_manager_.advance(runtime_->context()) || !runtime_->forward()) {
+            SIM_ERROR << "failed to advance simulation components.";
+            return false;
+        }
         if (!runtime_->step()) {
             SIM_ERROR << "MuJoCo physics step failed.";
             return false;

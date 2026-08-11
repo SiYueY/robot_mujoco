@@ -187,6 +187,20 @@ bool ComponentManager::reset(const mjContext& context) {
     return true;
 }
 
+bool ComponentManager::advance(const mjContext& context) {
+    if (!context.valid()) return false;
+    const auto advance_components = [&](const auto& components) {
+        for (const auto& component : components)
+            if (component != nullptr && !component->advance(context)) return false;
+        return true;
+    };
+    if (!advance_components(joints_components_) || !advance_components(mobile_base_components_) ||
+        !advance_components(imu_components_) || !advance_components(lidar_components_) ||
+        !advance_components(camera_components_))
+        return false;
+    return true;
+}
+
 bool ComponentManager::update(const mjContext& context) {
     if (!context.valid()) return false;
     ++simulation_step_;

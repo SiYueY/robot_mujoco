@@ -124,6 +124,11 @@ bool LidarComponent::reset(const mjContext& context) {
     return true;
 }
 
+bool LidarComponent::advance(const mjContext& context) {
+    UNUSED(context);
+    return true;
+}
+
 bool LidarComponent::update(const mjContext& context) {
     if (!initialized_) {
         SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";

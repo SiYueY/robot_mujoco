@@ -57,6 +57,11 @@ bool CameraComponent::read_state(std::shared_ptr<const CameraState>& state) cons
     return state != nullptr;
 }
 
+bool CameraComponent::advance(const mjContext& context) {
+    UNUSED(context);
+    return true;
+}
+
 bool CameraComponent::update(const mjContext& context) {
     UNUSED(context);
     if (camera_id_ < 0) {

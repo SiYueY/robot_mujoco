@@ -20,7 +20,6 @@ enum class MecanumWheelIndex : std::size_t {
 inline constexpr std::size_t MecanumWheelCount = static_cast<std::size_t>(MecanumWheelIndex::Count);
 
 struct MecanumInfo {
-    double wheel_radius{0.0};
     double wheel_base{0.0};
     double track_width{0.0};
 };
@@ -30,8 +29,9 @@ enum class MobileBaseControlMode { Twist, WheelLinear, WheelAngular };
 
 struct WheelInfo {
     std::string wheel_name;
-    std::string actuator_name;
-    double damping{0.0};
+    double radius{0.0};
+    double direction{1.0};
+    double speed_response{0.0};
 };
 using MecanumWheelInfo = std::array<WheelInfo, MecanumWheelCount>;
 
@@ -42,6 +42,7 @@ struct MobileBaseInfo {
     std::string base_frame_id{"base_link"};
     std::string odom_frame_id{"odom"};
     std::string base_body_name;
+    std::string base_joint_name;
     MecanumInfo mecanum_info;
     MecanumWheelInfo mecanum_wheels;
     double period{0.0};

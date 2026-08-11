@@ -45,6 +45,7 @@ set(MUJOCO_SIMULATION_RUNTIME_SOURCES
   src/component/joint/joint_component.cpp
   src/component/lidar/lidar_component.cpp
   src/component/mobile_base/mobile_base_component.cpp
+  src/component/mobile_base/mecanum/mecanum_mobile_base.cpp
   src/config/simulation_config_parser.cpp
   src/config/simulation_config_validator.cpp
   src/runtime/simulation_runtime.cpp

@@ -87,6 +87,10 @@ bool SimulationConfigValidator::validate_mobile_base_names(const MobileBaseInfo&
         log_error(config_names::kBaseBody, "mobile-base body name must not be empty");
         return false;
     }
+    if (base.base_joint_name.empty()) {
+        log_error(config_names::kBaseJoint, "mobile-base joint name must not be empty");
+        return false;
+    }
     return true;
 }
 
@@ -118,10 +122,6 @@ bool SimulationConfigValidator::validate_lidar(const LidarInfo& lidar) {
 
 bool SimulationConfigValidator::validate_mobile_base(const MobileBaseInfo& base) {
     const MecanumInfo& mecanum = base.mecanum_info;
-    if (!std::isfinite(mecanum.wheel_radius) || mecanum.wheel_radius <= 0.0) {
-        log_error(config_names::kWheelRadius, "wheel_radius must be finite and positive");
-        return false;
-    }
     if (!std::isfinite(mecanum.wheel_base) || mecanum.wheel_base <= 0.0) {
         log_error(config_names::kWheelBase, "wheel_base must be finite and positive");
         return false;
@@ -130,24 +130,42 @@ bool SimulationConfigValidator::validate_mobile_base(const MobileBaseInfo& base)
         log_error(config_names::kTrackWidth, "track_width must be finite and positive");
         return false;
     }
-    std::unordered_set<std::string> wheel_names, actuator_names;
+    std::unordered_set<std::string> wheel_names;
     for (const WheelInfo& wheel : base.mecanum_wheels) {
-        if (wheel.wheel_name.empty() || wheel.actuator_name.empty()) {
+        if (wheel.wheel_name.empty()) {
             log_error(config_names::kWheel, "mobile-base wheel names are required");
             return false;
         }
-        if (!std::isfinite(wheel.damping) || wheel.damping < 0.0) {
+        if (!std::isfinite(wheel.speed_response) || wheel.speed_response < 0.0) {
             log_error(
-                config_names::kDamping,
-                "mobile-base wheel damping must be finite and non-negative");
+                config_names::kSpeedResponse,
+                "mobile-base wheel speed_response must be finite and non-negative");
+            return false;
+        }
+        if (!std::isfinite(wheel.radius) || wheel.radius <= 0.0) {
+            log_error(
+                config_names::kRadius, "mobile-base wheel radius must be finite and positive");
+            return false;
+        }
+        if (wheel.direction != -1.0 && wheel.direction != 1.0) {
+            log_error(config_names::kDirection, "mobile-base wheel direction must be -1 or 1");
             return false;
         }
         if (!wheel_names.insert(wheel.wheel_name).second) {
             log_error(config_names::kName, "mobile-base wheel names must be unique");
             return false;
         }
-        if (!actuator_names.insert(wheel.actuator_name).second) {
-            log_error(config_names::kActuator, "mobile-base actuator names must be unique");
+    }
+    return true;
+}
+
+bool SimulationConfigValidator::validate_mobile_base_ownership(
+    const MobileBaseInfo& base, const std::unordered_set<std::string>& joint_names) {
+    for (const WheelInfo& wheel : base.mecanum_wheels) {
+        if (joint_names.find(wheel.wheel_name) != joint_names.end()) {
+            log_error(
+                config_names::kWheel,
+                "mobile-base wheel must not also belong to a joint component");
             return false;
         }
     }
@@ -249,6 +267,11 @@ bool SimulationConfigValidator::validate(const SimulationConfig& config) {
         log_error(config_names::kViewerPeriod, "viewer_period must be finite and positive");
         return false;
     }
+    std::unordered_set<std::string> configured_joint_names;
+    for (const ComponentConfig& component : config.components)
+        if (const auto* joint = std::get_if<JointInfo>(&component); joint != nullptr)
+            configured_joint_names.insert(joint->joint_name);
+
     std::unordered_set<ComponentId> joint_ids, imu_ids, camera_ids, lidar_ids, mobile_base_ids;
     std::unordered_set<std::string> joint_names, imu_names, camera_names, lidar_names,
         mobile_base_names;
@@ -281,7 +304,8 @@ bool SimulationConfigValidator::validate(const SimulationConfig& config) {
                     return validate_component_identity(
                                info.id, info.mobile_base_name, info.period, mobile_base_ids,
                                mobile_base_names, config_names::kMobileBaseKind) &&
-                           validate_mobile_base_names(info) && validate_mobile_base(info);
+                           validate_mobile_base_names(info) && validate_mobile_base(info) &&
+                           validate_mobile_base_ownership(info, configured_joint_names);
             },
             component);
         if (!valid) return false;

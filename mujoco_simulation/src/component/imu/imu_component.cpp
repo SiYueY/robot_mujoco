@@ -159,6 +159,11 @@ bool ImuComponent::reset(const mjContext& context) {
     return true;
 }
 
+bool ImuComponent::advance(const mjContext& context) {
+    UNUSED(context);
+    return true;
+}
+
 bool ImuComponent::update(const mjContext& context) {
     if (!initialized_) {
         SIM_ERROR << "imu '" << info_.name << "' is not initialized.";

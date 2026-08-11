@@ -1,27 +1,26 @@
 #pragma once
 
-#include <array>
 #include <memory>
-#include <optional>
-#include <string>
 
 #include <mujoco/mujoco.h>
 
 #include "mujoco_simulation/component/mobile_base.hpp"
 
 #include "component/component.hpp"
-#include "component/mobile_base/mecanum_kinematics.hpp"
-
 namespace mujoco_simulation {
+
+class MecanumMobileBase;
 
 class MobileBaseComponent : public SimulationComponent {
 public:
     explicit MobileBaseComponent(MobileBaseInfo info);
+    ~MobileBaseComponent() override;
     MobileBaseComponent(const MobileBaseComponent&) = delete;
     MobileBaseComponent& operator=(const MobileBaseComponent&) = delete;
 
     bool init(const mjContext& context) override;
     bool reset(const mjContext& context) override;
+    bool advance(const mjContext& context) override;
     bool update(const mjContext& context) override;
 
     bool write(const mjContext& context, const MobileBaseCommand& command);
@@ -37,42 +36,23 @@ public:
     using WeakPtr = std::weak_ptr<MobileBaseComponent>;
 
 private:
-    bool configure_wheel(const mjContext& context, const WheelInfo& info, mjWheel& wheel) const;
-    bool configure_base_body(const mjContext& context);
-
-    bool init_mecanum(const mjContext& context);
-    bool reset_mecanum(const mjContext& context);
-    bool update_mecanum_state(const mjContext& context);
-    bool write_mecanum_command(const mjContext& context, const MobileBaseCommand& command);
-
-    bool write_twist_command(const mjContext& context, const MobileBaseCommand& command);
-    bool write_wheel_linear_command(const mjContext& context, const MobileBaseCommand& command);
-    bool write_wheel_angular_command(const mjContext& context, const MobileBaseCommand& command);
-    bool write_wheel_commands(const mjContext& context, const Vector4d& wheel_angular);
-
-    double clamp_ctrl_limits(const mjContext& context, const mjWheel& wheel, double value) const;
-    double clamp_force_limits(const mjContext& context, const mjWheel& wheel, double value) const;
-
-    void reset_odometry();
-    bool update_ground_truth_pose(const mjData& data);
+    bool configure_base(const mjContext& context);
+    bool reset_planar_base(const mjContext& context);
+    bool advance_planar_base(const mjContext& context);
+    void publish_state(const mjContext& context);
     static double wrap_angle(double angle);
 
-    int base_body_id_{-1};
+    int base_qpos_address_{-1};
+    int base_dof_address_{-1};
+    Vector3d world_odom_position_{};
+    double world_odom_yaw_{0.0};
+    Vector3d odom_pose_{};
 
-    // 移动底盘信息
     MobileBaseInfo info_;
-    // 最新移动底盘指令
-    MobileBaseCommand command_;
-    // 供本次更新构建的移动底盘状态，以及已发布的不可变快照。
     MobileBaseState working_state_;
     std::shared_ptr<const MobileBaseState> state_;
-    // 初始化标志
     bool initialized_{false};
-
-    // Mechanum 移动底盘
-    using MecanumWheels = std::array<mjWheel, MecanumWheelCount>;
-    MecanumWheels mecanum_wheels_{};
-    std::optional<MecanumKinematics> mecanum_kinematics_;
+    std::unique_ptr<MecanumMobileBase> mecanum_;
 };
 
 }  // namespace mujoco_simulation

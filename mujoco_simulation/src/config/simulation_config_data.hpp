@@ -23,6 +23,7 @@ inline constexpr char kEffort[] = "effort";
 
 inline constexpr char kId[] = "id";
 inline constexpr char kName[] = "name";
+inline constexpr char kType[] = "type";
 inline constexpr char kActuator[] = "actuator";
 inline constexpr char kPeriod[] = "period";
 inline constexpr char kUpdateRate[] = "update_rate";
@@ -50,11 +51,16 @@ inline constexpr char kAngleIncrement[] = "angle_increment";
 inline constexpr char kRangeMin[] = "range_min";
 inline constexpr char kRangeMax[] = "range_max";
 inline constexpr char kBaseBody[] = "base_body";
+inline constexpr char kBaseJoint[] = "base_joint";
 inline constexpr char kBaseFrameId[] = "base_frame_id";
 inline constexpr char kOdomFrameId[] = "odom_frame_id";
-inline constexpr char kWheelRadius[] = "wheel_radius";
+inline constexpr char kRadius[] = "radius";
+inline constexpr char kLegacyWheelRadius[] = "wheel_radius";
 inline constexpr char kWheelBase[] = "wheel_base";
 inline constexpr char kTrackWidth[] = "track_width";
+inline constexpr char kSpeedResponse[] = "speed_response";
+inline constexpr char kDirection[] = "direction";
+inline constexpr char kIndex[] = "index";
 inline constexpr char kEnabled[] = "enabled";
 
 inline constexpr char kModelPath[] = "model_path";

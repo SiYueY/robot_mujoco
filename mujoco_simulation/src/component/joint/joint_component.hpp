@@ -17,6 +17,7 @@ public:
 
     bool init(const mjContext& context) override;
     bool reset(const mjContext& context) override;
+    bool advance(const mjContext& context) override;
     bool update(const mjContext& context) override;
 
     bool write(const mjContext& context, const JointCommand& command);

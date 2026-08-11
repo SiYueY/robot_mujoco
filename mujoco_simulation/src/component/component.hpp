@@ -18,6 +18,7 @@ public:
     const std::string& name() const noexcept;
     virtual bool init(const mjContext& context) = 0;
     virtual bool reset(const mjContext& context) = 0;
+    virtual bool advance(const mjContext& context) = 0;
     virtual bool update(const mjContext& context) = 0;
 
     bool poll_update(mjTime time);

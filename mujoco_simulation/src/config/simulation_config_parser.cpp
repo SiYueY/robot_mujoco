@@ -1,5 +1,7 @@
 #include "config/simulation_config_parser.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <exception>
 #include <filesystem>
@@ -7,6 +9,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_set>
 #include <utility>
@@ -262,6 +265,7 @@ bool SimulationConfigParser::parse_components(
         if (!allowed(*e, {config_names::kWheel}) || !id(*e, maximum, v.id) ||
             !required(*e, config_names::kName, v.mobile_base_name) ||
             !required(*e, config_names::kBaseBody, v.base_body_name) ||
+            !required(*e, config_names::kBaseJoint, v.base_joint_name) ||
             e->Attribute(config_names::kUpdateRate) != nullptr ||
             !number(*e, config_names::kPeriod, v.period)) {
             log_error(failure, e, "", "invalid mobile-base syntax or attribute value");
@@ -271,26 +275,52 @@ bool SimulationConfigParser::parse_components(
         if (base != nullptr) v.base_frame_id = trim_copy(base);
         const char* odom = e->Attribute(config_names::kOdomFrameId);
         if (odom != nullptr) v.odom_frame_id = trim_copy(odom);
-        if (!number(*e, config_names::kWheelRadius, v.mecanum_info.wheel_radius, true) ||
+        const char* type = e->Attribute(config_names::kType);
+        if (type != nullptr && trim_copy(type) != "mecanum") {
+            log_error(failure, e, config_names::kType, "unsupported mobile-base type");
+            return false;
+        }
+        if (e->Attribute(config_names::kRadius) != nullptr ||
+            e->Attribute(config_names::kLegacyWheelRadius) != nullptr ||
             !number(*e, config_names::kWheelBase, v.mecanum_info.wheel_base, true) ||
             !number(*e, config_names::kTrackWidth, v.mecanum_info.track_width, true)) {
             log_error(failure, e, "", "invalid mobile-base geometry attribute");
             return false;
         }
-        std::size_t wheel_index = 0;
+        std::array<bool, MecanumWheelCount> seen_wheel_indices{};
         for (const tinyxml2::XMLElement* wheel = e->FirstChildElement(config_names::kWheel);
              wheel != nullptr; wheel = wheel->NextSiblingElement(config_names::kWheel)) {
-            if (wheel_index >= MecanumWheelCount ||
-                !required(*wheel, config_names::kName, v.mecanum_wheels[wheel_index].wheel_name) ||
-                !required(
-                    *wheel, config_names::kActuator, v.mecanum_wheels[wheel_index].actuator_name) ||
-                !number(*wheel, config_names::kDamping, v.mecanum_wheels[wheel_index].damping)) {
+            std::string index;
+            if (!required(*wheel, config_names::kIndex, index)) {
                 log_error(failure, wheel, "", "invalid mobile-base wheel attribute");
                 return false;
             }
-            ++wheel_index;
+            const std::array<std::string_view, MecanumWheelCount> names{
+                "front_left", "front_right", "rear_left", "rear_right"};
+            const auto it = std::find(names.begin(), names.end(), index);
+            if (it == names.end()) {
+                log_error(failure, wheel, config_names::kIndex, "invalid mobile-base wheel index");
+                return false;
+            }
+            const std::size_t wheel_index =
+                static_cast<std::size_t>(std::distance(names.begin(), it));
+            if (seen_wheel_indices[wheel_index] ||
+                !required(*wheel, config_names::kName, v.mecanum_wheels[wheel_index].wheel_name) ||
+                !number(
+                    *wheel, config_names::kRadius, v.mecanum_wheels[wheel_index].radius, true) ||
+                !number(
+                    *wheel, config_names::kDirection, v.mecanum_wheels[wheel_index].direction,
+                    true) ||
+                !number(
+                    *wheel, config_names::kSpeedResponse,
+                    v.mecanum_wheels[wheel_index].speed_response)) {
+                log_error(failure, wheel, "", "invalid mobile-base wheel attribute");
+                return false;
+            }
+            seen_wheel_indices[wheel_index] = true;
         }
-        if (wheel_index != MecanumWheelCount) {
+        if (std::find(seen_wheel_indices.begin(), seen_wheel_indices.end(), false) !=
+            seen_wheel_indices.end()) {
             log_error(failure, e, config_names::kWheel, "mobile base requires exactly four wheels");
             return false;
         }

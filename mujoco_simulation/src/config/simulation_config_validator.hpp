@@ -19,6 +19,8 @@ private:
     static bool validate_lidar_names(const LidarInfo& lidar);
     static bool validate_mobile_base(const MobileBaseInfo& base);
     static bool validate_mobile_base_names(const MobileBaseInfo& base);
+    static bool validate_mobile_base_ownership(
+        const MobileBaseInfo& base, const std::unordered_set<std::string>& joint_names);
     static bool validate_joint(const JointInfo& joint);
     static bool validate_imu(const ImuInfo& imu);
     static bool validate_limit(const JointLimit& limit, const char* name);

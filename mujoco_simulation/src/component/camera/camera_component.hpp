@@ -17,6 +17,7 @@ public:
 
     bool init(const mjContext& context) override;
     bool reset(const mjContext& context) override;
+    bool advance(const mjContext& context) override;
     bool update(const mjContext& context) override;
     CameraRenderTask make_render_task(std::uint64_t timestamp);
     bool apply_render_result(const CameraRenderTaskResult& result);

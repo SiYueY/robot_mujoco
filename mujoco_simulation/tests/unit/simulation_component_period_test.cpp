@@ -18,6 +18,8 @@ public:
 
     bool reset(const mujoco_simulation::mjContext&) override { return reset_schedule(); }
 
+    bool advance(const mujoco_simulation::mjContext&) override { return true; }
+
     bool update(const mujoco_simulation::mjContext&) override { return true; }
 };
 

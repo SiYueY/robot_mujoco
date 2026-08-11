@@ -62,6 +62,19 @@ add_test(
   NAME mujoco_simulation.component_period
   COMMAND mujoco_simulation_component_period_test)
 
+add_executable(mujoco_simulation_mobile_base_component_test
+  unit/mobile_base_component_test.cpp)
+target_include_directories(mujoco_simulation_mobile_base_component_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+target_sources(mujoco_simulation_mobile_base_component_test PRIVATE
+  $<TARGET_OBJECTS:mujoco_simulation_runtime>)
+target_link_libraries(mujoco_simulation_mobile_base_component_test PRIVATE
+  mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.mobile_base_component
+  COMMAND mujoco_simulation_mobile_base_component_test)
+
 add_executable(mujoco_simulation_component_manager_camera_reset_test
   unit/component_manager_camera_reset_test.cpp)
 target_include_directories(mujoco_simulation_component_manager_camera_reset_test PRIVATE

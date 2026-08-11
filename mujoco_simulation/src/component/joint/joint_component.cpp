@@ -143,6 +143,11 @@ bool JointComponent::reset(const mjContext& context) {
     return true;
 }
 
+bool JointComponent::advance(const mjContext& context) {
+    UNUSED(context);
+    return true;
+}
+
 bool JointComponent::update(const mjContext& context) {
     if (!is_initialized()) {
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
