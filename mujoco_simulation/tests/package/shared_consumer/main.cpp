@@ -1,7 +1,10 @@
+#include <mujoco_simulation/common/bitmask.hpp>
 #include <mujoco_simulation/log/logging.hpp>
 #include <mujoco_simulation/simulation.hpp>
 
 int main() {
+    mujoco_simulation::BitMask<> bits;
+    if (!bits.set(0) || !bits.contains(0)) return 3;
     mujoco_simulation::logging::Policy logging_config;
     logging_config.console_enabled = false;
     logging_config.file_enabled = false;

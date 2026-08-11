@@ -28,6 +28,7 @@ public:
     void clear();
 
     bool reset(const mjContext& context);
+    bool reset(const mjContext& context, JointCommands& commands);
     bool advance(const mjContext& context);
     bool update(const mjContext& context);
     bool write_command(const mjContext& context, const RobotCommand& command);

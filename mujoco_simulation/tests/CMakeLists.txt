@@ -113,6 +113,12 @@ add_test(
   NAME mujoco_simulation.command_buffer
   COMMAND mujoco_simulation_command_buffer_test)
 
+add_executable(mujoco_simulation_bitmask_test unit/bitmask_test.cpp)
+target_link_libraries(mujoco_simulation_bitmask_test PRIVATE mujoco_simulation::mujoco_simulation)
+add_test(
+  NAME mujoco_simulation.bitmask
+  COMMAND mujoco_simulation_bitmask_test)
+
 add_executable(mujoco_simulation_lifecycle_test
   public/simulation_lifecycle_test.cpp)
 target_include_directories(mujoco_simulation_lifecycle_test PRIVATE
@@ -321,6 +327,7 @@ foreach(test_target
     mujoco_simulation_component_manager_camera_reset_test
     mujoco_simulation_component_manager_sparse_command_test
     mujoco_simulation_command_buffer_test
+    mujoco_simulation_bitmask_test
     mujoco_simulation_lifecycle_test
     mujoco_simulation_component_header_contract_test
     mujoco_simulation_logging_header_contract_test

@@ -497,7 +497,7 @@ joint_config.hpp
 
 ```text
 JointId
-JointControlMode
+JointMode
 JointCommand
 JointCommands
 JointState

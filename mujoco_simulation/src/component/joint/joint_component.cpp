@@ -132,14 +132,42 @@ bool JointComponent::init(const mjContext& context) {
 }
 
 bool JointComponent::reset(const mjContext& context) {
+    JointCommand command;
+    return reset(context, command);
+}
+
+bool JointComponent::reset(const mjContext& context, JointCommand& command) {
     mjData& data = *context.data;
     if (!is_initialized()) {
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
         return false;
     }
     data.ctrl[joint_.actuator_id] = 0.0;
-    command_ = {};
     state_.reset();
+    return make_reset_command(context, command) && write(context, command);
+}
+
+bool JointComponent::supports_mode(uint8_t mode) const noexcept {
+    if (mode > static_cast<uint8_t>(JointMode::Effort)) return false;
+    return info_.allowed_modes.contains(static_cast<JointMode>(mode));
+}
+
+bool JointComponent::make_reset_command(const mjContext& context, JointCommand& command) const {
+    if (!is_initialized() || !context.valid()) return false;
+    command = {};
+    command.id = info_.id;
+    command.mode = static_cast<uint8_t>(info_.default_mode);
+    command.position = context.data->qpos[joint_.qpos_address];
+    switch (info_.default_mode) {
+        case JointMode::Hybrid:
+            command.stiffness = info_.hybrid_stiffness;
+            command.damping = info_.hybrid_damping;
+            break;
+        case JointMode::Position:
+        case JointMode::Velocity:
+        case JointMode::Effort:
+            break;
+    }
     return true;
 }
 
@@ -170,19 +198,24 @@ bool JointComponent::write(const mjContext& context, const JointCommand& command
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
         return false;
     }
+    if (!supports_mode(command.mode)) {
+        SIM_ERROR << "joint '" << info_.joint_name << "' does not support control mode "
+                  << static_cast<int>(command.mode) << ".";
+        return false;
+    }
 
     bool result = false;
     switch (command.mode) {
-        case static_cast<std::uint8_t>(JointControlMode::Hybrid):
+        case static_cast<std::uint8_t>(JointMode::Hybrid):
             result = write_hybrid_command(context, command);
             break;
-        case static_cast<std::uint8_t>(JointControlMode::Position):
+        case static_cast<std::uint8_t>(JointMode::Position):
             result = write_position_command(context, command);
             break;
-        case static_cast<std::uint8_t>(JointControlMode::Velocity):
+        case static_cast<std::uint8_t>(JointMode::Velocity):
             result = write_velocity_command(context, command);
             break;
-        case static_cast<std::uint8_t>(JointControlMode::Effort):
+        case static_cast<std::uint8_t>(JointMode::Effort):
             result = write_effort_command(context, command);
             break;
         default:

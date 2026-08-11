@@ -29,7 +29,9 @@ install(FILES
   include/mujoco_simulation/data/robot_command.hpp
   include/mujoco_simulation/data/robot_state.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/data)
-install(FILES include/mujoco_simulation/common/math.hpp
+install(FILES
+  include/mujoco_simulation/common/math.hpp
+  include/mujoco_simulation/common/bitmask.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mujoco_simulation/common)
 install(FILES
   "${MUJOCO_SIMULATION_GENERATED_INCLUDE_DIR}/mujoco_simulation/version.hpp"

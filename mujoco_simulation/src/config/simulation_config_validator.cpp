@@ -185,7 +185,10 @@ bool SimulationConfigValidator::validate_joint(const JointInfo& joint) {
         log_error(config_names::kName, "joint and actuator names are required");
         return false;
     }
-    if (!std::isfinite(joint.position_stiffness) || joint.position_stiffness < 0.0 ||
+    if (joint.allowed_modes.empty() || !joint.allowed_modes.contains(joint.default_mode) ||
+        !std::isfinite(joint.hybrid_stiffness) || joint.hybrid_stiffness < 0.0 ||
+        !std::isfinite(joint.hybrid_damping) || joint.hybrid_damping < 0.0 ||
+        !std::isfinite(joint.position_stiffness) || joint.position_stiffness < 0.0 ||
         !std::isfinite(joint.position_damping) || joint.position_damping < 0.0 ||
         !std::isfinite(joint.velocity_damping) || joint.velocity_damping < 0.0) {
         log_error(

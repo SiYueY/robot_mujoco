@@ -167,9 +167,20 @@ void ComponentManager::clear() {
 }
 
 bool ComponentManager::reset(const mjContext& context) {
+    JointCommands ignored_commands;
+    return reset(context, ignored_commands);
+}
+
+bool ComponentManager::reset(const mjContext& context, JointCommands& commands) {
     if (!context.valid()) return false;
-    if (!reset_components(context, joints_components_) ||
-        !reset_components(context, camera_components_) ||
+    commands.clear();
+    for (const auto& component : joints_components_) {
+        if (component == nullptr) continue;
+        JointCommand command;
+        if (!component->reset(context, command) || !component->reset_schedule()) return false;
+        commands.push_back(command);
+    }
+    if (!reset_components(context, camera_components_) ||
         !reset_components(context, imu_components_) ||
         !reset_components(context, lidar_components_) ||
         !reset_components(context, mobile_base_components_))

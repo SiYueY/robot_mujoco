@@ -40,6 +40,7 @@ private:
         const std::string& raw, ComponentId maximum, ComponentId& out);
     static bool id(const tinyxml2::XMLElement& element, ComponentId maximum, ComponentId& out);
     static bool parse_limit(const tinyxml2::XMLElement* axis, JointLimit& limit);
+    static bool parse_joint_mode(const std::string& value, JointMode& out);
     static bool parse_joint(
         const tinyxml2::XMLElement& element, ComponentId maximum, JointInfo& info);
     static bool parse_components(

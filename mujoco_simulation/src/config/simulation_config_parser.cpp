@@ -128,6 +128,19 @@ bool SimulationConfigParser::parse_limit(const tinyxml2::XMLElement* axis, Joint
     return allowed(*axis, {}) && number(*axis, config_names::kMin, limit.min) &&
            number(*axis, config_names::kMax, limit.max);
 }
+bool SimulationConfigParser::parse_joint_mode(const std::string& value, JointMode& out) {
+    if (value == config_names::kHybrid)
+        out = JointMode::Hybrid;
+    else if (value == config_names::kPosition)
+        out = JointMode::Position;
+    else if (value == config_names::kVelocity)
+        out = JointMode::Velocity;
+    else if (value == config_names::kEffort)
+        out = JointMode::Effort;
+    else
+        return false;
+    return true;
+}
 bool SimulationConfigParser::parse_joint(
     const tinyxml2::XMLElement& element, ComponentId maximum, JointInfo& info) {
     if (!allowed(element, {config_names::kControl, config_names::kLimit}) ||
@@ -139,20 +152,44 @@ bool SimulationConfigParser::parse_joint(
     info.actuator_name = info.joint_name;
     const char* actuator = element.Attribute(config_names::kActuator);
     if (actuator != nullptr) info.actuator_name = trim_copy(actuator);
+    const char* mode = element.Attribute(config_names::kMode);
+    if (mode == nullptr || !parse_joint_mode(trim_copy(mode), info.default_mode)) return false;
     const tinyxml2::XMLElement* control = element.FirstChildElement(config_names::kControl);
-    if (control != nullptr) {
-        if (!allowed(*control, {config_names::kPosition, config_names::kVelocity})) return false;
+    if (control == nullptr) return false;
+    {
+        info.allowed_modes.clear();
+        if (!allowed(
+                *control, {config_names::kHybrid, config_names::kPosition, config_names::kVelocity,
+                           config_names::kEffort}))
+            return false;
+        const tinyxml2::XMLElement* hybrid = control->FirstChildElement(config_names::kHybrid);
         const tinyxml2::XMLElement* position = control->FirstChildElement(config_names::kPosition);
         const tinyxml2::XMLElement* velocity = control->FirstChildElement(config_names::kVelocity);
-        if ((position != nullptr &&
+        const tinyxml2::XMLElement* effort = control->FirstChildElement(config_names::kEffort);
+        const auto unique = [control](const char* name) {
+            const tinyxml2::XMLElement* first = control->FirstChildElement(name);
+            return first == nullptr || first->NextSiblingElement(name) == nullptr;
+        };
+        if (!unique(config_names::kHybrid) || !unique(config_names::kPosition) ||
+            !unique(config_names::kVelocity) || !unique(config_names::kEffort) ||
+            (hybrid != nullptr &&
+             (!allowed(*hybrid, {}) ||
+              !number(*hybrid, config_names::kStiffness, info.hybrid_stiffness, true) ||
+              !number(*hybrid, config_names::kDamping, info.hybrid_damping, true))) ||
+            (position != nullptr &&
              (!allowed(*position, {}) ||
-              !number(*position, config_names::kStiffness, info.position_stiffness) ||
-              !number(*position, config_names::kDamping, info.position_damping))) ||
+              !number(*position, config_names::kStiffness, info.position_stiffness, true) ||
+              !number(*position, config_names::kDamping, info.position_damping, true))) ||
             (velocity != nullptr &&
              (!allowed(*velocity, {}) ||
-              !number(*velocity, config_names::kDamping, info.velocity_damping)))) {
+              !number(*velocity, config_names::kDamping, info.velocity_damping, true))) ||
+            (effort != nullptr && !allowed(*effort, {}))) {
             return false;
         }
+        if (hybrid != nullptr) info.allowed_modes.set(JointMode::Hybrid);
+        if (position != nullptr) info.allowed_modes.set(JointMode::Position);
+        if (velocity != nullptr) info.allowed_modes.set(JointMode::Velocity);
+        if (effort != nullptr) info.allowed_modes.set(JointMode::Effort);
     }
     const tinyxml2::XMLElement* limits = element.FirstChildElement(config_names::kLimit);
     return limits == nullptr ||

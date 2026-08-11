@@ -10,15 +10,15 @@ constexpr std::size_t kInvalidCommandIndex = std::numeric_limits<std::size_t>::m
 
 bool is_valid(const JointCommand& command) {
     switch (command.mode) {
-        case static_cast<std::uint8_t>(JointControlMode::Hybrid):
+        case static_cast<std::uint8_t>(JointMode::Hybrid):
             return std::isfinite(command.position) && std::isfinite(command.velocity) &&
                    std::isfinite(command.effort) && std::isfinite(command.stiffness) &&
                    std::isfinite(command.damping);
-        case static_cast<std::uint8_t>(JointControlMode::Position):
+        case static_cast<std::uint8_t>(JointMode::Position):
             return std::isfinite(command.position);
-        case static_cast<std::uint8_t>(JointControlMode::Velocity):
+        case static_cast<std::uint8_t>(JointMode::Velocity):
             return std::isfinite(command.velocity);
-        case static_cast<std::uint8_t>(JointControlMode::Effort):
+        case static_cast<std::uint8_t>(JointMode::Effort):
             return std::isfinite(command.effort);
     }
     return false;

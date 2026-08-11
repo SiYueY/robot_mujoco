@@ -20,11 +20,13 @@ inline constexpr char kLimit[] = "limit";
 inline constexpr char kPosition[] = "position";
 inline constexpr char kVelocity[] = "velocity";
 inline constexpr char kEffort[] = "effort";
+inline constexpr char kHybrid[] = "hybrid";
 
 inline constexpr char kId[] = "id";
 inline constexpr char kName[] = "name";
 inline constexpr char kType[] = "type";
 inline constexpr char kActuator[] = "actuator";
+inline constexpr char kMode[] = "mode";
 inline constexpr char kPeriod[] = "period";
 inline constexpr char kUpdateRate[] = "update_rate";
 inline constexpr char kMin[] = "min";

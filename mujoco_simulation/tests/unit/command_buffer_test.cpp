@@ -52,12 +52,12 @@ int main() {
     using mujoco_simulation::CommandBuffer;
     using mujoco_simulation::JointCommand;
     using mujoco_simulation::JointCommands;
-    using mujoco_simulation::JointControlMode;
+    using mujoco_simulation::JointMode;
     using mujoco_simulation::MobileBaseCommand;
 
     JointCommand effort;
     effort.id = 0;
-    effort.mode = static_cast<std::uint8_t>(JointControlMode::Effort);
+    effort.mode = static_cast<std::uint8_t>(JointMode::Effort);
     effort.effort = 2.5;
     JointCommand lighter = effort;
     lighter.id = 2;

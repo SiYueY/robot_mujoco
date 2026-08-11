@@ -76,7 +76,7 @@ int main() {
     <viewer period="0.02"/>
   </simulation>
   <robot>
-    <joint id="0" name="joint" period="0.002"/>
+    <joint id="0" name="joint" period="0.002" mode="effort"><control><effort/></control></joint>
     <imu id="1" name="imu" frame_id="imu" framequat_sensor="quat"
          gyro_sensor="gyro" accelerometer_sensor="accel" period="0.003"/>
     <camera id="2" name="camera" frame_id="camera" camera_name="camera"
@@ -130,7 +130,7 @@ int main() {
     <physics period="0.001"/>
     <viewer period="0.02"/>
   </simulation>
-  <robot><joint id="0" name="joint"/></robot>
+  <robot><joint id="0" name="joint" mode="effort"><control><effort/></control></joint></robot>
 </robot_mujoco>)";
     if (!check(write_file(path, defaulted_period), "failed to write default-period XML") ||
         !check(parser.load_file(path.string(), config), "default-period XML was rejected") ||
@@ -147,7 +147,7 @@ int main() {
   <mujoco><mjcf>model.xml</mjcf></mujoco>
   <simulation><physics period="0.001"/><viewer period="0.02"/></simulation>
   <robot>
-    <joint id="0" name="joint"><control>
+    <joint id="0" name="joint" mode="position"><control>
       <position stiffness="300" damping="10"/>
       <velocity damping="20"/>
     </control><limit>
@@ -182,7 +182,7 @@ int main() {
     const char* defaulted_control = R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
-<joint id="0" name="joint"><control><position/><velocity/></control></joint>
+<joint id="0" name="joint" mode="position"><control><position stiffness="0" damping="0"/><velocity damping="0"/></control></joint>
 </robot></robot_mujoco>)";
     if (!check(write_file(path, defaulted_control), "failed to write default-control XML") ||
         !check(parser.load_file(path.string(), config), "default-control XML was rejected")) {
@@ -203,7 +203,7 @@ int main() {
     const char* one_sided_limit = R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
-<joint id="0" name="joint"><limit><position min="-2.8"/><velocity max="5"/></limit></joint>
+<joint id="0" name="joint" mode="effort"><control><effort/></control><limit><position min="-2.8"/><velocity max="5"/></limit></joint>
 </robot></robot_mujoco>)";
     if (!check(write_file(path, one_sided_limit), "failed to write one-sided limit XML") ||
         !check(parser.load_file(path.string(), config), "one-sided limits were rejected")) {

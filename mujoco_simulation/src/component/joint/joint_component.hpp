@@ -17,6 +17,7 @@ public:
 
     bool init(const mjContext& context) override;
     bool reset(const mjContext& context) override;
+    bool reset(const mjContext& context, JointCommand& command);
     bool advance(const mjContext& context) override;
     bool update(const mjContext& context) override;
 
@@ -31,6 +32,7 @@ public:
     int actuator_id() const noexcept { return joint_.actuator_id; }
     JointType joint_type() const noexcept { return info_.joint_type; }
     bool is_initialized() const noexcept;
+    bool supports_mode(uint8_t mode) const noexcept;
 
 public:
     using SharedPtr = std::shared_ptr<JointComponent>;
@@ -38,6 +40,8 @@ public:
     using WeakPtr = std::weak_ptr<JointComponent>;
 
 private:
+    bool make_reset_command(const mjContext& context, JointCommand& command) const;
+
     // command
     bool write_position_command(const mjContext& context, const JointCommand& command) const;
     bool write_velocity_command(const mjContext& context, const JointCommand& command) const;

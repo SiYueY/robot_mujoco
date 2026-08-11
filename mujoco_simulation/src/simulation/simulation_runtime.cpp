@@ -49,6 +49,7 @@ bool Simulation::Impl::initialize_scheduler() {
 }
 
 bool Simulation::Impl::initialize_components() {
+    JointCommands initial_joint_commands;
     {
         std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
         if (runtime_ == nullptr) {
@@ -68,6 +69,10 @@ bool Simulation::Impl::initialize_components() {
             SIM_ERROR << "failed to initialize simulation components.";
             return false;
         }
+        if (!component_manager_.reset(runtime_->context(), initial_joint_commands)) {
+            SIM_ERROR << "failed to reset simulation components.";
+            return false;
+        }
         if (component_manager_.has_cameras() &&
             !camera_render_service_->initialize(config_, runtime_->context().model)) {
             SIM_ERROR << "failed to initialize the camera render worker.";
@@ -85,6 +90,10 @@ bool Simulation::Impl::initialize_components() {
     auto id_resolver = ComponentIdResolver::create(config_.components);
     if (id_resolver == nullptr || !command_buffer_.configure(id_resolver)) {
         SIM_ERROR << "failed to configure command channels.";
+        return false;
+    }
+    if (!command_buffer_.write(initial_joint_commands)) {
+        SIM_ERROR << "failed to set default joint commands.";
         return false;
     }
     if (!state_buffer_.configure(id_resolver)) {

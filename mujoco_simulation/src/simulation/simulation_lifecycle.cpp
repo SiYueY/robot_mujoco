@@ -272,6 +272,7 @@ bool Simulation::Impl::reset(const std::string* keyframe_name) {
     }
 
     bool succeeded = true;
+    JointCommands reset_joint_commands;
     {
         std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
         if (!runtime_->is_initialized()) {
@@ -283,11 +284,14 @@ bool Simulation::Impl::reset(const std::string* keyframe_name) {
             succeeded = runtime_->reset(*keyframe_name);
         }
         if (succeeded) {
-            succeeded = component_manager_.reset(runtime_->context());
+            succeeded = component_manager_.reset(runtime_->context(), reset_joint_commands);
             if (!succeeded) SIM_ERROR << "failed to reset simulation components.";
         }
         if (succeeded) {
-            command_buffer_.clear();
+            if (!command_buffer_.write(reset_joint_commands)) {
+                SIM_ERROR << "failed to restore default joint commands after reset.";
+                succeeded = false;
+            }
             step_.store(0);
             sequence_ = 0;
             if (component_manager_.has_cameras()) {

@@ -82,10 +82,10 @@ MJCF：
 
 ------------------------------------------------------------------------
 
-## 5. JointControlMode
+## 5. JointMode
 
 ``` cpp
-enum class JointControlMode
+enum class JointMode
 {
     Position,
     Velocity,
