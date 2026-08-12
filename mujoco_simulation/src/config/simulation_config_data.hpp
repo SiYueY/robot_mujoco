@@ -33,6 +33,7 @@ inline constexpr char kMin[] = "min";
 inline constexpr char kMax[] = "max";
 inline constexpr char kStiffness[] = "stiffness";
 inline constexpr char kDamping[] = "damping";
+inline constexpr char kGravityCompensation[] = "gravity_compensation";
 inline constexpr char kFrameId[] = "frame_id";
 inline constexpr char kFramequatSensor[] = "framequat_sensor";
 inline constexpr char kGyroSensor[] = "gyro_sensor";

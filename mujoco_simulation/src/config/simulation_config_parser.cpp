@@ -87,6 +87,10 @@ bool SimulationConfigParser::number(
     if (raw == nullptr) return !mandatory;
     return parse_finite_double(raw, out);
 }
+bool optional_bool(const tinyxml2::XMLElement& element, const char* attribute, bool& out) {
+    return element.Attribute(attribute) == nullptr ||
+           element.QueryBoolAttribute(attribute, &out) == tinyxml2::XML_SUCCESS;
+}
 bool SimulationConfigParser::number_array(
     const tinyxml2::XMLElement& element, const char* attribute, std::array<double, 9>& out) {
     const char* raw = element.Attribute(attribute);
@@ -146,6 +150,7 @@ bool SimulationConfigParser::parse_joint(
     if (!allowed(element, {config_names::kControl, config_names::kLimit}) ||
         !id(element, maximum, info.id) ||
         !required(element, config_names::kName, info.joint_name) ||
+        element.Attribute(config_names::kGravityCompensation) != nullptr ||
         element.Attribute(config_names::kUpdateRate) != nullptr ||
         !number(element, config_names::kPeriod, info.period))
         return false;
@@ -174,16 +179,28 @@ bool SimulationConfigParser::parse_joint(
             !unique(config_names::kVelocity) || !unique(config_names::kEffort) ||
             (hybrid != nullptr &&
              (!allowed(*hybrid, {}) ||
-              !number(*hybrid, config_names::kStiffness, info.hybrid_stiffness, true) ||
-              !number(*hybrid, config_names::kDamping, info.hybrid_damping, true))) ||
+              !number(*hybrid, config_names::kStiffness, info.hybrid.stiffness, true) ||
+              !number(*hybrid, config_names::kDamping, info.hybrid.damping, true) ||
+              !optional_bool(
+                  *hybrid, config_names::kGravityCompensation,
+                  info.hybrid.gravity_compensation))) ||
             (position != nullptr &&
              (!allowed(*position, {}) ||
-              !number(*position, config_names::kStiffness, info.position_stiffness, true) ||
-              !number(*position, config_names::kDamping, info.position_damping, true))) ||
+              !number(*position, config_names::kStiffness, info.position.stiffness, true) ||
+              !number(*position, config_names::kDamping, info.position.damping, true) ||
+              !optional_bool(
+                  *position, config_names::kGravityCompensation,
+                  info.position.gravity_compensation))) ||
             (velocity != nullptr &&
              (!allowed(*velocity, {}) ||
-              !number(*velocity, config_names::kDamping, info.velocity_damping, true))) ||
-            (effort != nullptr && !allowed(*effort, {}))) {
+              !number(*velocity, config_names::kDamping, info.velocity.damping, true) ||
+              !optional_bool(
+                  *velocity, config_names::kGravityCompensation,
+                  info.velocity.gravity_compensation))) ||
+            (effort != nullptr &&
+             (!allowed(*effort, {}) || !optional_bool(
+                                           *effort, config_names::kGravityCompensation,
+                                           info.effort.gravity_compensation)))) {
             return false;
         }
         if (hybrid != nullptr) info.allowed_modes.set(JointMode::Hybrid);

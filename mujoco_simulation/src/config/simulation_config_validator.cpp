@@ -186,11 +186,11 @@ bool SimulationConfigValidator::validate_joint(const JointInfo& joint) {
         return false;
     }
     if (joint.allowed_modes.empty() || !joint.allowed_modes.contains(joint.default_mode) ||
-        !std::isfinite(joint.hybrid_stiffness) || joint.hybrid_stiffness < 0.0 ||
-        !std::isfinite(joint.hybrid_damping) || joint.hybrid_damping < 0.0 ||
-        !std::isfinite(joint.position_stiffness) || joint.position_stiffness < 0.0 ||
-        !std::isfinite(joint.position_damping) || joint.position_damping < 0.0 ||
-        !std::isfinite(joint.velocity_damping) || joint.velocity_damping < 0.0) {
+        !std::isfinite(joint.hybrid.stiffness) || joint.hybrid.stiffness < 0.0 ||
+        !std::isfinite(joint.hybrid.damping) || joint.hybrid.damping < 0.0 ||
+        !std::isfinite(joint.position.stiffness) || joint.position.stiffness < 0.0 ||
+        !std::isfinite(joint.position.damping) || joint.position.damping < 0.0 ||
+        !std::isfinite(joint.velocity.damping) || joint.velocity.damping < 0.0) {
         log_error(
             config_names::kDamping, "joint stiffness and damping must be finite and non-negative");
         return false;

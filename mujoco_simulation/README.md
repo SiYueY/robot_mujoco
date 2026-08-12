@@ -333,10 +333,9 @@ mujoco_simulation/
 
 ```bash
 export MUJOCO_ROOT=/opt/mujoco-3.9.0
-cmake -S mujoco_simulation -B build/mujoco_simulation \\
-  -DMUJOCO_SIMULATION_BUILD_SHARED=ON
+cmake -S mujoco_simulation -B build/mujoco_simulation -DMUJOCO_SIMULATION_BUILD_SHARED=ON
 cmake --build build/mujoco_simulation
-cmake --install build/mujoco_simulation --prefix /desired/install/prefix
+sudo cmake --install build/mujoco_simulation --prefix /opt/mujoco_simulation
 ```
 
 可选构建开关为：

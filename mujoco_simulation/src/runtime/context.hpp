@@ -6,6 +6,14 @@
 
 namespace mujoco_simulation {
 
+struct MjDataDeleter {
+    void operator()(mjData* data) const noexcept {
+        if (data != nullptr) {
+            mj_deleteData(data);
+        }
+    }
+};
+
 struct mjContext {
     constexpr mjContext() = default;
     constexpr mjContext(mjModel* model, mjData* data) noexcept : model(model), data(data) {}

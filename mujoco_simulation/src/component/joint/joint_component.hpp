@@ -53,12 +53,16 @@ private:
     double clamp_ctrl_limits(const mjContext& context, double value) const;
     double clamp_force_limits(const mjContext& context, double value) const;
 
+    // gravity compensation
+    double gravity_compensation_effort(const mjContext& context) const;
+
 private:
     bool initialized_{false};
     mjJoint joint_{};
     JointInfo info_;
     JointCommand command_{};
     std::shared_ptr<const JointState> state_;
+    mutable std::unique_ptr<mjData, MjDataDeleter> gravity_data_;
 };
 
 }  // namespace mujoco_simulation

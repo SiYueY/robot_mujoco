@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "mujoco_simulation/component/camera.hpp"
@@ -25,6 +26,15 @@ using ImuStates = StateSnapshots<ImuState>;
 using LidarStates = StateSnapshots<LidarState>;
 using CameraStates = StateSnapshots<CameraState>;
 
+// Immutable contact data published with RobotState.  Names are copied while the
+// physics thread owns mjData, so readers never access MuJoCo internals directly.
+struct ContactState {
+    std::string geom1;
+    std::string geom2;
+    double distance{0.0};
+};
+using ContactStates = std::vector<ContactState>;
+
 struct RobotState {
     std::uint64_t sequence{0};
     std::uint64_t timestamp{0};
@@ -36,6 +46,7 @@ struct RobotState {
     ImuStates imus;
     LidarStates lidars;
     CameraStates cameras;
+    ContactStates contacts;
 };
 
 }  // namespace mujoco_simulation

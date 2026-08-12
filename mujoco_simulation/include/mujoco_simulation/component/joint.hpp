@@ -30,17 +30,37 @@ struct JointLimit {
 };
 
 struct JointInfo {
+    struct Hybrid {
+        double stiffness{0.0};
+        double damping{0.0};
+        bool gravity_compensation{false};
+    };
+
+    struct Position {
+        double stiffness{0.0};
+        double damping{0.0};
+        bool gravity_compensation{false};
+    };
+
+    struct Velocity {
+        double damping{0.0};
+        bool gravity_compensation{false};
+    };
+
+    struct Effort {
+        bool gravity_compensation{false};
+    };
+
     JointId id{0};
     std::string joint_name;
     std::string actuator_name;
     JointType joint_type{JointType::Revolute};
     JointMode default_mode{JointMode::Hybrid};
     EnumMask<JointMode> allowed_modes;
-    double hybrid_stiffness{0.0};
-    double hybrid_damping{0.0};
-    double position_stiffness{0.0};
-    double position_damping{0.0};
-    double velocity_damping{0.0};
+    Hybrid hybrid;
+    Position position;
+    Velocity velocity;
+    Effort effort;
     JointLimit position_limits;
     JointLimit velocity_limits;
     JointLimit effort_limits;

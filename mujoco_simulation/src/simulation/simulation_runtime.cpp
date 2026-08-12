@@ -236,6 +236,16 @@ bool Simulation::Impl::create_state_snapshot(RobotState& snapshot) const {
         SIM_ERROR << "component manager failed to read the simulation state.";
         return false;
     }
+    const mjContext& context = runtime_->context();
+    snapshot.contacts.clear();
+    snapshot.contacts.reserve(context.data->ncon);
+    for (int index = 0; index < context.data->ncon; ++index) {
+        const mjContact& contact = context.data->contact[index];
+        const char* geom1 = mj_id2name(context.model, mjOBJ_GEOM, contact.geom1);
+        const char* geom2 = mj_id2name(context.model, mjOBJ_GEOM, contact.geom2);
+        snapshot.contacts.push_back(ContactState{
+            geom1 == nullptr ? "" : geom1, geom2 == nullptr ? "" : geom2, contact.dist});
+    }
     return true;
 }
 

@@ -37,17 +37,17 @@ bool JointComponent::init(const mjContext& context) {
         SIM_ERROR << "joint '" << info_.joint_name << "' effort limits have min greater than max.";
         return false;
     }
-    if (!std::isfinite(info_.position_stiffness) || info_.position_stiffness < 0.0) {
+    if (!std::isfinite(info_.position.stiffness) || info_.position.stiffness < 0.0) {
         SIM_ERROR << "joint '" << info_.joint_name
                   << "' position stiffness must be finite and non-negative.";
         return false;
     }
-    if (!std::isfinite(info_.position_damping) || info_.position_damping < 0.0) {
+    if (!std::isfinite(info_.position.damping) || info_.position.damping < 0.0) {
         SIM_ERROR << "joint '" << info_.joint_name
                   << "' position damping must be finite and non-negative.";
         return false;
     }
-    if (!std::isfinite(info_.velocity_damping) || info_.velocity_damping < 0.0) {
+    if (!std::isfinite(info_.velocity.damping) || info_.velocity.damping < 0.0) {
         SIM_ERROR << "joint '" << info_.joint_name
                   << "' velocity damping must be finite and non-negative.";
         return false;
@@ -127,6 +127,15 @@ bool JointComponent::init(const mjContext& context) {
                   << "' has gear " << gear[0] << ", expected 1.";
         return false;
     }
+    if (info_.hybrid.gravity_compensation || info_.position.gravity_compensation ||
+        info_.velocity.gravity_compensation || info_.effort.gravity_compensation) {
+        gravity_data_.reset(mj_makeData(&model));
+        if (gravity_data_ == nullptr) {
+            SIM_ERROR << "joint '" << info_.joint_name
+                      << "' failed to allocate gravity-compensation MuJoCo data.";
+            return false;
+        }
+    }
     initialized_ = true;
     return true;
 }
@@ -160,8 +169,8 @@ bool JointComponent::make_reset_command(const mjContext& context, JointCommand& 
     command.position = context.data->qpos[joint_.qpos_address];
     switch (info_.default_mode) {
         case JointMode::Hybrid:
-            command.stiffness = info_.hybrid_stiffness;
-            command.damping = info_.hybrid_damping;
+            command.stiffness = info_.hybrid.stiffness;
+            command.damping = info_.hybrid.damping;
             break;
         case JointMode::Position:
         case JointMode::Velocity:
@@ -261,9 +270,10 @@ bool JointComponent::write_position_command(
 
     const double position_state = context.data->qpos[joint_.qpos_address];
     const double velocity_state = context.data->qvel[joint_.dof_address];
-    double effort = info_.position_stiffness *
+    double effort = info_.position.stiffness *
                         (clamp_limits(info_.position_limits, command.position) - position_state) +
-                    info_.position_damping * (0.0 - velocity_state);
+                    info_.position.damping * (0.0 - velocity_state);
+    if (info_.position.gravity_compensation) effort += gravity_compensation_effort(context);
     effort = clamp_limits(info_.effort_limits, effort);
     effort = clamp_force_limits(context, effort);
     context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
@@ -277,8 +287,9 @@ bool JointComponent::write_velocity_command(
         return false;
     }
     const double velocity_state = context.data->qvel[joint_.dof_address];
-    double effort = info_.velocity_damping *
+    double effort = info_.velocity.damping *
                     (clamp_limits(info_.velocity_limits, command.velocity) - velocity_state);
+    if (info_.velocity.gravity_compensation) effort += gravity_compensation_effort(context);
     effort = clamp_limits(info_.effort_limits, effort);
     effort = clamp_force_limits(context, effort);
     context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
@@ -291,7 +302,9 @@ bool JointComponent::write_effort_command(
         SIM_ERROR << "joint '" << info_.joint_name << "' effort command must be finite.";
         return false;
     }
-    double effort = clamp_limits(info_.effort_limits, command.effort);
+    double effort = command.effort;
+    if (info_.effort.gravity_compensation) effort += gravity_compensation_effort(context);
+    effort = clamp_limits(info_.effort_limits, effort);
     effort = clamp_force_limits(context, effort);
     context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
     return true;
@@ -320,10 +333,23 @@ bool JointComponent::write_hybrid_command(
         command.stiffness *
             (clamp_limits(info_.position_limits, command.position) - position_state) +
         command.damping * (clamp_limits(info_.velocity_limits, command.velocity) - velocity_state);
+    if (info_.hybrid.gravity_compensation) effort += gravity_compensation_effort(context);
     effort = clamp_limits(info_.effort_limits, effort);
     effort = clamp_force_limits(context, effort);
     context.data->ctrl[joint_.actuator_id] = clamp_ctrl_limits(context, effort);
     return true;
+}
+
+double JointComponent::gravity_compensation_effort(const mjContext& context) const {
+    const mjModel& model = *context.model;
+    mjData& gravity_data = *gravity_data_;
+
+    // Use only the current configuration.  Resetting the scratch state leaves its
+    // velocity and acceleration at zero, so qfrc_bias is the pure gravity term.
+    mj_resetData(&model, &gravity_data);
+    std::copy_n(context.data->qpos, model.nq, gravity_data.qpos);
+    mj_forward(&model, &gravity_data);
+    return static_cast<double>(gravity_data.qfrc_bias[joint_.dof_address]);
 }
 
 double JointComponent::clamp_limits(const JointLimit& limits, double value) const {

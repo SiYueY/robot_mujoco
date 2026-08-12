@@ -246,15 +246,32 @@ left_shoulder_pitch:
     damping: 10
 ```
 
+可选属性 `gravity_compensation` 用于在控制律中叠加随当前姿态变化的重力补偿：
+
+``` xml
+<position stiffness="2000" damping="200" gravity_compensation="true"/>
+```
+
+缺省为 `false`，以保持已有模型行为不变。
+
 ## 控制
 
-\[ effort = K_p(q_d-q) + K_d(`\dot `{=tex}q_d-`\dot `{=tex}q) \]
+$$
+effort = \tau_g + K_p(q_d - q) + K_d(\dot{q}_d - \dot{q})
+$$
 
 其中：
 
-\[ K_p = stiffness \]
+$$
+K_p = stiffness
+$$
 
-\[ K_d = damping \]
+$$
+K_d = damping
+$$
+
+仅在 `gravity_compensation="true"` 时叠加 $\tau_g$；Position 模式的
+$\dot{q}_d$ 为 0。
 
 ------------------------------------------------------------------------
 
@@ -278,7 +295,11 @@ wheel_left:
 
 ## 控制
 
-\[ effort = K_d(`\dot `{=tex}q_d-`\dot `{=tex}q) \]
+$$
+effort = \tau_g + K_d(\dot{q}_d - \dot{q})
+$$
+
+其中 $\tau_g$ 仅在 `gravity_compensation="true"` 时叠加。
 
 其中：
 
@@ -296,7 +317,13 @@ wheel_left:
 
 控制：
 
-\[ effort=effort\_{cmd} \]
+$$
+effort = effort_{cmd}
+$$
+
+Effort 模式默认不补偿重力，避免与上层已计算的补偿重复。只有显式配置
+`<effort gravity_compensation="true"/>` 时，控制输出才为
+$effort_{cmd} + \tau_g$。
 
 ------------------------------------------------------------------------
 
@@ -323,8 +350,11 @@ wheel_left:
 
 ## 控制
 
-\[ effort= effort\_{ff} + K_p(q_d-q) +
-K_d(`\dot `{=tex}q_d-`\dot `{=tex}q) \]
+$$
+effort = \tau_g + effort_{ff} + K_p(q_d - q) + K_d(\dot{q}_d - \dot{q})
+$$
+
+其中 $\tau_g$ 仅在 `gravity_compensation="true"` 时叠加。
 
 ------------------------------------------------------------------------
 
@@ -351,6 +381,23 @@ joints:
       stiffness: 500
       damping: 30
 ```
+
+`robot_mujoco.xml` 中的实际配置放在 `<joint><control>` 的各模式节点内，例如：
+
+``` xml
+<joint id="17" name="elevator_joint" actuator="elevator_joint_motor" mode="position" period="0.001">
+  <control>
+    <position stiffness="2000" damping="200" gravity_compensation="true"/>
+    <hybrid stiffness="2000" damping="200" gravity_compensation="true"/>
+    <velocity damping="100" gravity_compensation="true"/>
+    <effort gravity_compensation="false"/>
+  </control>
+</joint>
+```
+
+内核以当前 MuJoCo 姿态计算 $\tau_g$，随后与控制项相加，并依次应用 joint
+effort、actuator force 和 ctrl 限幅。升降等承载关节可在启用后适当降低 Position
+模式的刚度和阻尼，减少纯高刚度保持造成的振荡与冲击。
 
 ------------------------------------------------------------------------
 

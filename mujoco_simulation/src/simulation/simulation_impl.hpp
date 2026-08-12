@@ -48,6 +48,7 @@ public:
     bool read_state(CameraStates& state) const;
     bool read_state(LidarStates& state) const;
     bool read_state(MobileBaseStates& state) const;
+    bool read_contacts(ContactStates& contacts) const;
     bool step(std::size_t count);
     std::uint64_t step_count() const;
     SimulationStatus status() const;

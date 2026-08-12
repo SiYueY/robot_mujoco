@@ -54,6 +54,7 @@ bool Simulation::read_state(ImuStates& out) const { return impl_->read_state(out
 bool Simulation::read_state(CameraStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(LidarStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(MobileBaseStates& out) const { return impl_->read_state(out); }
+bool Simulation::read_contacts(ContactStates& out) const { return impl_->read_contacts(out); }
 
 bool Simulation::step(std::size_t count) { return impl_->step(count); }
 uint64_t Simulation::step_count() const { return impl_->step_count(); }

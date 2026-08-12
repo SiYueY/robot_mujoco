@@ -165,9 +165,9 @@ int main() {
     const auto& attribute_limit_joint =
         std::get<mujoco_simulation::JointInfo>(config.components[0]);
     if (!check(
-            attribute_limit_joint.position_stiffness == 300.0 &&
-                attribute_limit_joint.position_damping == 10.0 &&
-                attribute_limit_joint.velocity_damping == 20.0 &&
+            attribute_limit_joint.position.stiffness == 300.0 &&
+                attribute_limit_joint.position.damping == 10.0 &&
+                attribute_limit_joint.velocity.damping == 20.0 &&
                 attribute_limit_joint.position_limits.min == -2.8 &&
                 attribute_limit_joint.position_limits.max == 2.8 &&
                 attribute_limit_joint.velocity_limits.min == -5.0 &&
@@ -179,10 +179,68 @@ int main() {
         return 1;
     }
 
+    const char* gravity_compensation_controls = R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint" mode="position"><control>
+  <hybrid stiffness="1" damping="2" gravity_compensation="true"/>
+  <position stiffness="3" damping="4" gravity_compensation="false"/>
+  <velocity damping="5" gravity_compensation="true"/>
+  <effort gravity_compensation="true"/>
+</control></joint>
+</robot></robot_mujoco>)";
+    if (!check(
+            write_file(path, gravity_compensation_controls),
+            "failed to write gravity-compensation XML") ||
+        !check(parser.load_file(path.string(), config), "gravity-compensation XML was rejected")) {
+        cleanup();
+        return 1;
+    }
+    const auto& gravity_joint = std::get<mujoco_simulation::JointInfo>(config.components[0]);
+    if (!check(
+            gravity_joint.hybrid.gravity_compensation &&
+                !gravity_joint.position.gravity_compensation &&
+                gravity_joint.velocity.gravity_compensation &&
+                gravity_joint.effort.gravity_compensation,
+            "gravity-compensation control flags were not parsed")) {
+        cleanup();
+        return 1;
+    }
+
+    const char* invalid_gravity_compensation = R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint" mode="effort"><control><effort gravity_compensation="maybe"/></control></joint>
+</robot></robot_mujoco>)";
+    if (!check(
+            write_file(path, invalid_gravity_compensation),
+            "failed to write invalid gravity-compensation XML") ||
+        !check(
+            !parser.load_file(path.string(), config),
+            "invalid gravity-compensation boolean was accepted")) {
+        cleanup();
+        return 1;
+    }
+
+    const char* top_level_gravity_compensation = R"(
+<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
+<physics period="0.001"/><viewer period="0.02"/></simulation><robot>
+<joint id="0" name="joint" mode="effort" gravity_compensation="true"><control><effort/></control></joint>
+</robot></robot_mujoco>)";
+    if (!check(
+            write_file(path, top_level_gravity_compensation),
+            "failed to write top-level gravity-compensation XML") ||
+        !check(
+            !parser.load_file(path.string(), config),
+            "top-level gravity-compensation attribute was accepted")) {
+        cleanup();
+        return 1;
+    }
+
     const char* defaulted_control = R"(
 <robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation>
 <physics period="0.001"/><viewer period="0.02"/></simulation><robot>
-<joint id="0" name="joint" mode="position"><control><position stiffness="0" damping="0"/><velocity damping="0"/></control></joint>
+<joint id="0" name="joint" mode="position"><control><hybrid stiffness="0" damping="0"/><position stiffness="0" damping="0"/><velocity damping="0"/><effort/></control></joint>
 </robot></robot_mujoco>)";
     if (!check(write_file(path, defaulted_control), "failed to write default-control XML") ||
         !check(parser.load_file(path.string(), config), "default-control XML was rejected")) {
@@ -192,9 +250,13 @@ int main() {
     const auto& defaulted_control_joint =
         std::get<mujoco_simulation::JointInfo>(config.components[0]);
     if (!check(
-            defaulted_control_joint.position_stiffness == 0.0 &&
-                defaulted_control_joint.position_damping == 0.0 &&
-                defaulted_control_joint.velocity_damping == 0.0,
+            defaulted_control_joint.position.stiffness == 0.0 &&
+                defaulted_control_joint.position.damping == 0.0 &&
+                defaulted_control_joint.velocity.damping == 0.0 &&
+                !defaulted_control_joint.hybrid.gravity_compensation &&
+                !defaulted_control_joint.position.gravity_compensation &&
+                !defaulted_control_joint.velocity.gravity_compensation &&
+                !defaulted_control_joint.effort.gravity_compensation,
             "missing control attributes were not defaulted to zero")) {
         cleanup();
         return 1;

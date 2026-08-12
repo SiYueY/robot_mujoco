@@ -57,6 +57,10 @@ public:
     MUJOCO_SIMULATION_PUBLIC bool read_state(CameraStates& states) const;
     MUJOCO_SIMULATION_PUBLIC bool read_state(LidarStates& states) const;
     MUJOCO_SIMULATION_PUBLIC bool read_state(MobileBaseStates& states) const;
+    // Thread-safe copy of contacts captured in the most recently published
+    // RobotState.  An initialized simulation with no contacts returns true and
+    // an empty vector.
+    MUJOCO_SIMULATION_PUBLIC bool read_contacts(ContactStates& contacts) const;
 
     MUJOCO_SIMULATION_PUBLIC bool step(std::size_t count = 1);
     MUJOCO_SIMULATION_PUBLIC uint64_t step_count() const;

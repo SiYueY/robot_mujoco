@@ -59,6 +59,13 @@ bool Simulation::Impl::read_state(MobileBaseStates& state) const {
     return state != nullptr;
 }
 
+bool Simulation::Impl::read_contacts(ContactStates& contacts) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    contacts = robot_state->contacts;
+    return true;
+}
+
 std::uint64_t Simulation::Impl::step_count() const { return step_.load(); }
 
 SimulationStatus Simulation::Impl::status() const {
