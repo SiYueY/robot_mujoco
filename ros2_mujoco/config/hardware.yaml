@@ -1,0 +1,22 @@
+# ROS adapter configuration.  simulation_config is the XML accepted by
+# mujoco_simulation::Simulation::initialize().  Replace this path per robot.
+simulation_config: /path/to/simulation.xml
+publish_rate: 100.0
+control_rate: 500.0
+joints:
+  # - {name: joint1, id: 0}
+mobile_base:
+  name: base
+  id: 0
+  type: mecanum
+  cmd_vel_topic: /cmd_vel
+  odom_topic: /odom
+  odom_frame: odom
+  base_frame: base_link
+sensors:
+  imu:
+    # - {name: imu, id: 0, topic: /imu/data}
+  camera:
+    # - {name: camera, id: 0, topic: /camera/image_raw, depth_topic: /camera/depth/image_raw, camera_info_topic: /camera/camera_info}
+  lidar:
+    # - {name: lidar, id: 0, topic: /scan}

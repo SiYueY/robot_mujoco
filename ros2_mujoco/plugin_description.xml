@@ -1,0 +1,5 @@
+<library path="ros2_mujoco_hardware">
+  <class name="ros2_mujoco/MujocoHardware" type="ros2_mujoco::MujocoHardware" base_class_type="hardware_interface::SystemInterface">
+    <description>MuJoCo-backed ros2_control system interface.</description>
+  </class>
+</library>
