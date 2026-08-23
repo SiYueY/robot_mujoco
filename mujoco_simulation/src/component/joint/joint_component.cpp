@@ -15,54 +15,12 @@ JointComponent::JointComponent(JointInfo info)
 
 bool JointComponent::init(const mjContext& context) {
     initialized_ = false;
-    if (!configure(context)) {
-        return false;
-    }
-
-    if (info_.actuator_name.empty()) {
-        SIM_ERROR << "joint '" << info_.joint_name << "' actuator name must not be empty.";
-        return false;
-    }
-    if (info_.position_limits.min > info_.position_limits.max) {
-        SIM_ERROR << "joint '" << info_.joint_name
-                  << "' position limits have min greater than max.";
-        return false;
-    }
-    if (info_.velocity_limits.min > info_.velocity_limits.max) {
-        SIM_ERROR << "joint '" << info_.joint_name
-                  << "' velocity limits have min greater than max.";
-        return false;
-    }
-    if (info_.effort_limits.min > info_.effort_limits.max) {
-        SIM_ERROR << "joint '" << info_.joint_name << "' effort limits have min greater than max.";
-        return false;
-    }
-    if (!std::isfinite(info_.position.stiffness) || info_.position.stiffness < 0.0) {
-        SIM_ERROR << "joint '" << info_.joint_name
-                  << "' position stiffness must be finite and non-negative.";
-        return false;
-    }
-    if (!std::isfinite(info_.position.damping) || info_.position.damping < 0.0) {
-        SIM_ERROR << "joint '" << info_.joint_name
-                  << "' position damping must be finite and non-negative.";
-        return false;
-    }
-    if (!std::isfinite(info_.velocity.damping) || info_.velocity.damping < 0.0) {
-        SIM_ERROR << "joint '" << info_.joint_name
-                  << "' velocity damping must be finite and non-negative.";
-        return false;
-    }
+    if (!configure(context) || !validate_info()) return false;
 
     const mjModel& model = *context.model;
     joint_.joint_id = mj_name2id(&model, mjOBJ_JOINT, info_.joint_name.c_str());
     if (joint_.joint_id < 0) {
         SIM_ERROR << "joint '" << info_.joint_name << "' was not found in the model.";
-        return false;
-    }
-    joint_.actuator_id = mj_name2id(&model, mjOBJ_ACTUATOR, info_.actuator_name.c_str());
-    if (joint_.actuator_id < 0) {
-        SIM_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
-                  << "' was not found in the model.";
         return false;
     }
     const int mujoco_joint_type = model.jnt_type[joint_.joint_id];
@@ -85,6 +43,36 @@ bool JointComponent::init(const mjContext& context) {
         SIM_ERROR << "joint '" << info_.joint_name << "' has an invalid dof address.";
         return false;
     }
+    shortest_angular_distance_ =
+        mujoco_joint_type == mjJNT_HINGE && model.jnt_limited[joint_.joint_id] == 0;
+    if (!validate_actuator_uniqueness(context)) return false;
+    if (is_passive_joint()) {
+        joint_.actuator_id = -1;
+        initialized_ = true;
+        return true;
+    }
+    joint_.actuator_id = mj_name2id(&model, mjOBJ_ACTUATOR, info_.actuator_name.c_str());
+    if (joint_.actuator_id < 0) {
+        SIM_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
+                  << "' was not found in the model.";
+        return false;
+    }
+    if (!validate_actuator(context)) return false;
+    if (info_.hybrid.gravity_compensation || info_.position.gravity_compensation ||
+        info_.velocity.gravity_compensation || info_.effort.gravity_compensation) {
+        gravity_data_.reset(mj_makeData(&model));
+        if (gravity_data_ == nullptr) {
+            SIM_ERROR << "joint '" << info_.joint_name
+                      << "' failed to allocate gravity-compensation MuJoCo data.";
+            return false;
+        }
+    }
+    initialized_ = true;
+    return true;
+}
+
+bool JointComponent::validate_actuator(const mjContext& context) const {
+    const mjModel& model = *context.model;
     if (model.actuator_trntype[joint_.actuator_id] != mjTRN_JOINT) {
         SIM_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
                   << "' has transmission type " << model.actuator_trntype[joint_.actuator_id]
@@ -127,16 +115,62 @@ bool JointComponent::init(const mjContext& context) {
                   << "' has gear " << gear[0] << ", expected 1.";
         return false;
     }
-    if (info_.hybrid.gravity_compensation || info_.position.gravity_compensation ||
-        info_.velocity.gravity_compensation || info_.effort.gravity_compensation) {
-        gravity_data_.reset(mj_makeData(&model));
-        if (gravity_data_ == nullptr) {
-            SIM_ERROR << "joint '" << info_.joint_name
-                      << "' failed to allocate gravity-compensation MuJoCo data.";
+    return true;
+}
+
+bool JointComponent::validate_actuator_uniqueness(const mjContext& context) const {
+    const mjModel& model = *context.model;
+    int count = 0;
+    for (int actuator_id = 0; actuator_id < model.nu; ++actuator_id) {
+        if (model.actuator_trntype[actuator_id] == mjTRN_JOINT &&
+            model.actuator_trnid[2 * actuator_id] == joint_.joint_id)
+            ++count;
+    }
+    const int expected = is_active_joint() ? 1 : 0;
+    if (count != expected) {
+        SIM_ERROR << "joint '" << info_.joint_name << "' has " << count
+                  << " joint actuator(s), expected " << expected << ".";
+        return false;
+    }
+    return true;
+}
+
+bool JointComponent::validate_info() const {
+    const bool limits_valid = info_.position_limits.min <= info_.position_limits.max &&
+                              info_.velocity_limits.min <= info_.velocity_limits.max &&
+                              info_.effort_limits.min <= info_.effort_limits.max;
+    const bool gains_valid =
+        std::isfinite(info_.hybrid.stiffness) && info_.hybrid.stiffness >= 0.0 &&
+        std::isfinite(info_.hybrid.damping) && info_.hybrid.damping >= 0.0 &&
+        std::isfinite(info_.position.stiffness) && info_.position.stiffness >= 0.0 &&
+        std::isfinite(info_.position.damping) && info_.position.damping >= 0.0 &&
+        std::isfinite(info_.velocity.damping) && info_.velocity.damping >= 0.0;
+    if (!limits_valid || !gains_valid) {
+        SIM_ERROR << "joint '" << info_.joint_name << "' has invalid limits or controller gains.";
+        return false;
+    }
+    if (is_active_joint()) {
+        if (info_.actuator_name.empty() || info_.default_mode == JointMode::None ||
+            info_.allowed_modes.empty() || !info_.allowed_modes.contains(info_.default_mode) ||
+            info_.allowed_modes.contains(JointMode::None)) {
+            SIM_ERROR << "active joint '" << info_.joint_name
+                      << "' has invalid command configuration.";
             return false;
         }
+        return true;
     }
-    initialized_ = true;
+    const bool passive_defaults =
+        info_.actuator_name.empty() && info_.default_mode == JointMode::None &&
+        info_.allowed_modes.empty() && info_.hybrid.stiffness == 0.0 &&
+        info_.hybrid.damping == 0.0 && info_.position.stiffness == 0.0 &&
+        info_.position.damping == 0.0 && info_.velocity.damping == 0.0 &&
+        !info_.hybrid.gravity_compensation && !info_.position.gravity_compensation &&
+        !info_.velocity.gravity_compensation && !info_.effort.gravity_compensation;
+    if (!passive_defaults) {
+        SIM_ERROR << "passive joint '" << info_.joint_name
+                  << "' must not configure an actuator or controller.";
+        return false;
+    }
     return true;
 }
 
@@ -146,26 +180,30 @@ bool JointComponent::reset(const mjContext& context) {
 }
 
 bool JointComponent::reset(const mjContext& context, JointCommand& command) {
-    mjData& data = *context.data;
     if (!is_initialized()) {
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
         return false;
     }
-    data.ctrl[joint_.actuator_id] = 0.0;
     state_.reset();
+    if (is_passive_joint()) {
+        command = {};
+        command.mode = static_cast<std::uint8_t>(JointMode::None);
+        return true;
+    }
+    context.data->ctrl[joint_.actuator_id] = 0.0;
     return make_reset_command(context, command) && write(context, command);
 }
 
-bool JointComponent::supports_mode(uint8_t mode) const noexcept {
-    if (mode > static_cast<uint8_t>(JointMode::Effort)) return false;
-    return info_.allowed_modes.contains(static_cast<JointMode>(mode));
+bool JointComponent::supports_mode(std::uint8_t mode_value) const noexcept {
+    const JointMode mode = static_cast<JointMode>(mode_value);
+    return mode != JointMode::None && info_.allowed_modes.contains(mode);
 }
 
 bool JointComponent::make_reset_command(const mjContext& context, JointCommand& command) const {
     if (!is_initialized() || !context.valid()) return false;
     command = {};
     command.id = info_.id;
-    command.mode = static_cast<uint8_t>(info_.default_mode);
+    command.mode = static_cast<std::uint8_t>(info_.default_mode);
     command.position = context.data->qpos[joint_.qpos_address];
     switch (info_.default_mode) {
         case JointMode::Hybrid:
@@ -175,6 +213,7 @@ bool JointComponent::make_reset_command(const mjContext& context, JointCommand& 
         case JointMode::Position:
         case JointMode::Velocity:
         case JointMode::Effort:
+        case JointMode::None:
             break;
     }
     return true;
@@ -197,7 +236,7 @@ bool JointComponent::update(const mjContext& context) {
     state->position = context.data->qpos[joint_.qpos_address];
     state->velocity = context.data->qvel[joint_.dof_address];
     state->effort = context.data->qfrc_actuator[joint_.dof_address];
-    state->mode = command_.mode;
+    state->mode = is_active_joint() ? command_.mode : static_cast<std::uint8_t>(JointMode::None);
     state_ = std::move(state);
     return true;
 }
@@ -207,6 +246,10 @@ bool JointComponent::write(const mjContext& context, const JointCommand& command
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
         return false;
     }
+    if (is_passive_joint()) {
+        SIM_ERROR << "joint '" << info_.joint_name << "' is passive and does not accept commands.";
+        return false;
+    }
     if (!supports_mode(command.mode)) {
         SIM_ERROR << "joint '" << info_.joint_name << "' does not support control mode "
                   << static_cast<int>(command.mode) << ".";
@@ -214,17 +257,17 @@ bool JointComponent::write(const mjContext& context, const JointCommand& command
     }
 
     bool result = false;
-    switch (command.mode) {
-        case static_cast<std::uint8_t>(JointMode::Hybrid):
+    switch (static_cast<JointMode>(command.mode)) {
+        case JointMode::Hybrid:
             result = write_hybrid_command(context, command);
             break;
-        case static_cast<std::uint8_t>(JointMode::Position):
+        case JointMode::Position:
             result = write_position_command(context, command);
             break;
-        case static_cast<std::uint8_t>(JointMode::Velocity):
+        case JointMode::Velocity:
             result = write_velocity_command(context, command);
             break;
-        case static_cast<std::uint8_t>(JointMode::Effort):
+        case JointMode::Effort:
             result = write_effort_command(context, command);
             break;
         default:
@@ -232,10 +275,7 @@ bool JointComponent::write(const mjContext& context, const JointCommand& command
                       << static_cast<int>(command.mode) << ".";
             return false;
     }
-    if (!result) {
-        return false;
-    }
-
+    if (!result) return false;
     command_ = command;
     return true;
 }
@@ -261,6 +301,23 @@ bool JointComponent::read(const mjContext& context, JointState& state) const {
 
 bool JointComponent::is_initialized() const noexcept { return initialized_; }
 
+bool JointComponent::is_active_joint() const noexcept {
+    return info_.actuation == JointActuation::Active;
+}
+
+bool JointComponent::is_passive_joint() const noexcept {
+    return info_.actuation == JointActuation::Passive;
+}
+
+double JointComponent::position_error(double target, double current) const noexcept {
+    if (!shortest_angular_distance_) return target - current;
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kTwoPi = 6.28318530717958647692;
+    double error = std::remainder(target - current, kTwoPi);
+    if (error >= kPi) error -= kTwoPi;
+    return error;
+}
+
 bool JointComponent::write_position_command(
     const mjContext& context, const JointCommand& command) const {
     if (!std::isfinite(command.position)) {
@@ -270,9 +327,10 @@ bool JointComponent::write_position_command(
 
     const double position_state = context.data->qpos[joint_.qpos_address];
     const double velocity_state = context.data->qvel[joint_.dof_address];
-    double effort = info_.position.stiffness *
-                        (clamp_limits(info_.position_limits, command.position) - position_state) +
-                    info_.position.damping * (0.0 - velocity_state);
+    double effort =
+        info_.position.stiffness *
+            position_error(clamp_limits(info_.position_limits, command.position), position_state) +
+        info_.position.damping * (0.0 - velocity_state);
     if (info_.position.gravity_compensation) effort += gravity_compensation_effort(context);
     effort = clamp_limits(info_.effort_limits, effort);
     effort = clamp_force_limits(context, effort);
@@ -331,7 +389,7 @@ bool JointComponent::write_hybrid_command(
     double effort =
         command.effort +
         command.stiffness *
-            (clamp_limits(info_.position_limits, command.position) - position_state) +
+            position_error(clamp_limits(info_.position_limits, command.position), position_state) +
         command.damping * (clamp_limits(info_.velocity_limits, command.velocity) - velocity_state);
     if (info_.hybrid.gravity_compensation) effort += gravity_compensation_effort(context);
     effort = clamp_limits(info_.effort_limits, effort);

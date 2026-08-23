@@ -88,7 +88,7 @@ bool Simulation::Impl::initialize_components() {
         return false;
     }
     auto id_resolver = ComponentIdResolver::create(config_.components);
-    if (id_resolver == nullptr || !command_buffer_.configure(id_resolver)) {
+    if (id_resolver == nullptr || !command_buffer_.configure(id_resolver, config_.components)) {
         SIM_ERROR << "failed to configure command channels.";
         return false;
     }

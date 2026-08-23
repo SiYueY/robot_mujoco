@@ -31,11 +31,14 @@ const mujoco_simulation::MobileBaseCommand* find_mobile_base(
 }
 
 std::shared_ptr<const mujoco_simulation::ComponentIdResolver> make_resolver(
-    std::initializer_list<std::size_t> joint_ids, std::initializer_list<std::size_t> mobile_ids) {
-    mujoco_simulation::ComponentConfigList components;
+    std::initializer_list<std::size_t> joint_ids, std::initializer_list<std::size_t> mobile_ids,
+    mujoco_simulation::ComponentConfigList& components) {
+    components.clear();
     for (std::size_t id : joint_ids) {
         mujoco_simulation::JointInfo info;
         info.id = id;
+        info.default_mode = mujoco_simulation::JointMode::Effort;
+        info.allowed_modes = {mujoco_simulation::JointMode::Effort};
         components.push_back(std::move(info));
     }
     for (std::size_t id : mobile_ids) {
@@ -68,9 +71,10 @@ int main() {
     twist.base_linear[0] = 1.0;
 
     CommandBuffer buffer;
+    mujoco_simulation::ComponentConfigList components;
     if (!check(!buffer.write(effort), "uninitialized buffer accepted a command") ||
         !check(
-            buffer.configure(make_resolver({0, 2}, {0, 2})),
+            buffer.configure(make_resolver({0, 2}, {0, 2}, components), components),
             "sparse command channels were rejected")) {
         return 1;
     }
@@ -159,7 +163,8 @@ int main() {
     if (!check(!buffer.write(update), "shutdown buffer accepted a command")) return 1;
 
     if (!check(
-            buffer.configure(make_resolver({0}, {0})), "failed to reinitialize command buffer")) {
+            buffer.configure(make_resolver({0}, {0}, components), components),
+            "failed to reinitialize command buffer")) {
         return 1;
     }
     std::atomic<bool> writer_done{false};

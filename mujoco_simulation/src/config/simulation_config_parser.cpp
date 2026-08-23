@@ -154,6 +154,26 @@ bool SimulationConfigParser::parse_joint(
         element.Attribute(config_names::kUpdateRate) != nullptr ||
         !number(element, config_names::kPeriod, info.period))
         return false;
+    if (const char* actuation = element.Attribute(config_names::kActuation); actuation != nullptr) {
+        const std::string value = trim_copy(actuation);
+        if (value == "active")
+            info.actuation = JointActuation::Active;
+        else if (value == "passive")
+            info.actuation = JointActuation::Passive;
+        else
+            return false;
+    }
+    if (info.actuation == JointActuation::Passive) {
+        if (element.Attribute(config_names::kActuator) != nullptr ||
+            element.Attribute(config_names::kMode) != nullptr ||
+            element.FirstChildElement(config_names::kControl) != nullptr ||
+            element.FirstChildElement(config_names::kLimit) != nullptr)
+            return false;
+        info.actuator_name.clear();
+        info.default_mode = JointMode::None;
+        info.allowed_modes.clear();
+        return true;
+    }
     info.actuator_name = info.joint_name;
     const char* actuator = element.Attribute(config_names::kActuator);
     if (actuator != nullptr) info.actuator_name = trim_copy(actuator);

@@ -9,16 +9,16 @@ namespace {
 constexpr std::size_t kInvalidCommandIndex = std::numeric_limits<std::size_t>::max();
 
 bool is_valid(const JointCommand& command) {
-    switch (command.mode) {
-        case static_cast<std::uint8_t>(JointMode::Hybrid):
+    switch (static_cast<JointMode>(command.mode)) {
+        case JointMode::Hybrid:
             return std::isfinite(command.position) && std::isfinite(command.velocity) &&
                    std::isfinite(command.effort) && std::isfinite(command.stiffness) &&
                    std::isfinite(command.damping);
-        case static_cast<std::uint8_t>(JointMode::Position):
+        case JointMode::Position:
             return std::isfinite(command.position);
-        case static_cast<std::uint8_t>(JointMode::Velocity):
+        case JointMode::Velocity:
             return std::isfinite(command.velocity);
-        case static_cast<std::uint8_t>(JointMode::Effort):
+        case JointMode::Effort:
             return std::isfinite(command.effort);
     }
     return false;
@@ -72,14 +72,51 @@ void write_commands(
     for (const Command& command : updates) target[indices[command.id]] = command;
 }
 
+bool configure_active_joints(
+    const ComponentConfigList& components, std::vector<std::size_t>& indices,
+    std::vector<JointMode>& default_modes, std::vector<EnumMask<JointMode>>& allowed_modes) {
+    std::vector<const JointInfo*> joints;
+    for (const ComponentConfig& component : components) {
+        const auto* joint = std::get_if<JointInfo>(&component);
+        if (joint != nullptr && joint->actuation == JointActuation::Active) joints.push_back(joint);
+    }
+    std::sort(joints.begin(), joints.end(), [](const JointInfo* lhs, const JointInfo* rhs) {
+        return lhs->id < rhs->id;
+    });
+    if (!joints.empty() &&
+        (joints.back()->id > 255U ||
+         std::adjacent_find(
+             joints.begin(), joints.end(), [](const JointInfo* lhs, const JointInfo* rhs) {
+                 return lhs->id == rhs->id;
+             }) != joints.end()))
+        return false;
+    indices.assign(joints.empty() ? 0U : joints.back()->id + 1U, kInvalidCommandIndex);
+    default_modes.resize(joints.size());
+    allowed_modes.resize(joints.size());
+    for (std::size_t slot = 0; slot < joints.size(); ++slot) {
+        indices[joints[slot]->id] = slot;
+        default_modes[slot] = joints[slot]->default_mode;
+        allowed_modes[slot] = joints[slot]->allowed_modes;
+    }
+    return true;
+}
+
 }  // namespace
 
-bool CommandBuffer::configure(std::shared_ptr<const ComponentIdResolver> id_resolver) {
+bool CommandBuffer::configure(
+    std::shared_ptr<const ComponentIdResolver> id_resolver, const ComponentConfigList& components) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (id_resolver == nullptr) return false;
     if (initialized_) return false;
+    if (!configure_active_joints(
+            components, active_joint_indices_, active_joint_default_modes_,
+            active_joint_allowed_modes_))
+        return false;
     auto robot_command = std::make_shared<RobotCommand>();
-    configure_commands(id_resolver->joints(), robot_command->joints);
+    configure_commands(active_joint_indices_, robot_command->joints);
+    for (std::size_t slot = 0; slot < robot_command->joints.size(); ++slot)
+        robot_command->joints[slot].mode =
+            static_cast<std::uint8_t>(active_joint_default_modes_[slot]);
     configure_commands(id_resolver->mobile_bases(), robot_command->mobile_bases);
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -91,27 +128,21 @@ bool CommandBuffer::configure(std::shared_ptr<const ComponentIdResolver> id_reso
 void CommandBuffer::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (command_ == nullptr) return;
-    auto cleared_command = std::make_shared<RobotCommand>();
-    cleared_command->joints.reserve(command_->joints.size());
-    for (const JointCommand& current_command : command_->joints) {
-        JointCommand command;
-        command.id = current_command.id;
-        cleared_command->joints.push_back(command);
-    }
-    cleared_command->mobile_bases.reserve(command_->mobile_bases.size());
-    for (const MobileBaseCommand& current_command : command_->mobile_bases) {
-        MobileBaseCommand command;
-        command.id = current_command.id;
-        cleared_command->mobile_bases.push_back(command);
-    }
-    cleared_command->sequence = ++sequence_;
-    command_ = std::move(cleared_command);
+    // A stopped simulation may be started again without rebuilding its command
+    // channels.  Preserve the last validated snapshot so an Active Joint never
+    // resumes with JointMode::None or a zeroed target.
+    auto preserved_command = std::make_shared<RobotCommand>(*command_);
+    preserved_command->sequence = ++sequence_;
+    command_ = std::move(preserved_command);
 }
 
 void CommandBuffer::shutdown() {
     std::lock_guard<std::mutex> lock(mutex_);
     command_.reset();
     id_resolver_.reset();
+    active_joint_indices_.clear();
+    active_joint_default_modes_.clear();
+    active_joint_allowed_modes_.clear();
     initialized_ = false;
     ++sequence_;
 }
@@ -123,7 +154,7 @@ bool CommandBuffer::write(const RobotCommand& command) {
     if (!command.joints.empty() && !validate(command.joints)) return false;
     if (!command.mobile_bases.empty() && !validate(command.mobile_bases)) return false;
     auto robot_command = std::make_shared<RobotCommand>(*command_);
-    write_commands(robot_command->joints, command.joints, id_resolver_->joints());
+    write_commands(robot_command->joints, command.joints, active_joint_indices_);
     write_commands(robot_command->mobile_bases, command.mobile_bases, id_resolver_->mobile_bases());
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -135,7 +166,12 @@ bool CommandBuffer::write(const JointCommand& command) {
     if (!initialized_ || command_ == nullptr) return false;
     if (!validate(JointCommands{command})) return false;
     auto robot_command = std::make_shared<RobotCommand>(*command_);
-    robot_command->joints[id_resolver_->joints()[command.id]] = command;
+    std::size_t slot = 0;
+    if (command.id >= active_joint_indices_.size() ||
+        active_joint_indices_[command.id] == kInvalidCommandIndex)
+        return false;
+    slot = active_joint_indices_[command.id];
+    robot_command->joints[slot] = command;
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
     return true;
@@ -147,7 +183,7 @@ bool CommandBuffer::write(const JointCommands& commands) {
     if (commands.empty()) return true;
     if (!validate(commands)) return false;
     auto robot_command = std::make_shared<RobotCommand>(*command_);
-    write_commands(robot_command->joints, commands, id_resolver_->joints());
+    write_commands(robot_command->joints, commands, active_joint_indices_);
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
     return true;
@@ -191,9 +227,19 @@ bool CommandBuffer::read(
 }
 
 bool CommandBuffer::validate(const JointCommands& commands) const {
-    return validate_commands(commands, id_resolver_->joints(), [](const JointCommand& command) {
-        return is_valid(command);
-    });
+    const auto& indices = active_joint_indices_;
+    std::vector<std::uint8_t> seen(indices.size(), 0U);
+    for (const JointCommand& command : commands) {
+        if (command.id >= indices.size() || indices[command.id] == kInvalidCommandIndex)
+            return false;
+        const std::size_t slot = indices[command.id];
+        const JointMode mode = static_cast<JointMode>(command.mode);
+        if (seen[slot] || mode == JointMode::None ||
+            !active_joint_allowed_modes_[slot].contains(mode) || !is_valid(command))
+            return false;
+        seen[slot] = 1U;
+    }
+    return true;
 }
 
 bool CommandBuffer::validate(const MobileBaseCommands& commands) const {

@@ -45,6 +45,8 @@ private:
     bool submit_due_cameras(const mjContext& context);
 
     std::vector<JointComponent::UniquePtr> joints_components_;
+    std::vector<std::uint64_t> joint_command_stamps_;
+    std::uint64_t joint_command_epoch_{0};
     std::vector<CameraComponent::UniquePtr> camera_components_;
     std::vector<ImuComponent::UniquePtr> imu_components_;
     std::vector<LidarComponent::UniquePtr> lidar_components_;

@@ -164,6 +164,39 @@ int main() {
         return 1;
     }
 
+    auto continuous_info = joint_info(false);
+    continuous_info.position.stiffness = 1.0;
+    continuous_info.position.damping = 0.0;
+    mujoco_simulation::JointComponent continuous_component(std::move(continuous_info));
+    data->qpos[0] = 3.13;
+    data->qvel[0] = 0.0;
+    mj_forward(model, data);
+    command.mode = static_cast<std::uint8_t>(mujoco_simulation::JointMode::Position);
+    command.position = -3.13;
+    if (!check(continuous_component.init(context), "failed to initialize continuous joint") ||
+        !check(
+            continuous_component.write(context, command), "continuous position command rejected") ||
+        !check(
+            data->ctrl[0] > 0.0 && data->ctrl[0] < 0.1,
+            "continuous position command did not use shortest angular distance")) {
+        context.clear();
+        return 1;
+    }
+
+    mujoco_simulation::JointInfo invalid_passive;
+    invalid_passive.id = 1;
+    invalid_passive.joint_name = "joint";
+    invalid_passive.actuation = mujoco_simulation::JointActuation::Passive;
+    invalid_passive.default_mode = mujoco_simulation::JointMode::None;
+    invalid_passive.period = 0.001;
+    mujoco_simulation::JointComponent passive_with_actuator(std::move(invalid_passive));
+    if (!check(
+            !passive_with_actuator.init(context),
+            "passive joint with a MuJoCo actuator was accepted")) {
+        context.clear();
+        return 1;
+    }
+
     context.clear();
     return 0;
 }

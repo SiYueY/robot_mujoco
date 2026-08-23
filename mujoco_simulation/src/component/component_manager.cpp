@@ -144,11 +144,14 @@ bool ComponentManager::init(
     warn_sparse(camera_components_, "camera");
     warn_sparse(lidar_components_, "lidar");
     warn_sparse(mobile_base_components_, "mobile base");
+    joint_command_stamps_.assign(joints_components_.size(), 0);
     return true;
 }
 
 void ComponentManager::clear() {
     joints_components_.clear();
+    joint_command_stamps_.clear();
+    joint_command_epoch_ = 0;
     camera_components_.clear();
     imu_components_.clear();
     lidar_components_.clear();
@@ -178,7 +181,7 @@ bool ComponentManager::reset(const mjContext& context, JointCommands& commands) 
         if (component == nullptr) continue;
         JointCommand command;
         if (!component->reset(context, command) || !component->reset_schedule()) return false;
-        commands.push_back(command);
+        if (component->is_active_joint()) commands.push_back(command);
     }
     if (!reset_components(context, camera_components_) ||
         !reset_components(context, imu_components_) ||
@@ -356,14 +359,24 @@ bool ComponentManager::write_command(const mjContext& context, const RobotComman
 
 bool ComponentManager::write_joint_commands(
     const mjContext& context, const std::vector<JointCommand>& commands) {
+    if (++joint_command_epoch_ == 0) {
+        std::fill(joint_command_stamps_.begin(), joint_command_stamps_.end(), 0);
+        joint_command_epoch_ = 1;
+    }
     for (const JointCommand& command : commands) {
         const JointId id = command.id;
         if (id >= joints_components_.size()) {
             SIM_ERROR << "joint command target id was not found.";
             return false;
         }
-        if (joints_components_[id] == nullptr || !joints_components_[id]->write(context, command))
+        JointComponent* joint = joints_components_[id].get();
+        if (joint == nullptr || !joint->is_active_joint()) return false;
+        if (joint_command_stamps_[id] == joint_command_epoch_) {
+            SIM_ERROR << "duplicate joint command id.";
             return false;
+        }
+        joint_command_stamps_[id] = joint_command_epoch_;
+        if (!joint->write(context, command)) return false;
     }
     return true;
 }

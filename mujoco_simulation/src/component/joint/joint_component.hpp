@@ -31,8 +31,11 @@ public:
     int joint_id() const noexcept { return joint_.joint_id; }
     int actuator_id() const noexcept { return joint_.actuator_id; }
     JointType joint_type() const noexcept { return info_.joint_type; }
+    JointActuation actuation() const noexcept { return info_.actuation; }
+    bool is_active_joint() const noexcept;
+    bool is_passive_joint() const noexcept;
     bool is_initialized() const noexcept;
-    bool supports_mode(uint8_t mode) const noexcept;
+    bool supports_mode(std::uint8_t mode) const noexcept;
 
 public:
     using SharedPtr = std::shared_ptr<JointComponent>;
@@ -40,7 +43,11 @@ public:
     using WeakPtr = std::weak_ptr<JointComponent>;
 
 private:
+    bool validate_info() const;
+    bool validate_actuator(const mjContext& context) const;
+    bool validate_actuator_uniqueness(const mjContext& context) const;
     bool make_reset_command(const mjContext& context, JointCommand& command) const;
+    double position_error(double target, double current) const noexcept;
 
     // command
     bool write_position_command(const mjContext& context, const JointCommand& command) const;
@@ -58,6 +65,7 @@ private:
 
 private:
     bool initialized_{false};
+    bool shortest_angular_distance_{false};
     mjJoint joint_{};
     JointInfo info_;
     JointCommand command_{};

@@ -181,8 +181,28 @@ bool SimulationConfigValidator::validate_limit(const JointLimit& limit, const ch
 }
 
 bool SimulationConfigValidator::validate_joint(const JointInfo& joint) {
-    if (joint.joint_name.empty() || joint.actuator_name.empty()) {
+    if (joint.joint_name.empty()) {
         log_error(config_names::kName, "joint and actuator names are required");
+        return false;
+    }
+    if (joint.actuation == JointActuation::Passive) {
+        const bool valid =
+            joint.actuator_name.empty() && joint.default_mode == JointMode::None &&
+            joint.allowed_modes.empty() && joint.hybrid.stiffness == 0.0 &&
+            joint.hybrid.damping == 0.0 && joint.position.stiffness == 0.0 &&
+            joint.position.damping == 0.0 && joint.velocity.damping == 0.0 &&
+            !joint.hybrid.gravity_compensation && !joint.position.gravity_compensation &&
+            !joint.velocity.gravity_compensation && !joint.effort.gravity_compensation;
+        if (!valid) {
+            log_error(config_names::kControl, "passive joint must not configure control");
+            return false;
+        }
+        return validate_limit(joint.position_limits, config_names::kPosition) &&
+               validate_limit(joint.velocity_limits, config_names::kVelocity) &&
+               validate_limit(joint.effort_limits, config_names::kEffort);
+    }
+    if (joint.actuator_name.empty()) {
+        log_error(config_names::kName, "active joint actuator name is required");
         return false;
     }
     if (joint.allowed_modes.empty() || !joint.allowed_modes.contains(joint.default_mode) ||

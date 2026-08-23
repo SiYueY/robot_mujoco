@@ -11,6 +11,8 @@
 
 int main() {
     static_assert(std::is_same_v<mujoco_simulation::JointId, std::size_t>);
+    static_assert(std::is_same_v<decltype(mujoco_simulation::JointCommand::mode), std::uint8_t>);
+    static_assert(std::is_same_v<decltype(mujoco_simulation::JointState::mode), std::uint8_t>);
     static_assert(std::is_same_v<mujoco_simulation::ImuId, std::size_t>);
     static_assert(std::is_same_v<mujoco_simulation::CameraId, std::size_t>);
     static_assert(std::is_same_v<mujoco_simulation::LidarId, std::size_t>);

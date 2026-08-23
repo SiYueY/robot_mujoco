@@ -17,7 +17,9 @@ namespace mujoco_simulation {
 
 class CommandBuffer {
 public:
-    bool configure(std::shared_ptr<const ComponentIdResolver> id_resolver);
+    bool configure(
+        std::shared_ptr<const ComponentIdResolver> id_resolver,
+        const ComponentConfigList& components);
     void clear();
     void shutdown();
 
@@ -39,6 +41,9 @@ private:
     std::uint64_t sequence_{0};
     std::shared_ptr<const RobotCommand> command_;
     std::shared_ptr<const ComponentIdResolver> id_resolver_;
+    std::vector<std::size_t> active_joint_indices_;
+    std::vector<JointMode> active_joint_default_modes_;
+    std::vector<EnumMask<JointMode>> active_joint_allowed_modes_;
     mutable std::mutex mutex_;
 };
 

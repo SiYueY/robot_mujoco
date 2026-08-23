@@ -27,6 +27,7 @@ inline constexpr char kName[] = "name";
 inline constexpr char kType[] = "type";
 inline constexpr char kActuator[] = "actuator";
 inline constexpr char kMode[] = "mode";
+inline constexpr char kActuation[] = "actuation";
 inline constexpr char kPeriod[] = "period";
 inline constexpr char kUpdateRate[] = "update_rate";
 inline constexpr char kMin[] = "min";

@@ -17,11 +17,17 @@ enum class JointType : uint8_t {
     Prismatic = 1,  // 平移关节
 };
 
+enum class JointActuation : uint8_t {
+    Active = 0,
+    Passive = 1,
+};
+
 enum class JointMode : uint8_t {
     Hybrid = 0,    // 力位混控模式
     Position = 1,  // 位置模式
     Velocity = 2,  // 速度模式
     Effort = 3,    // 力矩模式
+    None = 4,      // 从动模式
 };
 
 struct JointLimit {
@@ -53,8 +59,9 @@ struct JointInfo {
 
     JointId id{0};
     std::string joint_name;
-    std::string actuator_name;
     JointType joint_type{JointType::Revolute};
+    JointActuation actuation{JointActuation::Active};
+    std::string actuator_name;
     JointMode default_mode{JointMode::Hybrid};
     EnumMask<JointMode> allowed_modes;
     Hybrid hybrid;
@@ -69,7 +76,7 @@ struct JointInfo {
 
 struct JointCommand {
     JointId id{0};
-    std::uint8_t mode{static_cast<std::uint8_t>(JointMode::Hybrid)};
+    std::uint8_t mode{static_cast<std::uint8_t>(JointMode::None)};
     double position{0.0};
     double velocity{0.0};
     double effort{0.0};
@@ -82,7 +89,7 @@ using JointCommands = std::vector<JointCommand>;
 struct JointState {
     JointId id{0};
     double timestamp{0.0};
-    std::uint8_t mode{static_cast<std::uint8_t>(JointMode::Hybrid)};
+    std::uint8_t mode{static_cast<std::uint8_t>(JointMode::None)};
     double position{0.0};
     double velocity{0.0};
     double effort{0.0};
