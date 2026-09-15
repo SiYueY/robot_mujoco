@@ -1,5 +1,5 @@
 # ROS adapter configuration.  simulation_config is the XML accepted by
-# mujoco_simulation::Simulation::initialize().  Replace this path per robot.
+# romujoco::Simulation::initialize().  Replace this path per robot.
 simulation_config: /path/to/simulation.xml
 publish_rate: 100.0
 control_rate: 500.0

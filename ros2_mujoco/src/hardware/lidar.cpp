@@ -1,7 +1,7 @@
 #include "ros2_mujoco/hardware/lidar.hpp"
 
 namespace ros2_mujoco::hardware {
-sensor_msgs::msg::LaserScan Lidar::scan(const mujoco_simulation::LidarState& value) const {
+sensor_msgs::msg::LaserScan Lidar::scan(const romujoco::LidarState& value) const {
     sensor_msgs::msg::LaserScan message;
     message.header.frame_id = value.frame_id;
     message.header.stamp.sec = static_cast<int32_t>(value.timestamp);

@@ -3,7 +3,7 @@
 #include <algorithm>
 
 namespace ros2_mujoco::hardware {
-sensor_msgs::msg::Image Camera::image(const mujoco_simulation::Image& value, double time) const {
+sensor_msgs::msg::Image Camera::image(const romujoco::Image& value, double time) const {
     sensor_msgs::msg::Image message;
     message.header.frame_id = value.frame_id;
     message.header.stamp.sec = static_cast<int32_t>(time);
@@ -16,7 +16,7 @@ sensor_msgs::msg::Image Camera::image(const mujoco_simulation::Image& value, dou
     message.data = value.data;
     return message;
 }
-sensor_msgs::msg::CameraInfo Camera::info(const mujoco_simulation::CameraState& value) const {
+sensor_msgs::msg::CameraInfo Camera::info(const romujoco::CameraState& value) const {
     sensor_msgs::msg::CameraInfo message;
     message.header.frame_id = value.optical_frame_id;
     message.header.stamp.sec = static_cast<int32_t>(value.timestamp / 1000000000ULL);

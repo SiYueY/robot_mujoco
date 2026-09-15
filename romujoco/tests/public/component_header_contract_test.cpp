@@ -1,0 +1,32 @@
+#include <cstddef>
+#include <type_traits>
+#include <vector>
+
+#include "romujoco/component/camera.hpp"
+#include "romujoco/component/imu.hpp"
+#include "romujoco/component/joint.hpp"
+#include "romujoco/component/lidar.hpp"
+#include "romujoco/component/mobile_base.hpp"
+#include "romujoco/data/robot_command.hpp"
+
+int main() {
+    static_assert(std::is_same_v<romujoco::JointId, std::size_t>);
+    static_assert(std::is_same_v<decltype(romujoco::JointCommand::mode), std::uint8_t>);
+    static_assert(std::is_same_v<decltype(romujoco::JointState::mode), std::uint8_t>);
+    static_assert(std::is_same_v<romujoco::ImuId, std::size_t>);
+    static_assert(std::is_same_v<romujoco::CameraId, std::size_t>);
+    static_assert(std::is_same_v<romujoco::LidarId, std::size_t>);
+    static_assert(std::is_same_v<romujoco::MobileBaseId, std::size_t>);
+    static_assert(
+        std::is_same_v<
+            decltype(romujoco::RobotCommand::joints), romujoco::JointCommands>);
+    static_assert(std::is_same_v<
+                  decltype(romujoco::RobotCommand::mobile_bases),
+                  romujoco::MobileBaseCommands>);
+    static_assert(std::is_same_v<
+                  romujoco::JointCommands, std::vector<romujoco::JointCommand>>);
+    static_assert(std::is_same_v<
+                  romujoco::MobileBaseCommands,
+                  std::vector<romujoco::MobileBaseCommand>>);
+    return 0;
+}

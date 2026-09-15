@@ -1,0 +1,5 @@
+[submodule "romujoco/third_party/mujoco"]
+	path = romujoco/third_party/mujoco
+	url = https://github.com/google-deepmind/mujoco.git
+	branch = 3.12.0
+	ignore = untracked

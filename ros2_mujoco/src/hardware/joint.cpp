@@ -5,13 +5,13 @@ bool Joint::initialize(std::size_t id, std::string name) {
     name_ = std::move(name);
     return !name_.empty();
 }
-void Joint::update(const mujoco_simulation::JointState& s) {
+void Joint::update(const romujoco::JointState& s) {
     position_ = s.position;
     velocity_ = s.velocity;
     effort_ = s.effort;
 }
-mujoco_simulation::JointCommand Joint::command() const {
-    mujoco_simulation::JointCommand c;
+romujoco::JointCommand Joint::command() const {
+    romujoco::JointCommand c;
     c.id = id_;
     c.mode = static_cast<std::uint8_t>(mode_);
     c.position = position_command_;

@@ -17,7 +17,7 @@ CallbackReturn MujocoHardware::on_init(const hardware_interface::HardwareInfo& i
 CallbackReturn MujocoHardware::on_configure(const rclcpp_lifecycle::State&) {
     auto it = info_.hardware_parameters.find("simulation_config");
     if (it == info_.hardware_parameters.end()) return CallbackReturn::ERROR;
-    simulation_ = std::make_shared<mujoco_simulation::Simulation>();
+    simulation_ = std::make_shared<romujoco::Simulation>();
     return simulation_->initialize(it->second) && simulation_->start() ? CallbackReturn::SUCCESS
                                                                        : CallbackReturn::ERROR;
 }
@@ -48,7 +48,7 @@ std::vector<hardware_interface::CommandInterface> MujocoHardware::export_command
     return r;
 }
 hardware_interface::return_type MujocoHardware::read(const rclcpp::Time&, const rclcpp::Duration&) {
-    mujoco_simulation::JointStates s;
+    romujoco::JointStates s;
     if (!simulation_ || !simulation_->read_state(s) || !s)
         return hardware_interface::return_type::ERROR;
     for (size_t i = 0; i < joints_.size() && i < s->size(); ++i) joints_[i].update(*s->at(i));
@@ -57,7 +57,7 @@ hardware_interface::return_type MujocoHardware::read(const rclcpp::Time&, const 
 hardware_interface::return_type MujocoHardware::write(
     const rclcpp::Time&, const rclcpp::Duration&) {
     if (!active_) return hardware_interface::return_type::OK;
-    mujoco_simulation::JointCommands c;
+    romujoco::JointCommands c;
     for (const auto& j : joints_) c.push_back(j.command());
     return simulation_->write_commands(c) ? hardware_interface::return_type::OK
                                           : hardware_interface::return_type::ERROR;

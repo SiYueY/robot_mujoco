@@ -2,7 +2,7 @@
 #include <memory>
 #include <vector>
 #include "hardware_interface/system_interface.hpp"
-#include "mujoco_simulation/simulation.hpp"
+#include "romujoco/simulation.hpp"
 #include "ros2_mujoco/hardware/joint.hpp"
 #include "ros2_mujoco/hardware/mobile_base.hpp"
 namespace ros2_mujoco {
@@ -18,7 +18,7 @@ public:
     hardware_interface::return_type write(const rclcpp::Time&, const rclcpp::Duration&) override;
 
 private:
-    std::shared_ptr<mujoco_simulation::Simulation> simulation_;
+    std::shared_ptr<romujoco::Simulation> simulation_;
     std::vector<hardware::Joint> joints_;
     std::vector<hardware::MobileBase> mobile_bases_;
     bool active_{};

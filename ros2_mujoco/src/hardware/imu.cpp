@@ -3,7 +3,7 @@
 #include <algorithm>
 
 namespace ros2_mujoco::hardware {
-sensor_msgs::msg::Imu Imu::data(const mujoco_simulation::ImuState& state) const {
+sensor_msgs::msg::Imu Imu::data(const romujoco::ImuState& state) const {
     sensor_msgs::msg::Imu message;
     message.header.frame_id = state.frame_id;
     message.header.stamp.sec = static_cast<int32_t>(state.timestamp);

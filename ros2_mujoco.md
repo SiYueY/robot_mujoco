@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-`ros2_mujoco` 是 ROS2 与 `mujoco_simulation` 之间的适配层，用于将 MuJoCo 仿真接入 ROS2 生态。
+`ros2_mujoco` 是 ROS2 与 `romujoco` 之间的适配层，用于将 MuJoCo 仿真接入 ROS2 生态。
 
 设计目标：
 
@@ -15,14 +15,14 @@
   * Imu
   * Camera
   * Lidar
-* 保持 `mujoco_simulation` 为纯 C++ 仿真核心，不引入 ROS2 依赖。
+* 保持 `romujoco` 为纯 C++ 仿真核心，不引入 ROS2 依赖。
 
 整体关系：
 
 ```
 robot_mujoco
 
-├── mujoco_simulation
+├── romujoco
 │
 │   MuJoCo Runtime
 │
@@ -43,7 +43,7 @@ robot_mujoco
 ros2_mujoco
       |
       ↓
-mujoco_simulation
+romujoco
       |
       ↓
     MuJoCo
@@ -52,7 +52,7 @@ mujoco_simulation
 禁止：
 
 ```
-mujoco_simulation
+romujoco
       |
       ↓
      ROS2
@@ -64,7 +64,7 @@ mujoco_simulation
 
 ## 2.1 仿真核心与 ROS2 解耦
 
-`mujoco_simulation` 只负责：
+`romujoco` 只负责：
 
 * MuJoCo 生命周期；
 * Physics Step；
@@ -237,7 +237,7 @@ public:
 private:
 
     std::shared_ptr<
-        mujoco_simulation::Simulation
+        romujoco::Simulation
     > simulation_;
 
 
@@ -284,7 +284,7 @@ class Joint
 public:
 
     bool initialize(
-        mujoco_simulation::Joint* joint);
+        romujoco::Joint* joint);
 
 
     double position() const;
@@ -321,7 +321,7 @@ MuJoCo
 
  ↓
 
-mujoco_simulation::Joint
+romujoco::Joint
 
  ↓
 
@@ -381,7 +381,7 @@ class MobileBase
 public:
 
     bool initialize(
-        mujoco_simulation::MobileBase* base);
+        romujoco::MobileBase* base);
 
 
     void set_velocity(
@@ -446,7 +446,7 @@ class Imu
 public:
 
     bool initialize(
-        mujoco_simulation::Imu* imu);
+        romujoco::Imu* imu);
 
 
     ImuState data();
@@ -493,7 +493,7 @@ class Camera
 public:
 
     bool initialize(
-        mujoco_simulation::Camera* camera);
+        romujoco::Camera* camera);
 
 
     ImageFrame image();
@@ -545,7 +545,7 @@ class Lidar
 public:
 
     bool initialize(
-        mujoco_simulation::Lidar* lidar);
+        romujoco::Lidar* lidar);
 
 
     LaserScan scan();
@@ -606,7 +606,7 @@ MujocoHardware
 
  ↓
 
-mujoco_simulation
+romujoco
 
  ↓
 
@@ -766,7 +766,7 @@ MujocoHardware
 
  ↓
 
-mujoco_simulation
+romujoco
 
  ↓
 
