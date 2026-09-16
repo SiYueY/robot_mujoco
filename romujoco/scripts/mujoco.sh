@@ -7,7 +7,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 readonly MUJOCO_DIR="${PROJECT_DIR}/third_party/mujoco"
 readonly BUILD_DIR="${MUJOCO_DIR}/build"
-readonly INSTALL_DIR="${MUJOCO_DIR}/install"
+readonly INSTALL_DIR="${PROJECT_DIR}/mujoco"
+readonly LEGACY_INSTALL_DIR="${MUJOCO_DIR}/install"
 
 BUILD_TYPE="Release"
 JOBS=""
@@ -66,8 +67,7 @@ validate_install() {
 safe_remove_tree() {
   local target="$1"
   [[ -n "${target}" && "${target}" != "/" && "${target}" != "${HOME}" ]] || die "refusing unsafe deletion target: ${target}"
-  [[ "${target}" == "${BUILD_DIR}" || "${target}" == "${INSTALL_DIR}" ]] || die "refusing unexpected deletion target: ${target}"
-  [[ "${target}" == "${MUJOCO_DIR}"/* ]] || die "refusing deletion outside bundled MuJoCo: ${target}"
+  [[ "${target}" == "${BUILD_DIR}" || "${target}" == "${INSTALL_DIR}" || "${target}" == "${LEGACY_INSTALL_DIR}" ]] || die "refusing unexpected deletion target: ${target}"
   [[ -e "${target}" ]] || return 0
   rm -rf -- "${target}"
 }
@@ -125,7 +125,7 @@ show_status() {
 }
 
 clean_mujoco() { safe_remove_tree "${BUILD_DIR}"; }
-purge_mujoco() { safe_remove_tree "${BUILD_DIR}"; safe_remove_tree "${INSTALL_DIR}"; }
+purge_mujoco() { safe_remove_tree "${BUILD_DIR}"; safe_remove_tree "${INSTALL_DIR}"; safe_remove_tree "${LEGACY_INSTALL_DIR}"; }
 rebuild_mujoco() { purge_mujoco; configure_mujoco; build_mujoco; install_mujoco; }
 
 print_usage() {

@@ -1,2 +1,2 @@
-/third_party/mujoco/build/
-/third_party/mujoco/install/
+# MuJoCo
+/mujoco/

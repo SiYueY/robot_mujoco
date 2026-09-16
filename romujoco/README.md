@@ -11,8 +11,8 @@ The public API is in `include/romujoco/`; its main entry point is
 ## Build
 
 MuJoCo 3.12.0 is pinned as the `third_party/mujoco` Git submodule. Initialize
-it before preparing its private staging prefix; the staging prefix is not a
-prefix users need to add to their environment.
+it before preparing its private staging prefix at `mujoco/`; this directory is
+outside the submodule and is not a prefix users need to add to their environment.
 
 ```bash
 git submodule update --init --recursive
@@ -25,7 +25,9 @@ ctest --test-dir build --output-on-failure
 
 `scripts/mujoco.sh` is independent of the RoMuJoCo build tree and supports
 `build`, `configure`, `install`, `version`, `status`, `clean`, `purge`, and
-`rebuild`. Use `./scripts/mujoco.sh --help` for its build-type and job options.
+`rebuild`. If a prior build created `third_party/mujoco/install`, run
+`./scripts/mujoco.sh rebuild` to remove that legacy staging directory. Use
+`./scripts/mujoco.sh --help` for its build-type and job options.
 
 ## Install and consume
 

@@ -2,7 +2,7 @@
 # MuJoCo is an exact, vendored dependency prepared explicitly by mujoco.sh.
 set(
   ROMUJOCO_MUJOCO_PREFIX
-  "${PROJECT_SOURCE_DIR}/third_party/mujoco/install"
+  "${PROJECT_SOURCE_DIR}/mujoco"
 )
 
 if(NOT EXISTS "${ROMUJOCO_MUJOCO_PREFIX}")
