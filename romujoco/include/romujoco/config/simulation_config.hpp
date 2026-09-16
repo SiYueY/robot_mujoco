@@ -12,10 +12,12 @@
 #include "romujoco/component/joint.hpp"
 #include "romujoco/component/lidar.hpp"
 #include "romujoco/component/mobile_base.hpp"
+#include "romujoco/component/mobile_base/mecanum.hpp"
+#include "romujoco/component/mobile_base/swerve.hpp"
 
 namespace romujoco {
 
-using ComponentConfig = std::variant<JointInfo, ImuInfo, CameraConfig, LidarInfo, MobileBaseInfo>;
+using ComponentConfig = std::variant<JointInfo, ImuInfo, CameraConfig, LidarInfo, MecanumMobileBaseInfo, SwerveMobileBaseInfo>;
 using ComponentConfigList = std::vector<ComponentConfig>;
 
 // Configuration contract for the always-built internal camera renderer.  It

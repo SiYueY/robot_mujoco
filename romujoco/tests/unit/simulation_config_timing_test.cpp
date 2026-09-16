@@ -116,7 +116,7 @@ int main() {
             "lidar period was not parsed") ||
         !check(
             std::abs(
-                std::get<romujoco::MobileBaseInfo>(config.components[4]).period - 0.006) <
+                std::get<romujoco::MecanumMobileBaseInfo>(config.components[4]).common.period - 0.006) <
                 1e-12,
             "mobile-base period was not parsed")) {
         cleanup();
@@ -555,16 +555,16 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
 
     romujoco::SimulationConfig missing_base_name_config;
     missing_base_name_config.model.model_path = "model.xml";
-    romujoco::MobileBaseInfo missing_base_name;
-    missing_base_name.id = 0;
-    missing_base_name.mobile_base_name = "base";
-    missing_base_name.base_joint_name = "base_free";
-    missing_base_name.period = 0.001;
-    missing_base_name.mecanum_info.wheel_base = 1.0;
-    missing_base_name.mecanum_info.track_width = 1.0;
-    for (std::size_t index = 0; index < missing_base_name.mecanum_wheels.size(); ++index) {
-        missing_base_name.mecanum_wheels[index].wheel_name = "wheel" + std::to_string(index);
-        missing_base_name.mecanum_wheels[index].radius = 1.0;
+    romujoco::MecanumMobileBaseInfo missing_base_name;
+    missing_base_name.common.id = 0;
+    missing_base_name.common.name = "base";
+    missing_base_name.common.period = 0.001;
+    missing_base_name.common.execution_mode = romujoco::MobileBaseExecutionMode::Kinematic;
+    missing_base_name.wheel_base = 1.0;
+    missing_base_name.track_width = 1.0;
+    for (std::size_t index = 0; index < missing_base_name.wheels.size(); ++index) {
+        missing_base_name.wheels[index].joint_name = "wheel" + std::to_string(index);
+        missing_base_name.wheels[index].radius = 1.0;
     }
     missing_base_name_config.components.emplace_back(missing_base_name);
     if (!check(

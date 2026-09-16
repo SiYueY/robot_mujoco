@@ -5,11 +5,18 @@
 #include <vector>
 
 #include "log/logging.hpp"
+#include "component/mobile_base/mobile_base_factory.hpp"
 
 namespace romujoco {
 namespace {
 
 constexpr ComponentId kMaximumComponentId{255};
+template <typename T>
+ComponentId component_id(const T& value) {
+    return value.id;
+}
+ComponentId component_id(const MecanumMobileBaseInfo& value) { return value.common.id; }
+ComponentId component_id(const SwerveMobileBaseInfo& value) { return value.common.id; }
 
 template <typename Component>
 bool reset_components(
@@ -83,14 +90,14 @@ bool ComponentManager::init(
     camera_render_service_ = &camera_render_service;
 
     const auto add = [&](auto config, auto& slots, auto make_component) {
-        const ComponentId id = config.id;
+        const ComponentId id = component_id(config);
         if (id == kInvalidComponentId || id > kMaximumComponentId ||
             (slots.size() > id && slots[id] != nullptr)) {
             SIM_ERROR << "component id is invalid or duplicated.";
             return false;
         }
         auto component = make_component(std::move(config));
-        if (!component->init(context)) return false;
+        if (component == nullptr || !component->init(context)) return false;
         if (slots.size() <= id) slots.resize(id + 1U);
         slots[id] = std::move(component);
         return true;
@@ -117,9 +124,16 @@ bool ComponentManager::init(
             clear();
             return false;
         }
-        if (const auto* value = std::get_if<MobileBaseInfo>(&entry);
-            value != nullptr && !add(*value, mobile_base_components_, [](MobileBaseInfo v) {
-                return std::make_unique<MobileBaseComponent>(std::move(v));
+        if (const auto* value = std::get_if<MecanumMobileBaseInfo>(&entry);
+            value != nullptr && !add(*value, mobile_base_components_, [](MecanumMobileBaseInfo v) {
+                return create_mobile_base(v);
+            })) {
+            clear();
+            return false;
+        }
+        if (const auto* value = std::get_if<SwerveMobileBaseInfo>(&entry);
+            value != nullptr && !add(*value, mobile_base_components_, [](SwerveMobileBaseInfo v) {
+                return create_mobile_base(v);
             })) {
             clear();
             return false;
@@ -384,7 +398,7 @@ bool ComponentManager::write_joint_commands(
 bool ComponentManager::write_mobile_base_commands(
     const mjContext& context, const std::vector<MobileBaseCommand>& commands) {
     for (const MobileBaseCommand& command : commands) {
-        const MobileBaseId id = command.id;
+        const ComponentId id = command.id;
         if (id >= mobile_base_components_.size()) {
             SIM_ERROR << "mobile base command target id was not found.";
             return false;

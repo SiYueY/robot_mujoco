@@ -11,7 +11,7 @@
 #include "romujoco/component/mobile_base.hpp"
 #include "romujoco/data/robot_command.hpp"
 
-#include "component/component_id.hpp"
+#include "component/component_id_resolver.hpp"
 
 namespace romujoco {
 

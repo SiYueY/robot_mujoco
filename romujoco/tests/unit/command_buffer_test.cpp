@@ -7,7 +7,7 @@
 #include <thread>
 
 #include "buffer/command_buffer.hpp"
-#include "component/component_id.hpp"
+#include "component/component_id_resolver.hpp"
 
 namespace {
 
@@ -24,7 +24,7 @@ const romujoco::JointCommand* find_joint(
 }
 
 const romujoco::MobileBaseCommand* find_mobile_base(
-    const romujoco::RobotCommand& command, romujoco::MobileBaseId id) {
+    const romujoco::RobotCommand& command, romujoco::ComponentId id) {
     for (const auto& mobile_base : command.mobile_bases)
         if (mobile_base.id == id) return &mobile_base;
     return nullptr;
@@ -42,8 +42,8 @@ std::shared_ptr<const romujoco::ComponentIdResolver> make_resolver(
         components.push_back(std::move(info));
     }
     for (std::size_t id : mobile_ids) {
-        romujoco::MobileBaseInfo info;
-        info.id = id;
+        romujoco::MecanumMobileBaseInfo info;
+        info.common.id = id;
         components.push_back(std::move(info));
     }
     return romujoco::ComponentIdResolver::create(components);
@@ -67,8 +67,7 @@ int main() {
     lighter.effort = 1.5;
     MobileBaseCommand twist;
     twist.id = 0;
-    twist.mode = romujoco::MobileBaseControlMode::Twist;
-    twist.base_linear[0] = 1.0;
+    twist.velocity.linear_x = 1.0;
 
     CommandBuffer buffer;
     romujoco::ComponentConfigList components;
@@ -141,13 +140,13 @@ int main() {
     romujoco::RobotCommand atomic;
     MobileBaseCommand mobile_update = twist;
     mobile_update.id = 2;
-    mobile_update.base_linear[0] = 3.0;
+    mobile_update.velocity.linear_x = 3.0;
     atomic.joints = {effort};
     atomic.mobile_bases = {mobile_update};
     if (!check(buffer.write(atomic), "atomic sparse robot command was rejected") ||
         !check(
             find_joint(*buffer.read(), 0U)->effort == 2.5 &&
-                find_mobile_base(*buffer.read(), 2U)->base_linear[0] == 3.0,
+                find_mobile_base(*buffer.read(), 2U)->velocity.linear_x == 3.0,
             "atomic sparse robot command was not merged")) {
         return 1;
     }

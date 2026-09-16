@@ -25,20 +25,8 @@ bool is_valid(const JointCommand& command) {
 }
 
 bool is_valid(const MobileBaseCommand& command) {
-    switch (command.mode) {
-        case MobileBaseControlMode::Twist:
-            return std::isfinite(command.base_linear[0]) && std::isfinite(command.base_linear[1]) &&
-                   std::isfinite(command.base_angular[2]);
-        case MobileBaseControlMode::WheelLinear:
-            for (double value : command.wheel_linear)
-                if (!std::isfinite(value)) return false;
-            return true;
-        case MobileBaseControlMode::WheelAngular:
-            for (double value : command.wheel_angular)
-                if (!std::isfinite(value)) return false;
-            return true;
-    }
-    return false;
+    return std::isfinite(command.velocity.linear_x) && std::isfinite(command.velocity.linear_y) &&
+           std::isfinite(command.velocity.angular_z);
 }
 
 template <typename Command, typename IsValid>

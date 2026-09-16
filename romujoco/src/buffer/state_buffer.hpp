@@ -6,7 +6,7 @@
 
 #include "romujoco/data/robot_state.hpp"
 
-#include "component/component_id.hpp"
+#include "component/component_id_resolver.hpp"
 
 namespace romujoco {
 

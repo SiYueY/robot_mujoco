@@ -1,15 +1,12 @@
 #pragma once
 
-#include <cstddef>
-#include <limits>
 #include <string>
+
+#include "romujoco/component/component_id.hpp"
 
 #include "runtime/context.hpp"
 
 namespace romujoco {
-
-using ComponentId = std::size_t;
-inline constexpr ComponentId kInvalidComponentId = std::numeric_limits<ComponentId>::max();
 
 class SimulationComponent {
 public:

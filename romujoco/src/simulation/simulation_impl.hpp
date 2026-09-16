@@ -12,7 +12,7 @@
 #include "buffer/command_buffer.hpp"
 #include "buffer/state_buffer.hpp"
 #include "component/camera/camera_render_service.hpp"
-#include "component/component_id.hpp"
+#include "component/component_id_resolver.hpp"
 #include "component/component_manager.hpp"
 #include "runtime/simulation_runtime.hpp"
 #include "runtime/simulation_scheduler.hpp"

@@ -82,13 +82,9 @@ bool SimulationConfigValidator::validate_lidar_names(const LidarInfo& lidar) {
     return true;
 }
 
-bool SimulationConfigValidator::validate_mobile_base_names(const MobileBaseInfo& base) {
-    if (base.base_body_name.empty()) {
+bool SimulationConfigValidator::validate_mobile_base_names(const MobileBaseCommonInfo& base) {
+    if (base.base_body_name.empty() || base.name.empty()) {
         log_error(config_names::kBaseBody, "mobile-base body name must not be empty");
-        return false;
-    }
-    if (base.base_joint_name.empty()) {
-        log_error(config_names::kBaseJoint, "mobile-base joint name must not be empty");
         return false;
     }
     return true;
@@ -120,19 +116,19 @@ bool SimulationConfigValidator::validate_lidar(const LidarInfo& lidar) {
     return true;
 }
 
-bool SimulationConfigValidator::validate_mobile_base(const MobileBaseInfo& base) {
-    const MecanumInfo& mecanum = base.mecanum_info;
-    if (!std::isfinite(mecanum.wheel_base) || mecanum.wheel_base <= 0.0) {
+bool SimulationConfigValidator::validate_mobile_base(const MecanumMobileBaseInfo& base) {
+    if (base.common.execution_mode != MobileBaseExecutionMode::Kinematic ||
+        !std::isfinite(base.wheel_base) || base.wheel_base <= 0.0) {
         log_error(config_names::kWheelBase, "wheel_base must be finite and positive");
         return false;
     }
-    if (!std::isfinite(mecanum.track_width) || mecanum.track_width <= 0.0) {
+    if (!std::isfinite(base.track_width) || base.track_width <= 0.0) {
         log_error(config_names::kTrackWidth, "track_width must be finite and positive");
         return false;
     }
     std::unordered_set<std::string> wheel_names;
-    for (const WheelInfo& wheel : base.mecanum_wheels) {
-        if (wheel.wheel_name.empty()) {
+    for (const MecanumWheelInfo& wheel : base.wheels) {
+        if (wheel.joint_name.empty()) {
             log_error(config_names::kWheel, "mobile-base wheel names are required");
             return false;
         }
@@ -151,7 +147,7 @@ bool SimulationConfigValidator::validate_mobile_base(const MobileBaseInfo& base)
             log_error(config_names::kDirection, "mobile-base wheel direction must be -1 or 1");
             return false;
         }
-        if (!wheel_names.insert(wheel.wheel_name).second) {
+        if (!wheel_names.insert(wheel.joint_name).second) {
             log_error(config_names::kName, "mobile-base wheel names must be unique");
             return false;
         }
@@ -160,15 +156,44 @@ bool SimulationConfigValidator::validate_mobile_base(const MobileBaseInfo& base)
 }
 
 bool SimulationConfigValidator::validate_mobile_base_ownership(
-    const MobileBaseInfo& base, const std::unordered_set<std::string>& joint_names) {
-    for (const WheelInfo& wheel : base.mecanum_wheels) {
-        if (joint_names.find(wheel.wheel_name) != joint_names.end()) {
+    const MecanumMobileBaseInfo& base, const std::unordered_set<std::string>& joint_names) {
+    for (const MecanumWheelInfo& wheel : base.wheels) {
+        if (joint_names.find(wheel.joint_name) != joint_names.end()) {
             log_error(
                 config_names::kWheel,
                 "mobile-base wheel must not also belong to a joint component");
             return false;
         }
     }
+    return true;
+}
+
+bool SimulationConfigValidator::validate_mobile_base(const SwerveMobileBaseInfo& base) {
+    if (base.common.execution_mode != MobileBaseExecutionMode::Dynamic || base.modules.size() < 2U)
+        return false;
+    std::unordered_set<std::string> names, joints, actuators;
+    for (const auto& module : base.modules) {
+        if (module.name.empty() || !std::isfinite(module.position_x) ||
+            !std::isfinite(module.position_y) || !std::isfinite(module.wheel_radius) ||
+            module.wheel_radius <= 0.0 || module.steering_joint_name.empty() ||
+            module.drive_joint_name.empty() || module.steering_actuator_name.empty() ||
+            module.drive_actuator_name.empty() ||
+            module.steering_joint_name == module.drive_joint_name ||
+            module.steering_actuator_name == module.drive_actuator_name ||
+            !names.insert(module.name).second ||
+            !joints.insert(module.steering_joint_name).second ||
+            !joints.insert(module.drive_joint_name).second ||
+            !actuators.insert(module.steering_actuator_name).second ||
+            !actuators.insert(module.drive_actuator_name).second)
+            return false;
+    }
+    return true;
+}
+bool SimulationConfigValidator::validate_mobile_base_ownership(
+    const SwerveMobileBaseInfo& base, const std::unordered_set<std::string>& joint_names) {
+    for (const auto& m : base.modules)
+        if (joint_names.count(m.steering_joint_name) || joint_names.count(m.drive_joint_name))
+            return false;
     return true;
 }
 
@@ -323,11 +348,17 @@ bool SimulationConfigValidator::validate(const SimulationConfig& config) {
                                info.id, info.name, info.period, lidar_ids, lidar_names,
                                config_names::kLidarKind) &&
                            validate_lidar_names(info) && validate_lidar(info);
+                else if constexpr (std::is_same_v<Info, MecanumMobileBaseInfo>)
+                    return validate_component_identity(
+                               info.common.id, info.common.name, info.common.period,
+                               mobile_base_ids, mobile_base_names, config_names::kMobileBaseKind) &&
+                           validate_mobile_base_names(info.common) && validate_mobile_base(info) &&
+                           validate_mobile_base_ownership(info, configured_joint_names);
                 else
                     return validate_component_identity(
-                               info.id, info.mobile_base_name, info.period, mobile_base_ids,
-                               mobile_base_names, config_names::kMobileBaseKind) &&
-                           validate_mobile_base_names(info) && validate_mobile_base(info) &&
+                               info.common.id, info.common.name, info.common.period,
+                               mobile_base_ids, mobile_base_names, config_names::kMobileBaseKind) &&
+                           validate_mobile_base_names(info.common) && validate_mobile_base(info) &&
                            validate_mobile_base_ownership(info, configured_joint_names);
             },
             component);

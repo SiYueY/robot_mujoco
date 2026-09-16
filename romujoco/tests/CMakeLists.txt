@@ -75,6 +75,19 @@ add_test(
   NAME romujoco.mobile_base_component
   COMMAND romujoco_mobile_base_component_test)
 
+add_executable(romujoco_dynamic_swerve_mobile_base_test
+  unit/dynamic_swerve_mobile_base_test.cpp)
+target_include_directories(romujoco_dynamic_swerve_mobile_base_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+target_sources(romujoco_dynamic_swerve_mobile_base_test PRIVATE
+  $<TARGET_OBJECTS:romujoco_runtime>)
+target_link_libraries(romujoco_dynamic_swerve_mobile_base_test PRIVATE
+  romujoco::romujoco)
+add_test(
+  NAME romujoco.dynamic_swerve_mobile_base
+  COMMAND romujoco_dynamic_swerve_mobile_base_test)
+
 add_executable(romujoco_component_manager_camera_reset_test
   unit/component_manager_camera_reset_test.cpp)
 target_include_directories(romujoco_component_manager_camera_reset_test PRIVATE

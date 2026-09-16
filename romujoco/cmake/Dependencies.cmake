@@ -5,6 +5,15 @@ set(
   "${PROJECT_SOURCE_DIR}/mujoco"
 )
 
+# Development checkouts keep the prepared vendor installation under
+# third_party.  Installed/source-package layouts retain the historical
+# project-root location.
+if(NOT EXISTS "${ROMUJOCO_MUJOCO_PREFIX}" AND
+   EXISTS "${PROJECT_SOURCE_DIR}/third_party/mujoco/install")
+  set(ROMUJOCO_MUJOCO_PREFIX
+      "${PROJECT_SOURCE_DIR}/third_party/mujoco/install")
+endif()
+
 if(NOT EXISTS "${ROMUJOCO_MUJOCO_PREFIX}")
   message(
     FATAL_ERROR

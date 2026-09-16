@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "buffer/state_buffer.hpp"
-#include "component/component_id.hpp"
+#include "component/component_id_resolver.hpp"
 
 namespace {
 bool check(bool value, const char* message) {
@@ -34,8 +34,8 @@ bool check_sparse_indices() {
         romujoco::JointInfo joint;
         joint.id = id;
         components.push_back(std::move(joint));
-        romujoco::MobileBaseInfo mobile_base;
-        mobile_base.id = id;
+        romujoco::MecanumMobileBaseInfo mobile_base;
+        mobile_base.common.id = id;
         components.push_back(std::move(mobile_base));
         romujoco::ImuInfo imu;
         imu.id = id;
@@ -107,8 +107,8 @@ bool check_plural_reads() {
         romujoco::JointInfo joint;
         joint.id = id;
         components.push_back(std::move(joint));
-        romujoco::MobileBaseInfo mobile_base;
-        mobile_base.id = id;
+        romujoco::MecanumMobileBaseInfo mobile_base;
+        mobile_base.common.id = id;
         components.push_back(std::move(mobile_base));
         romujoco::ImuInfo imu;
         imu.id = id;

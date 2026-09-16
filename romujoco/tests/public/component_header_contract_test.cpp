@@ -16,7 +16,7 @@ int main() {
     static_assert(std::is_same_v<romujoco::ImuId, std::size_t>);
     static_assert(std::is_same_v<romujoco::CameraId, std::size_t>);
     static_assert(std::is_same_v<romujoco::LidarId, std::size_t>);
-    static_assert(std::is_same_v<romujoco::MobileBaseId, std::size_t>);
+    static_assert(std::is_same_v<romujoco::ComponentId, std::size_t>);
     static_assert(
         std::is_same_v<
             decltype(romujoco::RobotCommand::joints), romujoco::JointCommands>);

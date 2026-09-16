@@ -4,13 +4,13 @@
 #include <cstddef>
 #include <stdexcept>
 
-#include "romujoco/component/mobile_base.hpp"
+#include "romujoco/component/mobile_base/mecanum.hpp"
 
 namespace romujoco {
 
 class MecanumKinematics {
 public:
-    explicit MecanumKinematics(const MecanumInfo& info)
+    explicit MecanumKinematics(const MecanumMobileBaseInfo& info)
     : rotation_coefficient_((info.wheel_base + info.track_width) * 0.5) {
         if (!std::isfinite(info.wheel_base) || info.wheel_base <= 0.0 ||
             !std::isfinite(info.track_width) || info.track_width <= 0.0 ||
@@ -18,11 +18,10 @@ public:
             throw std::invalid_argument("mecanum dimensions must be finite and positive");
     }
 
-    void inverse(
-        const Vector3d& linear, const Vector3d& angular, Vector4d& wheel_linear) const noexcept {
-        const double forward = linear[0];
-        const double lateral = linear[1];
-        const double yaw = rotation_coefficient_ * angular[2];
+    void inverse(const PlanarTwist& twist, Vector4d& wheel_linear) const noexcept {
+        const double forward = twist.linear_x;
+        const double lateral = twist.linear_y;
+        const double yaw = rotation_coefficient_ * twist.angular_z;
         wheel_linear = {
             forward - lateral - yaw, forward + lateral + yaw, forward + lateral - yaw,
             forward - lateral + yaw};

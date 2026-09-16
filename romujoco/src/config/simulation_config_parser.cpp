@@ -335,29 +335,69 @@ bool SimulationConfigParser::parse_components(
     }
     for (const tinyxml2::XMLElement* e = robot->FirstChildElement(config_names::kMobileBase);
          e != nullptr; e = e->NextSiblingElement(config_names::kMobileBase)) {
-        MobileBaseInfo v;
-        if (!allowed(*e, {config_names::kWheel}) || !id(*e, maximum, v.id) ||
-            !required(*e, config_names::kName, v.mobile_base_name) ||
-            !required(*e, config_names::kBaseBody, v.base_body_name) ||
-            !required(*e, config_names::kBaseJoint, v.base_joint_name) ||
+        const char* raw_type = e->Attribute(config_names::kType);
+        const std::string type = raw_type == nullptr ? "mecanum" : trim_copy(raw_type);
+        if (type == "swerve") {
+            SwerveMobileBaseInfo v;
+            if (!allowed(*e, {config_names::kModule}) || !id(*e, maximum, v.common.id) ||
+                !required(*e, config_names::kName, v.common.name) ||
+                !required(*e, config_names::kBaseBody, v.common.base_body_name) ||
+                e->Attribute(config_names::kUpdateRate) != nullptr ||
+                !number(*e, config_names::kPeriod, v.common.period)) {
+                log_error(failure, e, "", "invalid swerve mobile-base syntax or attribute value");
+                return false;
+            }
+            const char* execution = e->Attribute(config_names::kExecution);
+            if (execution == nullptr || trim_copy(execution) != "dynamic") {
+                log_error(
+                    failure, e, config_names::kExecution, "swerve requires execution='dynamic'");
+                return false;
+            }
+            v.common.execution_mode = MobileBaseExecutionMode::Dynamic;
+            for (const tinyxml2::XMLElement* module = e->FirstChildElement(config_names::kModule);
+                 module != nullptr; module = module->NextSiblingElement(config_names::kModule)) {
+                SwerveModuleInfo item;
+                if (!required(*module, config_names::kName, item.name) ||
+                    !number(*module, config_names::kX, item.position_x, true) ||
+                    !number(*module, config_names::kY, item.position_y, true) ||
+                    !number(*module, config_names::kRadius, item.wheel_radius, true) ||
+                    !required(*module, config_names::kSteeringJoint, item.steering_joint_name) ||
+                    !required(
+                        *module, config_names::kSteeringActuator, item.steering_actuator_name) ||
+                    !required(*module, config_names::kDriveJoint, item.drive_joint_name) ||
+                    !required(*module, config_names::kDriveActuator, item.drive_actuator_name)) {
+                    log_error(failure, module, "", "invalid swerve module attribute");
+                    return false;
+                }
+                v.modules.push_back(std::move(item));
+            }
+            out.emplace_back(std::move(v));
+            continue;
+        }
+        if (type != "mecanum") {
+            log_error(failure, e, config_names::kType, "unsupported mobile-base type");
+            return false;
+        }
+        MecanumMobileBaseInfo v;
+        if (!allowed(*e, {config_names::kWheel}) || !id(*e, maximum, v.common.id) ||
+            !required(*e, config_names::kName, v.common.name) ||
+            !required(*e, config_names::kBaseBody, v.common.base_body_name) ||
             e->Attribute(config_names::kUpdateRate) != nullptr ||
-            !number(*e, config_names::kPeriod, v.period)) {
+            !number(*e, config_names::kPeriod, v.common.period)) {
             log_error(failure, e, "", "invalid mobile-base syntax or attribute value");
             return false;
         }
-        const char* base = e->Attribute(config_names::kBaseFrameId);
-        if (base != nullptr) v.base_frame_id = trim_copy(base);
-        const char* odom = e->Attribute(config_names::kOdomFrameId);
-        if (odom != nullptr) v.odom_frame_id = trim_copy(odom);
-        const char* type = e->Attribute(config_names::kType);
-        if (type != nullptr && trim_copy(type) != "mecanum") {
-            log_error(failure, e, config_names::kType, "unsupported mobile-base type");
+        v.common.execution_mode = MobileBaseExecutionMode::Kinematic;
+        const char* execution = e->Attribute(config_names::kExecution);
+        if (execution != nullptr && trim_copy(execution) != "kinematic") {
+            log_error(
+                failure, e, config_names::kExecution, "mecanum requires execution='kinematic'");
             return false;
         }
         if (e->Attribute(config_names::kRadius) != nullptr ||
             e->Attribute(config_names::kLegacyWheelRadius) != nullptr ||
-            !number(*e, config_names::kWheelBase, v.mecanum_info.wheel_base, true) ||
-            !number(*e, config_names::kTrackWidth, v.mecanum_info.track_width, true)) {
+            !number(*e, config_names::kWheelBase, v.wheel_base, true) ||
+            !number(*e, config_names::kTrackWidth, v.track_width, true)) {
             log_error(failure, e, "", "invalid mobile-base geometry attribute");
             return false;
         }
@@ -379,15 +419,11 @@ bool SimulationConfigParser::parse_components(
             const std::size_t wheel_index =
                 static_cast<std::size_t>(std::distance(names.begin(), it));
             if (seen_wheel_indices[wheel_index] ||
-                !required(*wheel, config_names::kName, v.mecanum_wheels[wheel_index].wheel_name) ||
+                !required(*wheel, config_names::kName, v.wheels[wheel_index].joint_name) ||
+                !number(*wheel, config_names::kRadius, v.wheels[wheel_index].radius, true) ||
+                !number(*wheel, config_names::kDirection, v.wheels[wheel_index].direction, true) ||
                 !number(
-                    *wheel, config_names::kRadius, v.mecanum_wheels[wheel_index].radius, true) ||
-                !number(
-                    *wheel, config_names::kDirection, v.mecanum_wheels[wheel_index].direction,
-                    true) ||
-                !number(
-                    *wheel, config_names::kSpeedResponse,
-                    v.mecanum_wheels[wheel_index].speed_response)) {
+                    *wheel, config_names::kSpeedResponse, v.wheels[wheel_index].speed_response)) {
                 log_error(failure, wheel, "", "invalid mobile-base wheel attribute");
                 return false;
             }
@@ -508,8 +544,14 @@ bool SimulationConfigParser::load_file(const std::string& path, SimulationConfig
                 using Info = std::decay_t<decltype(info)>;
                 if constexpr (
                     std::is_same_v<Info, JointInfo> || std::is_same_v<Info, ImuInfo> ||
-                    std::is_same_v<Info, MobileBaseInfo>) {
-                    if (info.period == 0.0) info.period = physics_period;
+                    std::is_same_v<Info, MecanumMobileBaseInfo> ||
+                    std::is_same_v<Info, SwerveMobileBaseInfo>) {
+                    if constexpr (
+                        std::is_same_v<Info, MecanumMobileBaseInfo> ||
+                        std::is_same_v<Info, SwerveMobileBaseInfo>) {
+                        if (info.common.period == 0.0) info.common.period = physics_period;
+                    } else if (info.period == 0.0)
+                        info.period = physics_period;
                 }
             },
             component);
