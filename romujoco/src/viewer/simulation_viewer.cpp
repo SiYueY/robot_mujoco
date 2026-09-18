@@ -82,7 +82,7 @@ SimulationViewer::SimulationViewer(std::chrono::milliseconds startup_timeout)
 
 SimulationViewer::~SimulationViewer() { stop(); }
 
-bool SimulationViewer::create_viewer_data(const mjContext& context) {
+bool SimulationViewer::create_viewer_data(const SimulationContext& context) {
     if (!context.valid()) {
         SIM_ERROR << "cannot create viewer data from an invalid context.";
         return false;
@@ -292,7 +292,7 @@ void SimulationViewer::render_task(
     }
 }
 
-bool SimulationViewer::prepare(const mjContext& context) {
+bool SimulationViewer::prepare(const SimulationContext& context) {
     if (!context.valid()) {
         SIM_ERROR << "cannot prepare simulation viewer from an invalid context.";
         return false;
@@ -380,7 +380,8 @@ bool SimulationViewer::start(const std::string& displayed_filename) {
     return true;
 }
 
-bool SimulationViewer::start(const mjContext& context, const std::string& displayed_filename) {
+bool SimulationViewer::start(
+    const SimulationContext& context, const std::string& displayed_filename) {
     // Compatibility entry point.  Simulation uses the explicit two-phase API
     // so it can release its MuJoCo lock before GUI startup.
     stop();
@@ -394,7 +395,8 @@ void SimulationViewer::stop() {
     release_viewer_data();
 }
 
-bool SimulationViewer::capture_snapshot(const mjContext& context, ViewerSnapshot& snapshot) {
+bool SimulationViewer::capture_snapshot(
+    const SimulationContext& context, ViewerSnapshot& snapshot) {
     snapshot = ViewerSnapshot{};
     if (!context.valid()) {
         SIM_WARN << "viewer synchronization request has an invalid context.";
@@ -429,7 +431,7 @@ bool SimulationViewer::submit(ViewerSnapshot&& snapshot) {
     return true;
 }
 
-bool SimulationViewer::submit(const mjContext& context) {
+bool SimulationViewer::submit(const SimulationContext& context) {
     ViewerSnapshot snapshot;
     return capture_snapshot(context, snapshot) && submit(std::move(snapshot));
 }

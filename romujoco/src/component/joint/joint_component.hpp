@@ -15,15 +15,15 @@ class JointComponent : public SimulationComponent {
 public:
     explicit JointComponent(JointInfo info);
 
-    bool init(const mjContext& context) override;
-    bool reset(const mjContext& context) override;
-    bool reset(const mjContext& context, JointCommand& command);
-    bool advance(const mjContext& context) override;
-    bool update(const mjContext& context) override;
+    bool init(const SimulationContext& context) override;
+    bool reset(const SimulationContext& context) override;
+    bool reset(const SimulationContext& context, JointCommand& command);
+    bool advance(const SimulationContext& context) override;
+    bool update(const SimulationContext& context) override;
 
-    bool write(const mjContext& context, const JointCommand& command);
+    bool write(const SimulationContext& context, const JointCommand& command);
     bool read_state(std::shared_ptr<const JointState>& state) const;
-    bool read(const mjContext& context, JointState& state) const;
+    bool read(const SimulationContext& context, JointState& state) const;
 
     const JointInfo& info() const noexcept { return info_; }
     std::string joint_name() const noexcept { return info_.joint_name; }
@@ -44,29 +44,31 @@ public:
 
 private:
     bool validate_info() const;
-    bool validate_actuator(const mjContext& context) const;
-    bool validate_actuator_uniqueness(const mjContext& context) const;
-    bool make_reset_command(const mjContext& context, JointCommand& command) const;
+    bool validate_actuator(const SimulationContext& context) const;
+    bool validate_actuator_uniqueness(const SimulationContext& context) const;
+    bool make_reset_command(const SimulationContext& context, JointCommand& command) const;
     double position_error(double target, double current) const noexcept;
 
     // command
-    bool write_position_command(const mjContext& context, const JointCommand& command) const;
-    bool write_velocity_command(const mjContext& context, const JointCommand& command) const;
-    bool write_effort_command(const mjContext& context, const JointCommand& command) const;
-    bool write_hybrid_command(const mjContext& context, const JointCommand& command) const;
+    bool write_position_command(
+        const SimulationContext& context, const JointCommand& command) const;
+    bool write_velocity_command(
+        const SimulationContext& context, const JointCommand& command) const;
+    bool write_effort_command(const SimulationContext& context, const JointCommand& command) const;
+    bool write_hybrid_command(const SimulationContext& context, const JointCommand& command) const;
 
     // limit
     double clamp_limits(const JointLimit& limits, double value) const;
-    double clamp_ctrl_limits(const mjContext& context, double value) const;
-    double clamp_force_limits(const mjContext& context, double value) const;
+    double clamp_ctrl_limits(const SimulationContext& context, double value) const;
+    double clamp_force_limits(const SimulationContext& context, double value) const;
 
     // gravity compensation
-    double gravity_compensation_effort(const mjContext& context) const;
+    double gravity_compensation_effort(const SimulationContext& context) const;
 
 private:
     bool initialized_{false};
     bool shortest_angular_distance_{false};
-    mjJoint joint_{};
+    JointBinding joint_{};
     JointInfo info_;
     JointCommand command_{};
     std::shared_ptr<const JointState> state_;

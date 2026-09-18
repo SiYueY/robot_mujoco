@@ -125,7 +125,7 @@ bool SimulationConfigParser::id(
     const char* raw = element.Attribute(config_names::kId);
     return raw != nullptr && parse_component_id_value(raw, maximum, out);
 }
-bool SimulationConfigParser::parse_limit(const tinyxml2::XMLElement* axis, JointLimit& limit) {
+bool SimulationConfigParser::parse_limit(const tinyxml2::XMLElement* axis, Limit& limit) {
     if (axis == nullptr) return true;
     // Limit bounds are attributes so a configured axis remains compact.  Do
     // not accept the legacy <min>/<max> child-element form.
@@ -237,13 +237,65 @@ bool SimulationConfigParser::parse_joint(
             parse_limit(limits->FirstChildElement(config_names::kVelocity), info.velocity_limits) &&
             parse_limit(limits->FirstChildElement(config_names::kEffort), info.effort_limits));
 }
+bool SimulationConfigParser::parse_gripper(
+    const tinyxml2::XMLElement& element, ComponentId maximum, GripperInfo& info) {
+    if (!allowed(
+            element, {config_names::kFinger, config_names::kControl, config_names::kLimit,
+                      config_names::kStall}) ||
+        !id(element, maximum, info.id) || !required(element, config_names::kName, info.name) ||
+        element.Attribute(config_names::kUpdateRate) != nullptr)
+        return false;
+    // As for Joint, a missing period means "update every physics step" and is
+    // resolved against the configured physics period after parsing.
+    info.period = 0.0;
+    if (!number(element, config_names::kPeriod, info.period)) return false;
+
+    std::size_t finger_count = 0;
+    for (const tinyxml2::XMLElement* finger = element.FirstChildElement(config_names::kFinger);
+         finger != nullptr; finger = finger->NextSiblingElement(config_names::kFinger)) {
+        if (finger_count >= kGripperFingerCount || !allowed(*finger, {}) ||
+            !required(*finger, config_names::kJoint, info.fingers[finger_count].joint_name))
+            return false;
+        const char* actuator = finger->Attribute(config_names::kActuator);
+        if (actuator != nullptr) info.fingers[finger_count].actuator_name = trim_copy(actuator);
+        ++finger_count;
+    }
+    if (finger_count != kGripperFingerCount) return false;
+
+    const tinyxml2::XMLElement* control = element.FirstChildElement(config_names::kControl);
+    if (control != nullptr &&
+        (!allowed(*control, {}) ||
+         !number(*control, config_names::kStiffness, info.control.stiffness) ||
+         !number(*control, config_names::kDamping, info.control.damping)))
+        return false;
+
+    const tinyxml2::XMLElement* limits = element.FirstChildElement(config_names::kLimit);
+    if (limits != nullptr &&
+        (!allowed(
+             *limits, {config_names::kWidth, config_names::kVelocity, config_names::kEffort}) ||
+         !parse_limit(limits->FirstChildElement(config_names::kWidth), info.width_limits) ||
+         !parse_limit(limits->FirstChildElement(config_names::kVelocity), info.velocity_limits) ||
+         !parse_limit(limits->FirstChildElement(config_names::kEffort), info.effort_limits)))
+        return false;
+
+    const tinyxml2::XMLElement* stall = element.FirstChildElement(config_names::kStall);
+    if (stall != nullptr &&
+        (!allowed(*stall, {}) ||
+         !number(*stall, config_names::kWidthTolerance, info.stall.width_tolerance) ||
+         !number(*stall, config_names::kVelocityThreshold, info.stall.velocity_threshold) ||
+         !number(*stall, config_names::kEffortRatio, info.stall.effort_ratio) ||
+         !number(*stall, config_names::kTimeout, info.stall.timeout)))
+        return false;
+    return true;
+}
+
 bool SimulationConfigParser::parse_components(
     const tinyxml2::XMLElement* robot, ComponentId maximum, ComponentConfigList& out,
     const ParseFailure& failure) {
     if (robot == nullptr) return true;
     if (!allowed(
-            *robot, {config_names::kJoint, config_names::kImu, config_names::kCamera,
-                     config_names::kLidar, config_names::kMobileBase})) {
+            *robot, {config_names::kJoint, config_names::kGripper, config_names::kImu,
+                     config_names::kCamera, config_names::kLidar, config_names::kMobileBase})) {
         log_error(failure, robot, "", "robot has an unknown component element");
         return false;
     }
@@ -252,6 +304,15 @@ bool SimulationConfigParser::parse_components(
         JointInfo v;
         if (!parse_joint(*e, maximum, v)) {
             log_error(failure, e, "", "invalid joint syntax or attribute value");
+            return false;
+        }
+        out.emplace_back(std::move(v));
+    }
+    for (const tinyxml2::XMLElement* e = robot->FirstChildElement(config_names::kGripper);
+         e != nullptr; e = e->NextSiblingElement(config_names::kGripper)) {
+        GripperInfo v;
+        if (!parse_gripper(*e, maximum, v)) {
+            log_error(failure, e, "", "invalid gripper syntax or attribute value");
             return false;
         }
         out.emplace_back(std::move(v));
@@ -401,7 +462,7 @@ bool SimulationConfigParser::parse_components(
             log_error(failure, e, "", "invalid mobile-base geometry attribute");
             return false;
         }
-        std::array<bool, MecanumWheelCount> seen_wheel_indices{};
+        std::array<bool, kMecanumWheelCount> seen_wheel_indices{};
         for (const tinyxml2::XMLElement* wheel = e->FirstChildElement(config_names::kWheel);
              wheel != nullptr; wheel = wheel->NextSiblingElement(config_names::kWheel)) {
             std::string index;
@@ -409,7 +470,7 @@ bool SimulationConfigParser::parse_components(
                 log_error(failure, wheel, "", "invalid mobile-base wheel attribute");
                 return false;
             }
-            const std::array<std::string_view, MecanumWheelCount> names{
+            const std::array<std::string_view, kMecanumWheelCount> names{
                 "front_left", "front_right", "rear_left", "rear_right"};
             const auto it = std::find(names.begin(), names.end(), index);
             if (it == names.end()) {
@@ -535,7 +596,7 @@ bool SimulationConfigParser::load_file(const std::string& path, SimulationConfig
         return false;
     }
     // Resolve config-layer period defaults.  A missing (or zero) period on
-    // Joint/IMU/MobileBase means "update every physics step", which here
+    // Joint/Gripper/IMU/MobileBase means "update every physics step", which here
     // becomes the parsed physics period so components never see a sentinel 0.
     const double physics_period = parsed.scheduler.physics_period;
     for (ComponentConfig& component : parsed.components) {
@@ -543,8 +604,8 @@ bool SimulationConfigParser::load_file(const std::string& path, SimulationConfig
             [physics_period](auto& info) {
                 using Info = std::decay_t<decltype(info)>;
                 if constexpr (
-                    std::is_same_v<Info, JointInfo> || std::is_same_v<Info, ImuInfo> ||
-                    std::is_same_v<Info, MecanumMobileBaseInfo> ||
+                    std::is_same_v<Info, JointInfo> || std::is_same_v<Info, GripperInfo> ||
+                    std::is_same_v<Info, ImuInfo> || std::is_same_v<Info, MecanumMobileBaseInfo> ||
                     std::is_same_v<Info, SwerveMobileBaseInfo>) {
                     if constexpr (
                         std::is_same_v<Info, MecanumMobileBaseInfo> ||

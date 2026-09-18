@@ -28,15 +28,24 @@ public:
     }
 
     void forward(const Vector4d& wheel_linear, Vector3d& linear, Vector3d& angular) const noexcept {
-        const double fl = wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::FrontLeft)];
-        const double fr = wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::FrontRight)];
-        const double rl = wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::RearLeft)];
-        const double rr = wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::RearRight)];
-        linear = {(fl + fr + rl + rr) * 0.25, (-fl + fr + rl - rr) * 0.25, 0.0};
-        angular = {0.0, 0.0, (-fl + fr - rl + rr) / (4.0 * rotation_coefficient_)};
+        const double front_left =
+            wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::FrontLeft)];
+        const double front_right =
+            wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::FrontRight)];
+        const double rear_left =
+            wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::RearLeft)];
+        const double rear_right =
+            wheel_linear[static_cast<std::size_t>(MecanumWheelIndex::RearRight)];
+        linear = {
+            (front_left + front_right + rear_left + rear_right) * 0.25,
+            (-front_left + front_right + rear_left - rear_right) * 0.25, 0.0};
+        angular = {
+            0.0, 0.0,
+            (-front_left + front_right - rear_left + rear_right) / (4.0 * rotation_coefficient_)};
     }
 
 private:
+    // (wheel_base + track_width) / 2, the lever arm of the yaw term.
     double rotation_coefficient_;
 };
 

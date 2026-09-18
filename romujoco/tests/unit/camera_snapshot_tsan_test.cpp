@@ -47,7 +47,7 @@ int main() {
     }
     mj_forward(model, data);
 
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
     romujoco::CameraRendererConfig renderer_config;
     renderer_config.allow_glfw_backend = false;
     renderer_config.allow_egl_backend = true;

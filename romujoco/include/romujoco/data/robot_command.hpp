@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "romujoco/component/gripper.hpp"
 #include "romujoco/component/joint.hpp"
 #include "romujoco/component/mobile_base.hpp"
 
@@ -15,6 +16,7 @@ namespace romujoco {
 struct RobotCommand {
     std::uint64_t sequence{0};
     JointCommands joints;
+    GripperCommands grippers;
     MobileBaseCommands mobile_bases;
 };
 

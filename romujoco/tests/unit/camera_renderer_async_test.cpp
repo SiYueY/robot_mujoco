@@ -53,7 +53,7 @@ int main() {
     }
     mj_forward(model, data);
 
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
     bool released = false;
     {
         romujoco::CameraRendererConfig renderer_config;
@@ -61,8 +61,7 @@ int main() {
         renderer_config.allow_egl_backend = true;
         romujoco::CameraRenderer renderer(renderer_config);
         if (!check(
-                renderer.wait_result({0, 1}) ==
-                    romujoco::CameraRenderWaitStatus::InvalidTicket,
+                renderer.wait_result({0, 1}) == romujoco::CameraRenderWaitStatus::InvalidTicket,
                 "renderer did not diagnose an invalid ticket") ||
             !check(!renderer.wait({0, 1}), "renderer accepted a ticket it did not submit")) {
             return 1;
@@ -75,8 +74,7 @@ int main() {
                 noop_ticket.has_value() && noop_ticket->is_noop(),
                 "empty camera batch did not return a no-op ticket") ||
             !check(
-                renderer.wait_result(*noop_ticket) ==
-                    romujoco::CameraRenderWaitStatus::Completed,
+                renderer.wait_result(*noop_ticket) == romujoco::CameraRenderWaitStatus::Completed,
                 "no-op camera ticket was not immediately successful")) {
             renderer.release();
             return 1;
@@ -104,8 +102,7 @@ int main() {
         if (!check(first_ticket.has_value(), "failed to submit first frame") ||
             !check(renderer.wait(*first_ticket), "first frame did not finish") ||
             !check(
-                renderer.query(*first_ticket) ==
-                    romujoco::CameraRenderWaitStatus::Completed,
+                renderer.query(*first_ticket) == romujoco::CameraRenderWaitStatus::Completed,
                 "completed camera ticket was not queryable")) {
             renderer.release();
             return 1;
@@ -118,8 +115,7 @@ int main() {
                     first_result.simulation_step == 42 && first_result.simulation_time == 0.7 &&
                     first_result.cameras.size() == 1U &&
                     first_result.cameras.front().camera_id == task.camera_id &&
-                    first_result.cameras.front().status ==
-                        romujoco::CameraTaskStatus::Completed &&
+                    first_result.cameras.front().status == romujoco::CameraTaskStatus::Completed &&
                     !first_result.cameras.front().frame.image.data.empty(),
                 "batch result did not preserve submitted camera metadata")) {
             renderer.release();
@@ -260,8 +256,7 @@ int main() {
         const auto old_ticket = *first_ticket;
         if (!check(renderer.release(), "failed to release first renderer lifecycle") ||
             !check(
-                renderer.wait_result(old_ticket) ==
-                    romujoco::CameraRenderWaitStatus::Stopped,
+                renderer.wait_result(old_ticket) == romujoco::CameraRenderWaitStatus::Stopped,
                 "stopped renderer did not report a stopped ticket") ||
             !check(
                 renderer.initialize(context), "failed to initialize second renderer lifecycle")) {
@@ -275,8 +270,7 @@ int main() {
                     restarted_ticket->generation != old_ticket.generation,
                 "renderer restart did not create a distinct ticket generation") ||
             !check(
-                renderer.wait_result(old_ticket) ==
-                    romujoco::CameraRenderWaitStatus::InvalidTicket,
+                renderer.wait_result(old_ticket) == romujoco::CameraRenderWaitStatus::InvalidTicket,
                 "old renderer lifecycle ticket matched a restarted renderer") ||
             !check(
                 renderer.wait(*restarted_ticket), "restarted renderer ticket did not complete")) {
@@ -629,8 +623,7 @@ int main() {
             retained_ticket.has_value() && history_renderer.wait(*retained_ticket),
             "second ticket-history batch did not complete") ||
         !check(
-            history_renderer.wait_result(*stale_ticket) ==
-                romujoco::CameraRenderWaitStatus::Stale,
+            history_renderer.wait_result(*stale_ticket) == romujoco::CameraRenderWaitStatus::Stale,
             "stale ticket did not report Stale")) {
         history_renderer.release();
         context.clear();

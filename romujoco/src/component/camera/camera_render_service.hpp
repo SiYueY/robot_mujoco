@@ -9,7 +9,7 @@
 #include "romujoco/component/camera.hpp"
 #include "romujoco/config/simulation_config.hpp"
 
-#include "runtime/context.hpp"
+#include "runtime/simulation_context.hpp"
 
 namespace romujoco {
 

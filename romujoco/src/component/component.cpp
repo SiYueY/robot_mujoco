@@ -16,7 +16,7 @@ SimulationComponent::SimulationComponent(std::string name, double period)
 
 const std::string& SimulationComponent::name() const noexcept { return name_; }
 
-bool SimulationComponent::configure(const mjContext& context) {
+bool SimulationComponent::configure(const SimulationContext& context) {
     if (!context.valid()) {
         SIM_ERROR << "component context must provide a model and data.";
         return false;
@@ -61,7 +61,7 @@ bool SimulationComponent::configure(const mjContext& context) {
     return true;
 }
 
-bool SimulationComponent::poll_update(mjTime time) {
+bool SimulationComponent::poll_update(SimTime time) {
     if (math::less(time, next_time_)) {
         return false;
     }

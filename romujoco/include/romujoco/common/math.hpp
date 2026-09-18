@@ -5,7 +5,7 @@
 
 namespace romujoco {
 
-inline constexpr double Pi = 3.14159265358979323846;
+inline constexpr double kPi = 3.14159265358979323846;
 
 // Vector
 using Vector3d = std::array<double, 3>;

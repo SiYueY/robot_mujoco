@@ -49,7 +49,7 @@ bool Simulation::Impl::initialize_scheduler() {
 }
 
 bool Simulation::Impl::initialize_components() {
-    JointCommands initial_joint_commands;
+    RobotCommand initial_commands;
     {
         std::lock_guard<std::mutex> mujoco_lock(mujoco_mutex_);
         if (runtime_ == nullptr) {
@@ -69,7 +69,7 @@ bool Simulation::Impl::initialize_components() {
             SIM_ERROR << "failed to initialize simulation components.";
             return false;
         }
-        if (!component_manager_.reset(runtime_->context(), initial_joint_commands)) {
+        if (!component_manager_.reset(runtime_->context(), initial_commands)) {
             SIM_ERROR << "failed to reset simulation components.";
             return false;
         }
@@ -92,8 +92,8 @@ bool Simulation::Impl::initialize_components() {
         SIM_ERROR << "failed to configure command channels.";
         return false;
     }
-    if (!command_buffer_.write(initial_joint_commands)) {
-        SIM_ERROR << "failed to set default joint commands.";
+    if (!command_buffer_.write(initial_commands)) {
+        SIM_ERROR << "failed to set default component commands.";
         return false;
     }
     if (!state_buffer_.configure(id_resolver)) {
@@ -236,7 +236,7 @@ bool Simulation::Impl::create_state_snapshot(RobotState& snapshot) const {
         SIM_ERROR << "component manager failed to read the simulation state.";
         return false;
     }
-    const mjContext& context = runtime_->context();
+    const SimulationContext& context = runtime_->context();
     snapshot.contacts.clear();
     snapshot.contacts.reserve(context.data->ncon);
     for (int index = 0; index < context.data->ncon; ++index) {

@@ -18,25 +18,20 @@ bool check(bool value, const char* message) {
 
 class NoopCameraRenderService final : public romujoco::CameraRenderService {
 public:
-    bool initialize(const romujoco::SimulationConfig&, const mjModel*) override {
-        return true;
-    }
+    bool initialize(const romujoco::SimulationConfig&, const mjModel*) override { return true; }
     romujoco::CameraRenderSubmitResult submit(
-        const romujoco::CameraRenderBatchRequest&,
-        romujoco::CameraRenderTicket&) override {
+        const romujoco::CameraRenderBatchRequest&, romujoco::CameraRenderTicket&) override {
         return romujoco::CameraRenderSubmitResult::InvalidRequest;
     }
     romujoco::CameraRenderWaitStatus wait(
         const romujoco::CameraRenderTicket&, std::chrono::milliseconds) override {
         return romujoco::CameraRenderWaitStatus::InvalidTicket;
     }
-    romujoco::CameraRenderWaitStatus query(
-        const romujoco::CameraRenderTicket&) const override {
+    romujoco::CameraRenderWaitStatus query(const romujoco::CameraRenderTicket&) const override {
         return romujoco::CameraRenderWaitStatus::InvalidTicket;
     }
     bool read_batch_result(
-        const romujoco::CameraRenderTicket&,
-        romujoco::CameraRenderBatchResult&) override {
+        const romujoco::CameraRenderTicket&, romujoco::CameraRenderBatchResult&) override {
         return false;
     }
     bool reset() override { return true; }
@@ -55,8 +50,7 @@ romujoco::JointInfo joint_info(
     return info;
 }
 
-romujoco::JointInfo passive_joint_info(
-    romujoco::JointId id, const char* joint_name) {
+romujoco::JointInfo passive_joint_info(romujoco::JointId id, const char* joint_name) {
     romujoco::JointInfo info;
     info.id = id;
     info.joint_name = joint_name;
@@ -69,8 +63,7 @@ romujoco::JointInfo passive_joint_info(
 }  // namespace
 
 int main() {
-    romujoco_test::TemporaryFile model_file(
-        "mujoco_component_manager_sparse_command_test.xml");
+    romujoco_test::TemporaryFile model_file("mujoco_component_manager_sparse_command_test.xml");
     if (!check(
             model_file.write(R"(<mujoco><worldbody><body name="body">
   <joint name="joint_0" type="hinge"/>
@@ -93,7 +86,7 @@ int main() {
         mj_deleteModel(model);
         return 1;
     }
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
 
     romujoco::ComponentConfigList components{
         joint_info(0, "joint_0", "actuator_0"), passive_joint_info(1, "joint_passive"),
@@ -115,17 +108,17 @@ int main() {
             manager.read_state(context, state) && state.joints != nullptr &&
                 state.joints->size() == 3U && (*state.joints)[0]->id == 0U &&
                 (*state.joints)[1]->id == 1U &&
-                (*state.joints)[1]->mode ==
-                    static_cast<std::uint8_t>(romujoco::JointMode::None) &&
+                (*state.joints)[1]->mode == static_cast<std::uint8_t>(romujoco::JointMode::None) &&
                 (*state.joints)[2]->id == 2U,
             "joint states were not published as a compact ID-sorted list")) {
         context.clear();
         return 1;
     }
-    romujoco::JointCommands reset_commands;
+    romujoco::RobotCommand reset_commands;
     if (!check(manager.reset(context, reset_commands), "component reset failed") ||
         !check(
-            reset_commands.size() == 2U && reset_commands[0].id == 0U && reset_commands[1].id == 2U,
+            reset_commands.joints.size() == 2U && reset_commands.joints[0].id == 0U &&
+                reset_commands.joints[1].id == 2U,
             "passive joint generated a reset command")) {
         context.clear();
         return 1;
@@ -161,8 +154,7 @@ int main() {
                                actuator_2 >= 0 && std::abs(data->ctrl[actuator_0] - 9.0) < 1e-12 &&
                                std::abs(data->ctrl[actuator_2] - 2.5) < 1e-12;
     romujoco::RobotCommand passive_command;
-    passive_command.joints.push_back(
-        {1, static_cast<std::uint8_t>(romujoco::JointMode::Effort)});
+    passive_command.joints.push_back({1, static_cast<std::uint8_t>(romujoco::JointMode::Effort)});
     const bool passive_rejected = !manager.write_command(context, passive_command);
     context.clear();
     return check(applied, "sparse command slots were not applied correctly") &&

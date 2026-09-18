@@ -15,13 +15,13 @@ class LidarComponent : public SimulationComponent {
 public:
     explicit LidarComponent(LidarInfo info);
 
-    bool init(const mjContext& context) override;
-    bool reset(const mjContext& context) override;
-    bool advance(const mjContext& context) override;
-    bool update(const mjContext& context) override;
+    bool init(const SimulationContext& context) override;
+    bool reset(const SimulationContext& context) override;
+    bool advance(const SimulationContext& context) override;
+    bool update(const SimulationContext& context) override;
 
     bool read_state(std::shared_ptr<const LidarState>& state) const;
-    bool read(const mjContext& context, LidarState& state) const;
+    bool read(const SimulationContext& context, LidarState& state) const;
 
     const LidarInfo& info() const noexcept { return info_; }
     bool is_initialized() const noexcept { return initialized_; }

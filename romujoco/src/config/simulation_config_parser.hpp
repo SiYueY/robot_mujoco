@@ -43,6 +43,8 @@ private:
     static bool parse_joint_mode(const std::string& value, JointMode& out);
     static bool parse_joint(
         const tinyxml2::XMLElement& element, ComponentId maximum, JointInfo& info);
+    static bool parse_gripper(
+        const tinyxml2::XMLElement& element, ComponentId maximum, GripperInfo& info);
     static bool parse_components(
         const tinyxml2::XMLElement* robot, ComponentId maximum, ComponentConfigList& out,
         const ParseFailure& failure);

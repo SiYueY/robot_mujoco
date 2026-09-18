@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "romujoco/common/bitmask.hpp"
+#include "romujoco/common/limit.hpp"
 
 namespace romujoco {
 
@@ -30,10 +31,7 @@ enum class JointMode : uint8_t {
     None = 4,      // 从动模式
 };
 
-struct JointLimit {
-    double min{-std::numeric_limits<double>::infinity()};
-    double max{std::numeric_limits<double>::infinity()};
-};
+using JointLimit = Limit;
 
 struct JointInfo {
     struct Hybrid {

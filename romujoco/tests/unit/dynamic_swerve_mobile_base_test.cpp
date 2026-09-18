@@ -49,7 +49,7 @@ int main() {
         mj_deleteModel(model);
         return 1;
     }
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
     romujoco::DynamicSwerveMobileBase base(make_info());
     romujoco::MobileBaseCommand command;
     command.id = 7;
@@ -61,10 +61,10 @@ int main() {
             std::abs(data->ctrl[0]) < 1e-12 && std::abs(data->ctrl[1] - 20.0) < 1e-12 &&
                 std::abs(data->ctrl[2]) < 1e-12 && std::abs(data->ctrl[3] - 20.0) < 1e-12,
             "swerve IK targets are incorrect");
-    data->qpos[7] = romujoco::Pi;
+    data->qpos[7] = romujoco::kPi;
     success = success && check(base.write(context, command), "reverse command rejected") &&
               check(
-                  std::abs(std::abs(data->ctrl[0]) - romujoco::Pi) < 1e-12 &&
+                  std::abs(std::abs(data->ctrl[0]) - romujoco::kPi) < 1e-12 &&
                       std::abs(data->ctrl[1] + 20.0) < 1e-12,
                   "swerve shortest-path reversal is incorrect");
     data->qpos[3] = std::sqrt(0.5);

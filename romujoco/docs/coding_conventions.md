@@ -1,7 +1,40 @@
 # 编码规范
 
-本文档记录 `romujoco` 源码的本地编码约定。当前只定义 include 顺序；其他格式化由
-仓库根目录 `.clang-format`（`BasedOnStyle: Google`）负责。
+本文档记录本仓库源码的编码约定。格式化由仓库根目录 `.clang-format`
+（`BasedOnStyle: Google`，`ColumnLimit: 100`）统一负责；本文档另外定义
+include 顺序，并说明如何对整个仓库执行格式化。
+
+## 格式化范围
+
+clang-format 覆盖仓库内所有自行维护的 C++ 源码，即 `romujoco/` 与
+`ros2_mujoco/` 下的 `.hpp` / `.cpp` / `.h` / `.cc`，包括
+`romujoco/src/viewer/simulate/` 与 `romujoco/src/viewer/lodepng/`。
+
+不参与格式化：
+
+- `romujoco/third_party/`：第三方源码，见
+  [third_party.md](./third_party.md)，该目录下的 `DisableFormat: true`
+  已禁止格式化；
+- `build/` 等构建产物目录。
+
+注意 `romujoco/third_party/mujoco/src/user/` 等子目录保留了上游自带的
+`.clang-format`，其中部分选项高于本机 clang-format 版本，直接对整个仓库执行
+clang-format 会在这些文件上报配置解析错误。因此统一按下面的命令排除
+`third_party`。
+
+```bash
+# 检查整个仓库（不修改文件）
+find . -path ./.git -prune -o -path '*/build' -prune \
+  -o -path './romujoco/third_party' -prune \
+  -o \( -name '*.hpp' -o -name '*.cpp' -o -name '*.h' -o -name '*.cc' \) -print0 |
+  xargs -0 -r clang-format --dry-run -Werror
+
+# 格式化整个仓库
+find . -path ./.git -prune -o -path '*/build' -prune \
+  -o -path './romujoco/third_party' -prune \
+  -o \( -name '*.hpp' -o -name '*.cpp' -o -name '*.h' -o -name '*.cc' \) -print0 |
+  xargs -0 -r clang-format -i
+```
 
 ## include 顺序
 

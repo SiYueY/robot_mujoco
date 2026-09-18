@@ -14,21 +14,21 @@ struct MjDataDeleter {
     }
 };
 
-struct mjContext {
-    constexpr mjContext() = default;
-    constexpr mjContext(mjModel* model, mjData* data) noexcept : model(model), data(data) {}
+struct SimulationContext {
+    constexpr SimulationContext() = default;
+    constexpr SimulationContext(mjModel* model, mjData* data) noexcept : model(model), data(data) {}
 
-    ~mjContext() { clear(); }
+    ~SimulationContext() { clear(); }
 
-    mjContext(const mjContext&) = delete;
-    mjContext& operator=(const mjContext&) = delete;
+    SimulationContext(const SimulationContext&) = delete;
+    SimulationContext& operator=(const SimulationContext&) = delete;
 
-    mjContext(mjContext&& other) noexcept : model(other.model), data(other.data) {
+    SimulationContext(SimulationContext&& other) noexcept : model(other.model), data(other.data) {
         other.model = nullptr;
         other.data = nullptr;
     }
 
-    mjContext& operator=(mjContext&& other) noexcept {
+    SimulationContext& operator=(SimulationContext&& other) noexcept {
         if (this != &other) {
             clear();
             model = other.model;

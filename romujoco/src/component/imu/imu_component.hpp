@@ -8,7 +8,7 @@
 #include "romujoco/component/imu.hpp"
 
 #include "component/component.hpp"
-#include "runtime/context.hpp"
+#include "runtime/simulation_context.hpp"
 
 namespace romujoco {
 
@@ -16,13 +16,13 @@ class ImuComponent : public SimulationComponent {
 public:
     explicit ImuComponent(ImuInfo info);
 
-    bool init(const mjContext& context) override;
-    bool reset(const mjContext& context) override;
-    bool advance(const mjContext& context) override;
-    bool update(const mjContext& context) override;
+    bool init(const SimulationContext& context) override;
+    bool reset(const SimulationContext& context) override;
+    bool advance(const SimulationContext& context) override;
+    bool update(const SimulationContext& context) override;
 
     bool read_state(std::shared_ptr<const ImuState>& state) const;
-    bool read(const mjContext& context, ImuState& state) const;
+    bool read(const SimulationContext& context, ImuState& state) const;
 
     const ImuInfo& info() const noexcept { return info_; }
     bool is_initialized() const noexcept { return initialized_; }
@@ -36,7 +36,7 @@ private:
     // Imu 信息
     ImuInfo info_;
     // 仿真信息
-    mjImu imu_{};
+    ImuBinding imu_{};
     std::uint64_t sequence_{0};
     // Imu 状态
     std::shared_ptr<const ImuState> state_;

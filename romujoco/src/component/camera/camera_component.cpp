@@ -10,7 +10,7 @@ namespace romujoco {
 CameraComponent::CameraComponent(CameraConfig config)
 : SimulationComponent(config.name, config.period), config_(std::move(config)) {}
 
-bool CameraComponent::init(const mjContext& context) {
+bool CameraComponent::init(const SimulationContext& context) {
     if (!configure(context)) {
         return false;
     }
@@ -44,7 +44,7 @@ bool CameraComponent::init(const mjContext& context) {
     return true;
 }
 
-bool CameraComponent::reset(const mjContext& context) {
+bool CameraComponent::reset(const SimulationContext& context) {
     UNUSED(context);
     sample_sequence_ = 0;
     last_applied_sequence_ = 0;
@@ -57,12 +57,12 @@ bool CameraComponent::read_state(std::shared_ptr<const CameraState>& state) cons
     return state != nullptr;
 }
 
-bool CameraComponent::advance(const mjContext& context) {
+bool CameraComponent::advance(const SimulationContext& context) {
     UNUSED(context);
     return true;
 }
 
-bool CameraComponent::update(const mjContext& context) {
+bool CameraComponent::update(const SimulationContext& context) {
     UNUSED(context);
     if (camera_id_ < 0) {
         SIM_ERROR << "camera must be bound before update.";

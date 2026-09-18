@@ -2,7 +2,7 @@
 
 #include <mujoco/mujoco.h>
 
-#include "runtime/context.hpp"
+#include "runtime/simulation_context.hpp"
 #include "test_support.hpp"
 #include "viewer/simulation_viewer.hpp"
 
@@ -33,7 +33,7 @@ int main() {
     }
     mj_forward(model, data);
 
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
     romujoco::SimulationViewer viewer;
     const bool prepared = viewer.prepare(context);
     viewer.stop();

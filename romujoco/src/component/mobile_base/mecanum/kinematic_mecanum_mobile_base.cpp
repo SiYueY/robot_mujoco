@@ -1,125 +1,168 @@
 #include "component/mobile_base/mecanum/kinematic_mecanum_mobile_base.hpp"
+
 #include <cmath>
 #include <unordered_set>
+#include <utility>
+
 namespace romujoco {
-KinematicMecanumMobileBase::KinematicMecanumMobileBase(MecanumMobileBaseInfo i)
-: MobileBaseComponent(i.common.name, i.common.period), info_(std::move(i)), ik_(info_) {}
-bool KinematicMecanumMobileBase::base(const mjContext& c) {
-    int b = mj_name2id(c.model, mjOBJ_BODY, info_.common.base_body_name.c_str()), j = -1;
-    if (b < 0) return false;
-    for (int n = 0; n < c.model->njnt; ++n)
-        if (c.model->jnt_bodyid[n] == b && c.model->jnt_type[n] == mjJNT_FREE) {
-            if (j >= 0) return false;
-            j = n;
-        }
-    if (j < 0) return false;
-    q_ = c.model->jnt_qposadr[j];
-    d_ = c.model->jnt_dofadr[j];
+
+KinematicMecanumMobileBase::KinematicMecanumMobileBase(MecanumMobileBaseInfo info)
+: MobileBaseComponent(info.common.name, info.common.period),
+  info_(std::move(info)),
+  kinematics_(info_) {}
+
+bool KinematicMecanumMobileBase::bind_base_joint(const SimulationContext& context) {
+    const int body_id = mj_name2id(context.model, mjOBJ_BODY, info_.common.base_body_name.c_str());
+    if (body_id < 0) return false;
+    int free_joint = -1;
+    for (int joint = 0; joint < context.model->njnt; ++joint) {
+        if (context.model->jnt_bodyid[joint] != body_id ||
+            context.model->jnt_type[joint] != mjJNT_FREE)
+            continue;
+        if (free_joint >= 0) return false;
+        free_joint = joint;
+    }
+    if (free_joint < 0) return false;
+    base_qpos_ = context.model->jnt_qposadr[free_joint];
+    base_dof_ = context.model->jnt_dofadr[free_joint];
     return true;
 }
-bool KinematicMecanumMobileBase::wheel(const mjContext& c, const MecanumWheelInfo& i, Wheel& w) {
-    w.joint = mj_name2id(c.model, mjOBJ_JOINT, i.joint_name.c_str());
-    if (w.joint < 0 || c.model->jnt_type[w.joint] != mjJNT_HINGE || c.model->jnt_limited[w.joint] ||
-        !std::isfinite(i.radius) || i.radius <= 0 || !std::isfinite(i.speed_response) ||
-        i.speed_response < 0 || (i.direction != -1 && i.direction != 1))
+
+bool KinematicMecanumMobileBase::bind_wheel(
+    const SimulationContext& context, const MecanumWheelInfo& wheel_info, Wheel& wheel) {
+    wheel.joint_id = mj_name2id(context.model, mjOBJ_JOINT, wheel_info.joint_name.c_str());
+    if (wheel.joint_id < 0 || context.model->jnt_type[wheel.joint_id] != mjJNT_HINGE ||
+        context.model->jnt_limited[wheel.joint_id] != 0 || !std::isfinite(wheel_info.radius) ||
+        wheel_info.radius <= 0.0 || !std::isfinite(wheel_info.speed_response) ||
+        wheel_info.speed_response < 0.0 ||
+        (wheel_info.direction != -1.0 && wheel_info.direction != 1.0))
         return false;
-    w.qpos = c.model->jnt_qposadr[w.joint];
-    w.dof = c.model->jnt_dofadr[w.joint];
-    w.radius = i.radius;
-    w.direction = i.direction;
-    w.response = i.speed_response;
+    wheel.qpos_address = context.model->jnt_qposadr[wheel.joint_id];
+    wheel.dof_address = context.model->jnt_dofadr[wheel.joint_id];
+    wheel.radius = wheel_info.radius;
+    wheel.direction = wheel_info.direction;
+    wheel.response = wheel_info.speed_response;
     return true;
 }
-bool KinematicMecanumMobileBase::init(const mjContext& c) {
-    if (info_.common.execution_mode != MobileBaseExecutionMode::Kinematic || !configure(c) ||
-        !base(c))
+
+bool KinematicMecanumMobileBase::init(const SimulationContext& context) {
+    if (info_.common.execution_mode != MobileBaseExecutionMode::Kinematic || !configure(context) ||
+        !bind_base_joint(context))
         return false;
-    std::unordered_set<int> s;
-    for (size_t i = 0; i < wheels_.size(); ++i)
-        if (!wheel(c, info_.wheels[i], wheels_[i]) || !s.insert(wheels_[i].joint).second)
+    std::unordered_set<int> joint_ids;
+    for (std::size_t index = 0; index < wheels_.size(); ++index) {
+        if (!bind_wheel(context, info_.wheels[index], wheels_[index]) ||
+            !joint_ids.insert(wheels_[index].joint_id).second)
             return false;
+    }
     ready_ = true;
-    return reset(c);
+    return reset(context);
 }
-bool KinematicMecanumMobileBase::reset(const mjContext& c) {
+
+bool KinematicMecanumMobileBase::reset(const SimulationContext& context) {
     if (!ready_) return false;
-    auto p = c.model->qpos0 + q_;
-    if (std::abs(p[4]) > 1e-10 || std::abs(p[5]) > 1e-10) return false;
-    for (int i = 0; i < 7; ++i) c.data->qpos[q_ + i] = p[i];
-    origin_ = {p[0], p[1], p[2]};
-    origin_yaw_ = 2 * std::atan2(p[6], p[3]);
-    x_ = y_ = yaw_ = 0;
-    linear_ = {};
-    angular_ = {};
-    for (auto& w : wheels_) {
-        w.target = w.feedback = 0;
-        w.position = c.model->qpos0[w.qpos];
-        c.data->qpos[w.qpos] = w.position;
-        c.data->qvel[w.dof] = 0;
+    const mjtNum* reference = context.model->qpos0 + base_qpos_;
+    if (std::abs(reference[4]) > 1e-10 || std::abs(reference[5]) > 1e-10) return false;
+    for (int index = 0; index < 7; ++index)
+        context.data->qpos[base_qpos_ + index] = reference[index];
+    origin_ = {reference[0], reference[1], reference[2]};
+    origin_yaw_ = 2.0 * std::atan2(reference[6], reference[3]);
+    local_x_ = 0.0;
+    local_y_ = 0.0;
+    local_yaw_ = 0.0;
+    linear_velocity_ = {};
+    angular_velocity_ = {};
+    for (Wheel& wheel : wheels_) {
+        wheel.target = 0.0;
+        wheel.feedback = 0.0;
+        wheel.position = context.model->qpos0[wheel.qpos_address];
+        context.data->qpos[wheel.qpos_address] = wheel.position;
+        context.data->qvel[wheel.dof_address] = 0.0;
     }
-    publish(c);
+    publish(context);
     state_ = std::make_shared<MobileBaseState>(working_);
     return true;
 }
-bool KinematicMecanumMobileBase::write(const mjContext&, const MobileBaseCommand& v) {
-    if (!ready_ || v.id != info_.common.id || !std::isfinite(v.velocity.linear_x) ||
-        !std::isfinite(v.velocity.linear_y) || !std::isfinite(v.velocity.angular_z))
+
+bool KinematicMecanumMobileBase::write(const SimulationContext&, const MobileBaseCommand& command) {
+    if (!ready_ || command.id != info_.common.id || !std::isfinite(command.velocity.linear_x) ||
+        !std::isfinite(command.velocity.linear_y) || !std::isfinite(command.velocity.angular_z))
         return false;
-    Vector4d t{};
-    ik_.inverse(v.velocity, t);
-    for (size_t i = 0; i < wheels_.size(); ++i)
-        wheels_[i].target = wheels_[i].direction * t[i] / wheels_[i].radius;
+    Vector4d wheel_linear{};
+    kinematics_.inverse(command.velocity, wheel_linear);
+    for (std::size_t index = 0; index < wheels_.size(); ++index)
+        wheels_[index].target =
+            wheels_[index].direction * wheel_linear[index] / wheels_[index].radius;
     return true;
 }
-bool KinematicMecanumMobileBase::advance(const mjContext& c) {
+
+bool KinematicMecanumMobileBase::advance(const SimulationContext& context) {
     if (!ready_) return false;
-    double dt = c.model->opt.timestep;
-    if (!std::isfinite(dt) || dt <= 0) return false;
-    Vector4d w{};
-    for (size_t i = 0; i < wheels_.size(); ++i) {
-        auto& a = wheels_[i];
-        a.feedback = a.response == 0
-                         ? a.target
-                         : a.feedback + (1 - std::exp(-dt / a.response)) * (a.target - a.feedback);
-        a.position += a.feedback * dt;
-        c.data->qpos[a.qpos] = a.position;
-        c.data->qvel[a.dof] = a.feedback;
-        w[i] = a.direction * a.radius * a.feedback;
+    const double timestep = context.model->opt.timestep;
+    if (!std::isfinite(timestep) || timestep <= 0.0) return false;
+    Vector4d wheel_linear{};
+    for (std::size_t index = 0; index < wheels_.size(); ++index) {
+        Wheel& wheel = wheels_[index];
+        wheel.feedback = wheel.response == 0.0
+                             ? wheel.target
+                             : wheel.feedback + (1.0 - std::exp(-timestep / wheel.response)) *
+                                                    (wheel.target - wheel.feedback);
+        wheel.position += wheel.feedback * timestep;
+        context.data->qpos[wheel.qpos_address] = wheel.position;
+        context.data->qvel[wheel.dof_address] = wheel.feedback;
+        wheel_linear[index] = wheel.direction * wheel.radius * wheel.feedback;
     }
-    ik_.forward(w, linear_, angular_);
-    yaw_ = std::remainder(yaw_ + angular_[2] * dt, 2 * Pi);
-    x_ += (std::cos(yaw_) * linear_[0] - std::sin(yaw_) * linear_[1]) * dt;
-    y_ += (std::sin(yaw_) * linear_[0] + std::cos(yaw_) * linear_[1]) * dt;
-    double a = origin_yaw_ + yaw_, co = std::cos(origin_yaw_), si = std::sin(origin_yaw_);
-    c.data->qpos[q_] = origin_[0] + co * x_ - si * y_;
-    c.data->qpos[q_ + 1] = origin_[1] + si * x_ + co * y_;
-    c.data->qpos[q_ + 2] = origin_[2];
-    c.data->qpos[q_ + 3] = std::cos(a / 2);
-    c.data->qpos[q_ + 4] = c.data->qpos[q_ + 5] = 0;
-    c.data->qpos[q_ + 6] = std::sin(a / 2);
-    c.data->qvel[d_] = std::cos(a) * linear_[0] - std::sin(a) * linear_[1];
-    c.data->qvel[d_ + 1] = std::sin(a) * linear_[0] + std::cos(a) * linear_[1];
-    c.data->qvel[d_ + 2] = c.data->qvel[d_ + 3] = c.data->qvel[d_ + 4] = 0;
-    c.data->qvel[d_ + 5] = angular_[2];
+    kinematics_.forward(wheel_linear, linear_velocity_, angular_velocity_);
+    local_yaw_ = std::remainder(local_yaw_ + angular_velocity_[2] * timestep, 2.0 * kPi);
+    local_x_ +=
+        (std::cos(local_yaw_) * linear_velocity_[0] - std::sin(local_yaw_) * linear_velocity_[1]) *
+        timestep;
+    local_y_ +=
+        (std::sin(local_yaw_) * linear_velocity_[0] + std::cos(local_yaw_) * linear_velocity_[1]) *
+        timestep;
+    const double yaw = origin_yaw_ + local_yaw_;
+    const double origin_cos = std::cos(origin_yaw_);
+    const double origin_sin = std::sin(origin_yaw_);
+    context.data->qpos[base_qpos_] = origin_[0] + origin_cos * local_x_ - origin_sin * local_y_;
+    context.data->qpos[base_qpos_ + 1] = origin_[1] + origin_sin * local_x_ + origin_cos * local_y_;
+    context.data->qpos[base_qpos_ + 2] = origin_[2];
+    context.data->qpos[base_qpos_ + 3] = std::cos(yaw / 2.0);
+    context.data->qpos[base_qpos_ + 4] = 0.0;
+    context.data->qpos[base_qpos_ + 5] = 0.0;
+    context.data->qpos[base_qpos_ + 6] = std::sin(yaw / 2.0);
+    context.data->qvel[base_dof_] =
+        std::cos(yaw) * linear_velocity_[0] - std::sin(yaw) * linear_velocity_[1];
+    context.data->qvel[base_dof_ + 1] =
+        std::sin(yaw) * linear_velocity_[0] + std::cos(yaw) * linear_velocity_[1];
+    context.data->qvel[base_dof_ + 2] = 0.0;
+    context.data->qvel[base_dof_ + 3] = 0.0;
+    context.data->qvel[base_dof_ + 4] = 0.0;
+    context.data->qvel[base_dof_ + 5] = angular_velocity_[2];
     return true;
 }
-void KinematicMecanumMobileBase::publish(const mjContext& c) {
-    double a = origin_yaw_ + yaw_;
+
+void KinematicMecanumMobileBase::publish(const SimulationContext& context) {
+    const double yaw = origin_yaw_ + local_yaw_;
     working_.id = info_.common.id;
-    working_.timestamp = c.data->time;
-    working_.pose.position = {c.data->qpos[q_], c.data->qpos[q_ + 1], c.data->qpos[q_ + 2]};
-    working_.pose.orientation = {std::cos(a / 2), 0, 0, std::sin(a / 2)};
-    working_.twist.linear = linear_;
-    working_.twist.angular = angular_;
+    working_.timestamp = context.data->time;
+    working_.pose.position = {
+        context.data->qpos[base_qpos_], context.data->qpos[base_qpos_ + 1],
+        context.data->qpos[base_qpos_ + 2]};
+    working_.pose.orientation = {std::cos(yaw / 2.0), 0.0, 0.0, std::sin(yaw / 2.0)};
+    working_.twist.linear = linear_velocity_;
+    working_.twist.angular = angular_velocity_;
 }
-bool KinematicMecanumMobileBase::update(const mjContext& c) {
+
+bool KinematicMecanumMobileBase::update(const SimulationContext& context) {
     if (!ready_) return false;
-    publish(c);
+    publish(context);
     state_ = std::make_shared<MobileBaseState>(working_);
     return true;
 }
-bool KinematicMecanumMobileBase::read_state(std::shared_ptr<const MobileBaseState>& s) const {
-    s = state_;
-    return ready_ && s != nullptr;
+
+bool KinematicMecanumMobileBase::read_state(std::shared_ptr<const MobileBaseState>& state) const {
+    state = state_;
+    return ready_ && state != nullptr;
 }
+
 }  // namespace romujoco

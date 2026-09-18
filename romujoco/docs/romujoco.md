@@ -31,7 +31,7 @@ Simulation
   -> SimulationScheduler
   -> ComponentManager
     -> SimulationComponent
-      -> Joint / Imu / Lidar / Camera / MobileBase
+      -> Joint / Gripper / Imu / Lidar / Camera / MobileBase
   -> CommandBuffer / StateBuffer
   -> CameraRenderService (internal)
   -> SimulationViewer
@@ -44,7 +44,7 @@ Simulation
 - `SimulationScheduler` 负责运行态调度和状态机
 - `ComponentManager` 负责组件装配、统一更新、命令下发和聚合读状态
 - `CameraRenderService` 与 `SimulationViewer` 是独立渲染资源
-- `SimulationViewer` 通过受控 `mjContext` 同步 MuJoCo 运行时，不直接对外暴露裸 `mjModel* / mjData*` 启动接口
+- `SimulationViewer` 通过受控 `SimulationContext` 同步 MuJoCo 运行时，不直接对外暴露裸 `mjModel* / mjData*` 启动接口
 - viewer 启动超时通过 `SimulationConfig.viewer_startup_timeout` 控制
 - `mjModel / mjData` 保持单写线程原则，只在 scheduler/reset 安全路径中写入
 
@@ -80,17 +80,19 @@ Simulation
   - `step(std::size_t count = 1)`、`step_count()`、`status()` 与 `time()`
 - 组件与命令
   - `write_command(const JointCommand&)`
+  - `write_command(const GripperCommand&)`
   - `write_command(const MobileBaseCommand&)`
   - `write_command(const RobotCommand&)`：跨类型原子提交
   - `write_commands(const JointCommands&)`
+  - `write_commands(const GripperCommands&)`
   - `write_commands(const MobileBaseCommands&)`
 - 状态读取
   - `read_state(std::shared_ptr<const RobotState>&)`
   - `read_state(RobotState&)`
-  - 按组件 ID 读取 `JointState`、`ImuState`、`CameraState`、`LidarState` 与
-    `MobileBaseState`
-  - 分别读取 `JointStates`、`ImuStates`、`CameraStates`、`LidarStates` 与
-    `MobileBaseStates` 聚合状态
+  - 按组件 ID 读取 `JointState`、`GripperState`、`ImuState`、`CameraState`、
+    `LidarState` 与 `MobileBaseState`
+  - 分别读取 `JointStates`、`GripperStates`、`ImuStates`、`CameraStates`、
+    `LidarStates` 与 `MobileBaseStates` 聚合状态
 
 ## 组件模型与调度模型
 
@@ -99,10 +101,10 @@ Simulation
 统一组件能力：
 
 - `name()`
-- `init(const mjContext&)`
+- `init(const SimulationContext&)`
 - `reset(...)`
 - `update(...)`
-- `poll_update(mjTime time)`
+- `poll_update(SimTime time)`
 - `reset_schedule()`
 
 调度原则：
@@ -145,16 +147,44 @@ Simulation
 - 状态主要映射：
   - `position <- qpos`
   - `velocity <- qvel`
-  - `effort <- qfrc_actuator + qfrc_applied`
-- 命令主要映射：
-  - `Position / Velocity` 走 `ctrl`
-  - `Effort` 对可驱动 actuator 写 `ctrl`，对被动关节回退到 `qfrc_applied`
+  - `effort <- qfrc_actuator`
+- 命令主要映射：四种模式都换算为广义力后写入 `ctrl`
+  - `Position / Velocity / Hybrid` 由 stiffness / damping 换算
+  - `Effort` 直接使用命令力，可叠加重力补偿
+  - 结果统一受 `effort_limits` 与 actuator 的 `forcerange` / `ctrlrange` 限制
+- 被动关节没有 actuator：不接收命令，也不写 `qfrc_applied`
 
 当前不处理：
 
 - transmission
 - mimic joint
 - 多自由度 joint
+
+### Gripper
+
+`Gripper` 是双指平行夹爪的设备级抽象，描述总开口宽度而不是单个 finger
+joint。详细设计见 [gripper.md](./component/gripper.md)。
+
+- 固定包含两个 finger，finger 对应 `mjJNT_SLIDE` joint，joint 坐标已按
+  “增大即张开”规范化
+- `width = q0 + q1`，`velocity = dq0 + dq1`，`effort` 取所有主动 finger
+  actuator 的最大绝对力
+- 至少需要一个 actuator；没有独立 actuator 的 finger 由 MJCF
+  equality/tendon 等机械约束驱动
+- 命令只提供 `width / velocity / effort`，其中 `velocity` 与 `effort`
+  为非负幅值；方向由目标宽度与当前宽度的差决定
+- 组件内部维护受 `velocity` 限制的 width reference，`advance()` 按对称
+  半宽 reference 对每个主动 finger 执行 PD 控制并写入 `ctrl`
+- `update()` 采样状态并按 `width_tolerance / velocity_threshold /
+  effort_ratio / timeout` 判定 `stalled`
+- reset 保持当前开口，清零 `ctrl`、stall 状态与命令速度/力
+- 一个 finger joint 或 actuator 只能由一个组件拥有，配置阶段检测冲突
+
+当前不处理：
+
+- 三指或多指机械手
+- 独立 finger 命令
+- grasp planning 与精确接触力估计
 
 ### Imu
 
@@ -202,18 +232,25 @@ Simulation
 
 ### MobileBase
 
-`MobileBase` 是多个 traction joints 的组合运动学包装，不是特殊的 `Joint`。
+`MobileBase` 是底盘级协调组件：公共接口只有平面速度命令与底盘状态，wheel /
+steering actuator 如何驱动属于各 chassis 自己的实现。详细契约见
+[mobile_base.md](./component/mobile_base.md)。
 
+- `MobileBaseCommand` 只包含 `PlanarTwist`：`linear_x` / `linear_y` / `angular_z`
+- `MobileBaseState` 是 `timestamp + Pose3d + Twist3d` 的地面真值状态
 - 当前支持：
-  - `Mecanum`
-- 通过轮配置把底盘命令映射为多个关节命令
-- 通过多个关节状态恢复底盘状态
+  - `Mecanum` + `execution_mode = kinematic`：直接推进 base free joint 与轮 joint
+  - `Swerve` + `execution_mode = dynamic`：只写 steering position 与 drive velocity，
+    底盘位姿由 MuJoCo 动力学和轮地接触决定
+- 新增底盘只需增加 chassis 实现与配置解析，运行时的 `Simulation` /
+  `SimulationScheduler` 不变
 
 当前不处理：
 
 - `Ackermann`
 - `Tricycle`
-- steering joint 语义
+- 履带等其余底盘
+- wheel odometry 与 ROS 消息
 - 更高层控制器
 
 ## 与 MuJoCo 核心对象的映射
@@ -233,10 +270,11 @@ Simulation
 
 | 设备 | 主要来源 |
 | --- | --- |
-| `Joint` | `qpos` / `qvel` / `ctrl` / `qfrc_*` |
+| `Joint` | `qpos` / `qvel` / `ctrl` / `qfrc_actuator` |
 | `Imu` | `sensordata` |
 | `Lidar` | `sensordata` |
 | `Camera` | 渲染管线，不走 `sensordata` |
+| `Gripper` | `qpos` / `qvel` / `ctrl` / `actuator_force`（+ MJCF equality） |
 | `MobileBase` | 多个 `Joint` 的读写组合 |
 
 ## 当前边界与非目标

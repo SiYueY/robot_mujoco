@@ -16,7 +16,7 @@ public:
     MobileBaseComponent(const MobileBaseComponent&) = delete;
     MobileBaseComponent& operator=(const MobileBaseComponent&) = delete;
 
-    virtual bool write(const mjContext& context, const MobileBaseCommand& command) = 0;
+    virtual bool write(const SimulationContext& context, const MobileBaseCommand& command) = 0;
     virtual bool read_state(std::shared_ptr<const MobileBaseState>& state) const = 0;
 
 public:

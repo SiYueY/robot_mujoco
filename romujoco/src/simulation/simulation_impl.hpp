@@ -32,18 +32,22 @@ public:
     bool reset(const std::string* keyframe_name);
 
     bool write_command(const JointCommand& command);
+    bool write_command(const GripperCommand& command);
     bool write_command(const MobileBaseCommand& command);
     bool write_command(const RobotCommand& command);
     bool write_commands(const JointCommands& commands);
+    bool write_commands(const GripperCommands& commands);
     bool write_commands(const MobileBaseCommands& commands);
     bool read_state(std::shared_ptr<const RobotState>& state) const;
     bool read_state(RobotState& state) const;
     bool read_state(JointState& state) const;
+    bool read_state(GripperState& state) const;
     bool read_state(ImuState& state) const;
     bool read_state(CameraState& state) const;
     bool read_state(LidarState& state) const;
     bool read_state(MobileBaseState& state) const;
     bool read_state(JointStates& state) const;
+    bool read_state(GripperStates& state) const;
     bool read_state(ImuStates& state) const;
     bool read_state(CameraStates& state) const;
     bool read_state(LidarStates& state) const;

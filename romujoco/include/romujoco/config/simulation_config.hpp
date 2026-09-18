@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "romujoco/component/camera.hpp"
+#include "romujoco/component/gripper.hpp"
 #include "romujoco/component/imu.hpp"
 #include "romujoco/component/joint.hpp"
 #include "romujoco/component/lidar.hpp"
@@ -17,7 +18,9 @@
 
 namespace romujoco {
 
-using ComponentConfig = std::variant<JointInfo, ImuInfo, CameraConfig, LidarInfo, MecanumMobileBaseInfo, SwerveMobileBaseInfo>;
+using ComponentConfig = std::variant<
+    JointInfo, GripperInfo, ImuInfo, CameraConfig, LidarInfo, MecanumMobileBaseInfo,
+    SwerveMobileBaseInfo>;
 using ComponentConfigList = std::vector<ComponentConfig>;
 
 // Configuration contract for the always-built internal camera renderer.  It

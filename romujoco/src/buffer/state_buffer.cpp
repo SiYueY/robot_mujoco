@@ -74,6 +74,21 @@ bool StateBuffer::read(JointStates& states) const {
     return true;
 }
 
+bool StateBuffer::read(GripperState& state) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    return read_state(robot_state->grippers, id_resolver_->grippers(), state);
+}
+
+bool StateBuffer::read(GripperStates& states) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    states = robot_state->grippers;
+    return true;
+}
+
 bool StateBuffer::read(MobileBaseState& state) const {
     if (id_resolver_ == nullptr) return false;
     const auto robot_state = read();
@@ -138,6 +153,7 @@ bool StateBuffer::write(std::shared_ptr<const RobotState> robot_state) {
     if (id_resolver_ == nullptr) return false;
     if (robot_state == nullptr) return false;
     if (!validate_states(robot_state->joints, id_resolver_->joints())) return false;
+    if (!validate_states(robot_state->grippers, id_resolver_->grippers())) return false;
     if (!validate_states(robot_state->mobile_bases, id_resolver_->mobile_bases())) return false;
     if (!validate_states(robot_state->imus, id_resolver_->imus())) return false;
     if (!validate_states(robot_state->cameras, id_resolver_->cameras())) return false;

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "romujoco/component/camera.hpp"
+#include "romujoco/component/gripper.hpp"
 #include "romujoco/component/imu.hpp"
 #include "romujoco/component/joint.hpp"
 #include "romujoco/component/lidar.hpp"
@@ -40,19 +41,23 @@ public:
     ROMUJOCO_PUBLIC bool reset(std::string keyframe_name);
 
     ROMUJOCO_PUBLIC bool write_command(const JointCommand& command);
+    ROMUJOCO_PUBLIC bool write_command(const GripperCommand& command);
     ROMUJOCO_PUBLIC bool write_command(const MobileBaseCommand& command);
     ROMUJOCO_PUBLIC bool write_command(const RobotCommand& command);
     ROMUJOCO_PUBLIC bool write_commands(const JointCommands& commands);
+    ROMUJOCO_PUBLIC bool write_commands(const GripperCommands& commands);
     ROMUJOCO_PUBLIC bool write_commands(const MobileBaseCommands& commands);
 
     ROMUJOCO_PUBLIC bool read_state(std::shared_ptr<const RobotState>& state) const;
     ROMUJOCO_PUBLIC bool read_state(RobotState& state) const;
     ROMUJOCO_PUBLIC bool read_state(JointState& state) const;
+    ROMUJOCO_PUBLIC bool read_state(GripperState& state) const;
     ROMUJOCO_PUBLIC bool read_state(ImuState& state) const;
     ROMUJOCO_PUBLIC bool read_state(CameraState& state) const;
     ROMUJOCO_PUBLIC bool read_state(LidarState& state) const;
     ROMUJOCO_PUBLIC bool read_state(MobileBaseState& state) const;
     ROMUJOCO_PUBLIC bool read_state(JointStates& states) const;
+    ROMUJOCO_PUBLIC bool read_state(GripperStates& states) const;
     ROMUJOCO_PUBLIC bool read_state(ImuStates& states) const;
     ROMUJOCO_PUBLIC bool read_state(CameraStates& states) const;
     ROMUJOCO_PUBLIC bool read_state(LidarStates& states) const;

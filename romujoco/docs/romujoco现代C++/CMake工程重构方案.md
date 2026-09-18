@@ -385,7 +385,7 @@ romujoco/
 │   │   ├── simulation_config_validator.cpp
 │   │
 │   ├── runtime/
-│   │   ├── context.hpp
+│   │   ├── simulation_context.hpp
 │   │   ├── type.hpp
 │   │   ├── simulation_runtime.hpp
 │   │   ├── simulation_runtime.cpp

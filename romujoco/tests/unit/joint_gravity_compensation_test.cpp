@@ -5,7 +5,7 @@
 #include <iostream>
 
 #include "component/joint/joint_component.hpp"
-#include "runtime/context.hpp"
+#include "runtime/simulation_context.hpp"
 #include "test_support.hpp"
 
 namespace {
@@ -24,8 +24,8 @@ romujoco::JointInfo joint_info(bool gravity_compensation) {
     info.actuator_name = "motor";
     info.default_mode = romujoco::JointMode::Effort;
     info.allowed_modes = {
-        romujoco::JointMode::Hybrid, romujoco::JointMode::Position,
-        romujoco::JointMode::Velocity, romujoco::JointMode::Effort};
+        romujoco::JointMode::Hybrid, romujoco::JointMode::Position, romujoco::JointMode::Velocity,
+        romujoco::JointMode::Effort};
     info.period = 0.001;
     info.hybrid.gravity_compensation = gravity_compensation;
     info.position.gravity_compensation = gravity_compensation;
@@ -56,7 +56,7 @@ int main() {
         mj_deleteModel(model);
         return 1;
     }
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
     data->qpos[0] = 1.5707963267948966;
     data->qvel[0] = 2.0;
     data->qacc[0] = 3.0;

@@ -75,7 +75,7 @@ bool SimulationRuntime::init(const ModelConfig& config) {
         return false;
     }
 
-    context_ = mjContext(mj_model, data);
+    context_ = SimulationContext(mj_model, data);
 
     if (!config.initial_keyframe.empty()) {
         const int keyframe_id =
@@ -123,7 +123,7 @@ bool SimulationRuntime::step(std::size_t count) {
         return false;
     }
 
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t index = 0; index < count; ++index) {
         mj_step(context_.model, context_.data);
     }
     return true;
@@ -178,7 +178,7 @@ bool SimulationRuntime::reset(std::string keyframe_name) {
     return reset_to_keyframe(keyframe_id);
 }
 
-const mjContext& SimulationRuntime::context() const noexcept { return context_; }
+const SimulationContext& SimulationRuntime::context() const noexcept { return context_; }
 
 double SimulationRuntime::time() const noexcept {
     return context_.data == nullptr ? 0.0 : context_.data->time;

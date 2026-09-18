@@ -20,17 +20,14 @@ public:
     explicit RetainingCameraRenderService(bool replace_pending_batch)
     : replace_pending_batch_(replace_pending_batch) {}
 
-    bool initialize(const romujoco::SimulationConfig&, const mjModel*) override {
-        return true;
-    }
+    bool initialize(const romujoco::SimulationConfig&, const mjModel*) override { return true; }
     romujoco::CameraRenderSubmitResult submit(
         const romujoco::CameraRenderBatchRequest& request,
         romujoco::CameraRenderTicket& ticket) override {
         ticket = {request.generation, request.sequence};
         latest_ticket_ = ticket;
-        return replace_pending_batch_
-                   ? romujoco::CameraRenderSubmitResult::ReplacedPendingBatch
-                   : romujoco::CameraRenderSubmitResult::Accepted;
+        return replace_pending_batch_ ? romujoco::CameraRenderSubmitResult::ReplacedPendingBatch
+                                      : romujoco::CameraRenderSubmitResult::Accepted;
     }
     romujoco::CameraRenderWaitStatus wait(
         const romujoco::CameraRenderTicket& ticket, std::chrono::milliseconds) override {
@@ -38,9 +35,8 @@ public:
     }
     romujoco::CameraRenderWaitStatus query(
         const romujoco::CameraRenderTicket& ticket) const override {
-        return completed_.count(key(ticket)) != 0U
-                   ? romujoco::CameraRenderWaitStatus::Completed
-                   : romujoco::CameraRenderWaitStatus::Timeout;
+        return completed_.count(key(ticket)) != 0U ? romujoco::CameraRenderWaitStatus::Completed
+                                                   : romujoco::CameraRenderWaitStatus::Timeout;
     }
     bool read_batch_result(
         const romujoco::CameraRenderTicket& ticket,
@@ -75,14 +71,12 @@ public:
     std::size_t read_count() const noexcept { return read_count_; }
 
 private:
-    static std::pair<std::uint64_t, std::uint64_t> key(
-        const romujoco::CameraRenderTicket& ticket) {
+    static std::pair<std::uint64_t, std::uint64_t> key(const romujoco::CameraRenderTicket& ticket) {
         return {ticket.generation, ticket.sequence};
     }
 
     romujoco::CameraRenderTicket latest_ticket_{};
-    std::map<std::pair<std::uint64_t, std::uint64_t>, romujoco::CameraRenderBatchResult>
-        completed_;
+    std::map<std::pair<std::uint64_t, std::uint64_t>, romujoco::CameraRenderBatchResult> completed_;
     std::size_t read_count_{0};
     bool replace_pending_batch_{false};
 };
@@ -90,8 +84,7 @@ private:
 }  // namespace
 
 int main() {
-    romujoco_test::TemporaryFile model_file(
-        "mujoco_component_manager_camera_reset_test.xml");
+    romujoco_test::TemporaryFile model_file("mujoco_component_manager_camera_reset_test.xml");
     if (!check(
             model_file.write(R"(<mujoco><worldbody>
   <camera name="test_camera" pos="0 -2 0.5" xyaxes="1 0 0 0 0 1"/>
@@ -108,7 +101,7 @@ int main() {
         return 1;
     }
     mj_forward(model, data);
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
 
     romujoco::CameraConfig camera;
     camera.id = 2;

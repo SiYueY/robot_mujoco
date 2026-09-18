@@ -12,8 +12,10 @@
 #include <EGL/eglext.h>
 #include <GLFW/glfw3.h>
 
-#include "log/logging.hpp"
+#include "romujoco/common/math.hpp"
+
 #include "common/macro.hpp"
+#include "log/logging.hpp"
 
 namespace romujoco {
 namespace {
@@ -24,7 +26,6 @@ constexpr int kColorChannelCount = 3;
 constexpr int kEglColorBits = 8;
 constexpr int kEglDepthBits = 24;
 constexpr int kFontScale = mjFONTSCALE_150;
-constexpr double kPi = 3.14159265358979323846;
 constexpr CameraId kMaximumCameraId{255};
 
 template <typename Callback>
@@ -91,7 +92,7 @@ CameraRenderer::CameraRenderer(CameraRendererConfig config) : config_(config) {}
 
 CameraRenderer::~CameraRenderer() { UNUSED(release()); }
 
-bool CameraRenderer::initialize(const mjContext& context) {
+bool CameraRenderer::initialize(const SimulationContext& context) {
     if (!context.valid()) {
         SIM_ERROR << "camera renderer requires a valid MuJoCo context.";
         return false;
@@ -187,7 +188,7 @@ bool CameraRenderer::initialize(const mjModel* model) {
 }
 
 std::optional<CameraRenderTicket> CameraRenderer::submit(
-    const mjContext& context, std::vector<CameraRenderTask> tasks) {
+    const SimulationContext& context, std::vector<CameraRenderTask> tasks) {
     if (!context.valid()) {
         SIM_ERROR << "camera renderer requires a valid MuJoCo context.";
         return std::nullopt;

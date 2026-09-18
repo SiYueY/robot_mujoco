@@ -31,14 +31,14 @@ public:
     CameraRenderer& operator=(const CameraRenderer&) = delete;
 
     /// 创建双缓冲数据并启动专属渲染线程；成功后重复调用不执行额外操作。
-    bool initialize(const mjContext& context);
+    bool initialize(const SimulationContext& context);
     bool initialize(const mjModel* model);
     /// 提交最新相机渲染请求；调用方必须在保护主 mjData 时调用。
     /// Empty task lists return a zero-valued immediately-completed no-op ticket.
     /// A no-op does not access the context and is valid even while this renderer
     /// is uninitialized.
     std::optional<CameraRenderTicket> submit(
-        const mjContext& context, std::vector<CameraRenderTask> tasks);
+        const SimulationContext& context, std::vector<CameraRenderTask> tasks);
     std::optional<CameraRenderTicket> submit(
         const mjModel* model, const mjData* data, std::vector<CameraRenderTask> tasks);
     /// Batch-protocol entry point used by CameraRenderService.  It snapshots

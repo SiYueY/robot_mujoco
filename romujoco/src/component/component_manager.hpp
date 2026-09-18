@@ -13,6 +13,7 @@
 #include "component/camera/camera_component.hpp"
 #include "component/camera/camera_render_service.hpp"
 #include "component/component.hpp"
+#include "component/gripper/gripper_component.hpp"
 #include "component/imu/imu_component.hpp"
 #include "component/joint/joint_component.hpp"
 #include "component/lidar/lidar_component.hpp"
@@ -23,28 +24,32 @@ namespace romujoco {
 class ComponentManager {
 public:
     bool init(
-        const mjContext& context, const ComponentConfigList& components,
+        const SimulationContext& context, const ComponentConfigList& components,
         CameraRenderService& camera_render_service);
     void clear();
 
-    bool reset(const mjContext& context);
-    bool reset(const mjContext& context, JointCommands& commands);
-    bool advance(const mjContext& context);
-    bool update(const mjContext& context);
-    bool write_command(const mjContext& context, const RobotCommand& command);
-    bool read_state(const mjContext& context, RobotState& snapshot) const;
+    bool reset(const SimulationContext& context);
+    bool reset(const SimulationContext& context, RobotCommand& commands);
+    bool advance(const SimulationContext& context);
+    bool update(const SimulationContext& context);
+    bool write_command(const SimulationContext& context, const RobotCommand& command);
+    bool read_state(const SimulationContext& context, RobotState& snapshot) const;
     bool wait_for_camera_results();
     bool has_cameras() const noexcept;
     void clear_camera_states() noexcept;
 
 private:
-    bool write_joint_commands(const mjContext& context, const std::vector<JointCommand>& commands);
+    bool write_joint_commands(
+        const SimulationContext& context, const std::vector<JointCommand>& commands);
+    bool write_gripper_commands(
+        const SimulationContext& context, const std::vector<GripperCommand>& commands);
     bool write_mobile_base_commands(
-        const mjContext& context, const std::vector<MobileBaseCommand>& commands);
+        const SimulationContext& context, const std::vector<MobileBaseCommand>& commands);
     bool consume_camera_results();
-    bool submit_due_cameras(const mjContext& context);
+    bool submit_due_cameras(const SimulationContext& context);
 
     std::vector<JointComponent::UniquePtr> joints_components_;
+    std::vector<GripperComponent::UniquePtr> gripper_components_;
     std::vector<std::uint64_t> joint_command_stamps_;
     std::uint64_t joint_command_epoch_{0};
     std::vector<CameraComponent::UniquePtr> camera_components_;
@@ -52,6 +57,7 @@ private:
     std::vector<LidarComponent::UniquePtr> lidar_components_;
     std::vector<MobileBaseComponent::UniquePtr> mobile_base_components_;
     JointStates joints_;
+    GripperStates grippers_;
     MobileBaseStates mobile_bases_;
     ImuStates imus_;
     LidarStates lidars_;

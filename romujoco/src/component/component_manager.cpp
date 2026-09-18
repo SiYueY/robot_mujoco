@@ -20,7 +20,7 @@ ComponentId component_id(const SwerveMobileBaseInfo& value) { return value.commo
 
 template <typename Component>
 bool reset_components(
-    const mjContext& context, std::vector<std::unique_ptr<Component>>& components) {
+    const SimulationContext& context, std::vector<std::unique_ptr<Component>>& components) {
     for (const auto& component : components) {
         if (component != nullptr && (!component->reset(context) || !component->reset_schedule())) {
             return false;
@@ -40,7 +40,7 @@ std::size_t component_count(const std::vector<std::unique_ptr<Component>>& v) {
 
 template <typename Component, typename State>
 bool update_components(
-    const mjContext& context, const std::vector<std::unique_ptr<Component>>& components,
+    const SimulationContext& context, const std::vector<std::unique_ptr<Component>>& components,
     StateSnapshots<State>& published) {
     std::vector<Component*> due;
     due.reserve(components.size());
@@ -80,7 +80,7 @@ bool update_components(
 }  // namespace
 
 bool ComponentManager::init(
-    const mjContext& context, const ComponentConfigList& components,
+    const SimulationContext& context, const ComponentConfigList& components,
     CameraRenderService& camera_render_service) {
     if (!context.valid()) {
         SIM_ERROR << "component manager requires a valid MuJoCo context.";
@@ -106,6 +106,13 @@ bool ComponentManager::init(
         if (const auto* value = std::get_if<JointInfo>(&entry);
             value != nullptr && !add(*value, joints_components_, [](JointInfo v) {
                 return std::make_unique<JointComponent>(std::move(v));
+            })) {
+            clear();
+            return false;
+        }
+        if (const auto* value = std::get_if<GripperInfo>(&entry);
+            value != nullptr && !add(*value, gripper_components_, [](GripperInfo v) {
+                return std::make_unique<GripperComponent>(std::move(v));
             })) {
             clear();
             return false;
@@ -154,6 +161,7 @@ bool ComponentManager::init(
         }
     };
     warn_sparse(joints_components_, "joint");
+    warn_sparse(gripper_components_, "gripper");
     warn_sparse(imu_components_, "imu");
     warn_sparse(camera_components_, "camera");
     warn_sparse(lidar_components_, "lidar");
@@ -164,6 +172,7 @@ bool ComponentManager::init(
 
 void ComponentManager::clear() {
     joints_components_.clear();
+    gripper_components_.clear();
     joint_command_stamps_.clear();
     joint_command_epoch_ = 0;
     camera_components_.clear();
@@ -171,6 +180,7 @@ void ComponentManager::clear() {
     lidar_components_.clear();
     mobile_base_components_.clear();
     joints_.reset();
+    grippers_.reset();
     mobile_bases_.reset();
     imus_.reset();
     lidars_.reset();
@@ -183,19 +193,25 @@ void ComponentManager::clear() {
     simulation_step_ = 0;
 }
 
-bool ComponentManager::reset(const mjContext& context) {
-    JointCommands ignored_commands;
+bool ComponentManager::reset(const SimulationContext& context) {
+    RobotCommand ignored_commands;
     return reset(context, ignored_commands);
 }
 
-bool ComponentManager::reset(const mjContext& context, JointCommands& commands) {
+bool ComponentManager::reset(const SimulationContext& context, RobotCommand& commands) {
     if (!context.valid()) return false;
-    commands.clear();
+    commands = {};
     for (const auto& component : joints_components_) {
         if (component == nullptr) continue;
         JointCommand command;
         if (!component->reset(context, command) || !component->reset_schedule()) return false;
-        if (component->is_active_joint()) commands.push_back(command);
+        if (component->is_active_joint()) commands.joints.push_back(command);
+    }
+    for (const auto& component : gripper_components_) {
+        if (component == nullptr) continue;
+        GripperCommand command;
+        if (!component->reset(context, command) || !component->reset_schedule()) return false;
+        commands.grippers.push_back(command);
     }
     if (!reset_components(context, camera_components_) ||
         !reset_components(context, imu_components_) ||
@@ -203,6 +219,7 @@ bool ComponentManager::reset(const mjContext& context, JointCommands& commands) 
         !reset_components(context, mobile_base_components_))
         return false;
     joints_.reset();
+    grippers_.reset();
     mobile_bases_.reset();
     imus_.reset();
     lidars_.reset();
@@ -215,7 +232,7 @@ bool ComponentManager::reset(const mjContext& context, JointCommands& commands) 
     return true;
 }
 
-bool ComponentManager::advance(const mjContext& context) {
+bool ComponentManager::advance(const SimulationContext& context) {
     if (!context.valid()) return false;
     const auto advance_components = [&](const auto& components) {
         for (const auto& component : components)
@@ -223,16 +240,18 @@ bool ComponentManager::advance(const mjContext& context) {
         return true;
     };
     if (!advance_components(joints_components_) || !advance_components(mobile_base_components_) ||
-        !advance_components(imu_components_) || !advance_components(lidar_components_) ||
-        !advance_components(camera_components_))
+        !advance_components(gripper_components_) || !advance_components(imu_components_) ||
+        !advance_components(lidar_components_) || !advance_components(camera_components_))
         return false;
     return true;
 }
 
-bool ComponentManager::update(const mjContext& context) {
+bool ComponentManager::update(const SimulationContext& context) {
     if (!context.valid()) return false;
     ++simulation_step_;
     if (!update_components<JointComponent, JointState>(context, joints_components_, joints_) ||
+        !update_components<GripperComponent, GripperState>(
+            context, gripper_components_, grippers_) ||
         !update_components<MobileBaseComponent, MobileBaseState>(
             context, mobile_base_components_, mobile_bases_) ||
         !update_components<ImuComponent, ImuState>(context, imu_components_, imus_) ||
@@ -328,7 +347,7 @@ bool ComponentManager::consume_camera_results() {
     return true;
 }
 
-bool ComponentManager::submit_due_cameras(const mjContext& context) {
+bool ComponentManager::submit_due_cameras(const SimulationContext& context) {
     if (!has_cameras()) return true;
     if (camera_render_service_ == nullptr) return false;
     std::vector<CameraRenderTask> tasks;
@@ -363,16 +382,19 @@ bool ComponentManager::submit_due_cameras(const mjContext& context) {
     return true;
 }
 
-bool ComponentManager::write_command(const mjContext& context, const RobotCommand& command) {
+bool ComponentManager::write_command(
+    const SimulationContext& context, const RobotCommand& command) {
     if (!context.valid()) return false;
     if (!command.joints.empty() && !write_joint_commands(context, command.joints)) return false;
+    if (!command.grippers.empty() && !write_gripper_commands(context, command.grippers))
+        return false;
     if (!command.mobile_bases.empty() && !write_mobile_base_commands(context, command.mobile_bases))
         return false;
     return true;
 }
 
 bool ComponentManager::write_joint_commands(
-    const mjContext& context, const std::vector<JointCommand>& commands) {
+    const SimulationContext& context, const std::vector<JointCommand>& commands) {
     if (++joint_command_epoch_ == 0) {
         std::fill(joint_command_stamps_.begin(), joint_command_stamps_.end(), 0);
         joint_command_epoch_ = 1;
@@ -395,8 +417,22 @@ bool ComponentManager::write_joint_commands(
     return true;
 }
 
+bool ComponentManager::write_gripper_commands(
+    const SimulationContext& context, const std::vector<GripperCommand>& commands) {
+    for (const GripperCommand& command : commands) {
+        const GripperId id = command.id;
+        if (id >= gripper_components_.size()) {
+            SIM_ERROR << "gripper command target id was not found.";
+            return false;
+        }
+        if (gripper_components_[id] == nullptr || !gripper_components_[id]->write(context, command))
+            return false;
+    }
+    return true;
+}
+
 bool ComponentManager::write_mobile_base_commands(
-    const mjContext& context, const std::vector<MobileBaseCommand>& commands) {
+    const SimulationContext& context, const std::vector<MobileBaseCommand>& commands) {
     for (const MobileBaseCommand& command : commands) {
         const ComponentId id = command.id;
         if (id >= mobile_base_components_.size()) {
@@ -410,8 +446,9 @@ bool ComponentManager::write_mobile_base_commands(
     return true;
 }
 
-bool ComponentManager::read_state(const mjContext&, RobotState& snapshot) const {
+bool ComponentManager::read_state(const SimulationContext&, RobotState& snapshot) const {
     snapshot.joints = joints_;
+    snapshot.grippers = grippers_;
     snapshot.mobile_bases = mobile_bases_;
     snapshot.imus = imus_;
     snapshot.lidars = lidars_;

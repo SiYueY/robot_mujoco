@@ -15,10 +15,10 @@ class CameraComponent : public SimulationComponent {
 public:
     explicit CameraComponent(CameraConfig config);
 
-    bool init(const mjContext& context) override;
-    bool reset(const mjContext& context) override;
-    bool advance(const mjContext& context) override;
-    bool update(const mjContext& context) override;
+    bool init(const SimulationContext& context) override;
+    bool reset(const SimulationContext& context) override;
+    bool advance(const SimulationContext& context) override;
+    bool update(const SimulationContext& context) override;
     CameraRenderTask make_render_task(std::uint64_t timestamp);
     bool apply_render_result(const CameraRenderTaskResult& result);
     void clear_render_state() noexcept;

@@ -98,26 +98,21 @@ int main() {
         !check(
             config.components.size() == 5U, "component period XML did not parse every component") ||
         !check(
-            std::abs(std::get<romujoco::JointInfo>(config.components[0]).period - 0.002) <
-                1e-12,
+            std::abs(std::get<romujoco::JointInfo>(config.components[0]).period - 0.002) < 1e-12,
             "joint period was not parsed") ||
         !check(
-            std::abs(std::get<romujoco::ImuInfo>(config.components[1]).period - 0.003) <
-                1e-12,
+            std::abs(std::get<romujoco::ImuInfo>(config.components[1]).period - 0.003) < 1e-12,
             "IMU period was not parsed") ||
         !check(
-            std::abs(
-                std::get<romujoco::CameraConfig>(config.components[2]).period - 0.004) <
-                1e-12,
+            std::abs(std::get<romujoco::CameraConfig>(config.components[2]).period - 0.004) < 1e-12,
             "camera period was not parsed") ||
         !check(
-            std::abs(std::get<romujoco::LidarInfo>(config.components[3]).period - 0.005) <
-                1e-12,
+            std::abs(std::get<romujoco::LidarInfo>(config.components[3]).period - 0.005) < 1e-12,
             "lidar period was not parsed") ||
         !check(
             std::abs(
-                std::get<romujoco::MecanumMobileBaseInfo>(config.components[4]).common.period - 0.006) <
-                1e-12,
+                std::get<romujoco::MecanumMobileBaseInfo>(config.components[4]).common.period -
+                0.006) < 1e-12,
             "mobile-base period was not parsed")) {
         cleanup();
         return 1;
@@ -135,8 +130,7 @@ int main() {
     if (!check(write_file(path, defaulted_period), "failed to write default-period XML") ||
         !check(parser.load_file(path.string(), config), "default-period XML was rejected") ||
         !check(
-            std::abs(std::get<romujoco::JointInfo>(config.components[0]).period - 0.001) <
-                1e-12,
+            std::abs(std::get<romujoco::JointInfo>(config.components[0]).period - 0.001) < 1e-12,
             "missing joint period was not defaulted to the physics period")) {
         cleanup();
         return 1;
@@ -162,8 +156,7 @@ int main() {
         cleanup();
         return 1;
     }
-    const auto& attribute_limit_joint =
-        std::get<romujoco::JointInfo>(config.components[0]);
+    const auto& attribute_limit_joint = std::get<romujoco::JointInfo>(config.components[0]);
     if (!check(
             attribute_limit_joint.position.stiffness == 300.0 &&
                 attribute_limit_joint.position.damping == 10.0 &&
@@ -247,8 +240,7 @@ int main() {
         cleanup();
         return 1;
     }
-    const auto& defaulted_control_joint =
-        std::get<romujoco::JointInfo>(config.components[0]);
+    const auto& defaulted_control_joint = std::get<romujoco::JointInfo>(config.components[0]);
     if (!check(
             defaulted_control_joint.position.stiffness == 0.0 &&
                 defaulted_control_joint.position.damping == 0.0 &&

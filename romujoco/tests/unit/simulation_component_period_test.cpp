@@ -14,13 +14,13 @@ class TestComponent final : public romujoco::SimulationComponent {
 public:
     explicit TestComponent(double period) : SimulationComponent("test_component", period) {}
 
-    bool init(const romujoco::mjContext& context) override { return configure(context); }
+    bool init(const romujoco::SimulationContext& context) override { return configure(context); }
 
-    bool reset(const romujoco::mjContext&) override { return reset_schedule(); }
+    bool reset(const romujoco::SimulationContext&) override { return reset_schedule(); }
 
-    bool advance(const romujoco::mjContext&) override { return true; }
+    bool advance(const romujoco::SimulationContext&) override { return true; }
 
-    bool update(const romujoco::mjContext&) override { return true; }
+    bool update(const romujoco::SimulationContext&) override { return true; }
 };
 
 bool check(bool value, const char* message) {
@@ -60,7 +60,7 @@ int main() {
         return 1;
     }
 
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
     TestComponent every_step(0.001);
     TestComponent zero_period(0.0);
     TestComponent every_third_step(0.003);

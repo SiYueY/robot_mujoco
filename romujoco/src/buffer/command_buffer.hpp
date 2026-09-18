@@ -26,6 +26,8 @@ public:
     bool write(const RobotCommand& command);
     bool write(const JointCommand& command);
     bool write(const JointCommands& commands);
+    bool write(const GripperCommand& command);
+    bool write(const GripperCommands& commands);
     bool write(const MobileBaseCommand& command);
     bool write(const MobileBaseCommands& commands);
 
@@ -34,6 +36,7 @@ public:
 
 private:
     bool validate(const JointCommands& commands) const;
+    bool validate(const GripperCommands& commands) const;
     bool validate(const MobileBaseCommands& commands) const;
 
 private:

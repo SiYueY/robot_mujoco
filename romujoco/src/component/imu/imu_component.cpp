@@ -10,7 +10,7 @@ namespace romujoco {
 ImuComponent::ImuComponent(ImuInfo info)
 : SimulationComponent(info.name, info.period), info_(std::move(info)) {}
 
-bool ImuComponent::init(const mjContext& context) {
+bool ImuComponent::init(const SimulationContext& context) {
     initialized_ = false;
     imu_ = {};
     if (!configure(context)) {
@@ -140,7 +140,7 @@ bool ImuComponent::init(const mjContext& context) {
     return true;
 }
 
-bool ImuComponent::reset(const mjContext& context) {
+bool ImuComponent::reset(const SimulationContext& context) {
     UNUSED(context);
     if (!initialized_) {
         SIM_ERROR << "imu '" << info_.name << "' is not initialized.";
@@ -159,12 +159,12 @@ bool ImuComponent::reset(const mjContext& context) {
     return true;
 }
 
-bool ImuComponent::advance(const mjContext& context) {
+bool ImuComponent::advance(const SimulationContext& context) {
     UNUSED(context);
     return true;
 }
 
-bool ImuComponent::update(const mjContext& context) {
+bool ImuComponent::update(const SimulationContext& context) {
     if (!initialized_) {
         SIM_ERROR << "imu '" << info_.name << "' is not initialized.";
         return false;
@@ -197,7 +197,7 @@ bool ImuComponent::read_state(std::shared_ptr<const ImuState>& state) const {
     return state != nullptr;
 }
 
-bool ImuComponent::read(const mjContext& context, ImuState& state) const {
+bool ImuComponent::read(const SimulationContext& context, ImuState& state) const {
     UNUSED(context);
     std::shared_ptr<const ImuState> snapshot;
     if (!read_state(snapshot)) {

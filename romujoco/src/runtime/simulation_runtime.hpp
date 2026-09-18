@@ -7,7 +7,7 @@
 
 #include "romujoco/config/simulation_config.hpp"
 
-#include "runtime/context.hpp"
+#include "runtime/simulation_context.hpp"
 
 namespace romujoco {
 
@@ -46,10 +46,10 @@ private:
     static bool load_model(const std::string& model_path, mjModel*& model);
     bool reset_to_default();
     bool reset_to_keyframe(int keyframe_id);
-    const mjContext& context() const noexcept;
+    const SimulationContext& context() const noexcept;
 
     bool initialized_{false};
-    mjContext context_{};
+    SimulationContext context_{};
 };
 
 }  // namespace romujoco

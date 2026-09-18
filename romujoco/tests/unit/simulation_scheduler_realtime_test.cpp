@@ -210,8 +210,7 @@ int main() {
         !check(
             romujoco_test::wait_until(
                 [&] {
-                    return normal_stop_scheduler.status() ==
-                           romujoco::SimulationStatus::Stopped;
+                    return normal_stop_scheduler.status() == romujoco::SimulationStatus::Stopped;
                 },
                 std::chrono::seconds(1)),
             "normal stop did not leave the scheduler stopped") ||

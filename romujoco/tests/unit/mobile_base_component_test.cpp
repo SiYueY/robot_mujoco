@@ -24,8 +24,8 @@ romujoco::MecanumMobileBaseInfo make_info() {
     const char* names[] = {"fl", "fr", "rl", "rr"};
     constexpr double radii[] = {0.1, 0.2, 0.1, 0.2};
     constexpr double directions[] = {-1.0, 1.0, -1.0, 1.0};
-    for (std::size_t i = 0; i < romujoco::MecanumWheelCount; ++i)
-        info.wheels[i] = {names[i], radii[i], directions[i], 0.0};
+    for (std::size_t index = 0; index < romujoco::kMecanumWheelCount; ++index)
+        info.wheels[index] = {names[index], radii[index], directions[index], 0.0};
     return info;
 }
 }  // namespace
@@ -50,7 +50,7 @@ int main() {
         mj_deleteModel(model);
         return 1;
     }
-    romujoco::mjContext context(model, data);
+    romujoco::SimulationContext context(model, data);
     romujoco::KinematicMecanumMobileBase base(make_info());
     romujoco::MobileBaseCommand command;
     command.id = 1;

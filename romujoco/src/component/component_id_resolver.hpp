@@ -16,9 +16,11 @@ public:
     static std::shared_ptr<const ComponentIdResolver> create(
         const ComponentConfigList& components) {
         auto result = std::make_shared<ComponentIdResolver>();
-        std::vector<std::size_t> joints, mobile_bases, imus, cameras, lidars;
+        std::vector<std::size_t> joints, grippers, mobile_bases, imus, cameras, lidars;
         for (const ComponentConfig& component : components) {
             if (const auto* value = std::get_if<JointInfo>(&component)) joints.push_back(value->id);
+            if (const auto* value = std::get_if<GripperInfo>(&component))
+                grippers.push_back(value->id);
             if (const auto* value = std::get_if<MecanumMobileBaseInfo>(&component))
                 mobile_bases.push_back(value->common.id);
             if (const auto* value = std::get_if<SwerveMobileBaseInfo>(&component))
@@ -28,13 +30,14 @@ public:
                 cameras.push_back(value->id);
             if (const auto* value = std::get_if<LidarInfo>(&component)) lidars.push_back(value->id);
         }
-        if (!make(joints, result->joints_) || !make(mobile_bases, result->mobile_bases_) ||
-            !make(imus, result->imus_) || !make(cameras, result->cameras_) ||
-            !make(lidars, result->lidars_))
+        if (!make(joints, result->joints_) || !make(grippers, result->grippers_) ||
+            !make(mobile_bases, result->mobile_bases_) || !make(imus, result->imus_) ||
+            !make(cameras, result->cameras_) || !make(lidars, result->lidars_))
             return {};
         return result;
     }
     const Indices& joints() const noexcept { return joints_; }
+    const Indices& grippers() const noexcept { return grippers_; }
     const Indices& mobile_bases() const noexcept { return mobile_bases_; }
     const Indices& imus() const noexcept { return imus_; }
     const Indices& cameras() const noexcept { return cameras_; }
@@ -47,9 +50,9 @@ private:
             (ids.back() > 255U || std::adjacent_find(ids.begin(), ids.end()) != ids.end()))
             return false;
         indices.assign(ids.empty() ? 0U : ids.back() + 1U, no_index);
-        for (std::size_t i = 0; i < ids.size(); ++i) indices[ids[i]] = i;
+        for (std::size_t index = 0; index < ids.size(); ++index) indices[ids[index]] = index;
         return true;
     }
-    Indices joints_, mobile_bases_, imus_, cameras_, lidars_;
+    Indices joints_, grippers_, mobile_bases_, imus_, cameras_, lidars_;
 };
 }  // namespace romujoco

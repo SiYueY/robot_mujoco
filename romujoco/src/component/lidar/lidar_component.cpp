@@ -13,7 +13,7 @@ namespace romujoco {
 LidarComponent::LidarComponent(LidarInfo info)
 : SimulationComponent(info.name, info.period), info_(std::move(info)) {}
 
-bool LidarComponent::init(const mjContext& context) {
+bool LidarComponent::init(const SimulationContext& context) {
     initialized_ = false;
     beam_addresses_.clear();
     if (!configure(context)) {
@@ -102,7 +102,7 @@ bool LidarComponent::init(const mjContext& context) {
     return true;
 }
 
-bool LidarComponent::reset(const mjContext& context) {
+bool LidarComponent::reset(const SimulationContext& context) {
     UNUSED(context);
     if (!initialized_) {
         SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
@@ -124,12 +124,12 @@ bool LidarComponent::reset(const mjContext& context) {
     return true;
 }
 
-bool LidarComponent::advance(const mjContext& context) {
+bool LidarComponent::advance(const SimulationContext& context) {
     UNUSED(context);
     return true;
 }
 
-bool LidarComponent::update(const mjContext& context) {
+bool LidarComponent::update(const SimulationContext& context) {
     if (!initialized_) {
         SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
         return false;
@@ -172,7 +172,7 @@ bool LidarComponent::read_state(std::shared_ptr<const LidarState>& state) const 
     return state != nullptr;
 }
 
-bool LidarComponent::read(const mjContext& context, LidarState& state) const {
+bool LidarComponent::read(const SimulationContext& context, LidarState& state) const {
     UNUSED(context);
     std::shared_ptr<const LidarState> snapshot;
     if (!read_state(snapshot)) {

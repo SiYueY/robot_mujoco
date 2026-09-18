@@ -18,6 +18,8 @@ bool Simulation::Impl::read_state(RobotState& state) const {
 
 bool Simulation::Impl::read_state(JointState& state) const { return state_buffer_.read(state); }
 
+bool Simulation::Impl::read_state(GripperState& state) const { return state_buffer_.read(state); }
+
 bool Simulation::Impl::read_state(ImuState& state) const { return state_buffer_.read(state); }
 
 bool Simulation::Impl::read_state(CameraState& state) const { return state_buffer_.read(state); }
@@ -34,18 +36,28 @@ bool Simulation::Impl::read_state(JointStates& state) const {
     state = robot_state->joints;
     return state != nullptr;
 }
+
+bool Simulation::Impl::read_state(GripperStates& state) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    state = robot_state->grippers;
+    return state != nullptr;
+}
+
 bool Simulation::Impl::read_state(ImuStates& state) const {
     const auto robot_state = state_buffer_.read();
     if (robot_state == nullptr) return false;
     state = robot_state->imus;
     return state != nullptr;
 }
+
 bool Simulation::Impl::read_state(CameraStates& state) const {
     const auto robot_state = state_buffer_.read();
     if (robot_state == nullptr) return false;
     state = robot_state->cameras;
     return state != nullptr;
 }
+
 bool Simulation::Impl::read_state(LidarStates& state) const {
     const auto robot_state = state_buffer_.read();
     if (robot_state == nullptr) return false;

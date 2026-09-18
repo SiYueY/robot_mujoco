@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "romujoco/component/camera.hpp"
+#include "romujoco/component/gripper.hpp"
 #include "romujoco/component/imu.hpp"
 #include "romujoco/component/joint.hpp"
 #include "romujoco/component/lidar.hpp"
@@ -21,6 +22,7 @@ template <typename State>
 using StateSnapshots = std::shared_ptr<const std::vector<StateSnapshot<State>>>;
 
 using JointStates = StateSnapshots<JointState>;
+using GripperStates = StateSnapshots<GripperState>;
 using MobileBaseStates = StateSnapshots<MobileBaseState>;
 using ImuStates = StateSnapshots<ImuState>;
 using LidarStates = StateSnapshots<LidarState>;
@@ -42,6 +44,7 @@ struct RobotState {
     std::uint64_t step{0};
 
     JointStates joints;
+    GripperStates grippers;
     MobileBaseStates mobile_bases;
     ImuStates imus;
     LidarStates lidars;

@@ -27,6 +27,9 @@ bool Simulation::reset(std::string keyframe_name) { return impl_->reset(&keyfram
 bool Simulation::write_command(const JointCommand& command) {
     return impl_->write_command(command);
 }
+bool Simulation::write_command(const GripperCommand& command) {
+    return impl_->write_command(command);
+}
 bool Simulation::write_command(const MobileBaseCommand& command) {
     return impl_->write_command(command);
 }
@@ -34,6 +37,9 @@ bool Simulation::write_command(const RobotCommand& command) {
     return impl_->write_command(command);
 }
 bool Simulation::write_commands(const JointCommands& commands) {
+    return impl_->write_commands(commands);
+}
+bool Simulation::write_commands(const GripperCommands& commands) {
     return impl_->write_commands(commands);
 }
 bool Simulation::write_commands(const MobileBaseCommands& commands) {
@@ -45,11 +51,13 @@ bool Simulation::read_state(std::shared_ptr<const RobotState>& out) const {
 }
 bool Simulation::read_state(RobotState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(JointState& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(GripperState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(ImuState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(CameraState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(LidarState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(MobileBaseState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(JointStates& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(GripperStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(ImuStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(CameraStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(LidarStates& out) const { return impl_->read_state(out); }

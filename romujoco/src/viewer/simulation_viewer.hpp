@@ -9,7 +9,7 @@
 
 #include <mujoco/mujoco.h>
 
-#include "runtime/context.hpp"
+#include "runtime/simulation_context.hpp"
 
 namespace mujoco {
 class Simulate;
@@ -32,11 +32,11 @@ public:
     SimulationViewer(SimulationViewer&&) = delete;
     SimulationViewer& operator=(SimulationViewer&&) = delete;
 
-    bool prepare(const mjContext& context);
+    bool prepare(const SimulationContext& context);
     bool start(const std::string& displayed_filename);
-    bool start(const mjContext& context, const std::string& displayed_filename);
+    bool start(const SimulationContext& context, const std::string& displayed_filename);
     void stop();
-    bool submit(const mjContext& context);
+    bool submit(const SimulationContext& context);
     bool is_running() const;
     bool is_ready() const;
 
@@ -63,7 +63,7 @@ private:
 
     // Copies the current simulation data into a capacity-one latest-only mailbox.
     // The caller must serialize access to context.data.
-    bool capture_snapshot(const mjContext& context, ViewerSnapshot& snapshot);
+    bool capture_snapshot(const SimulationContext& context, ViewerSnapshot& snapshot);
     bool submit(ViewerSnapshot&& snapshot);
     friend class Simulation;
     // Viewer 状态
@@ -83,7 +83,7 @@ private:
     void cleanup();
     void stop_viewer();
     void release_viewer_data();
-    bool create_viewer_data(const mjContext& context);
+    bool create_viewer_data(const SimulationContext& context);
     bool start_sync_worker();
     void stop_sync_worker();
     void sync_worker_loop();

@@ -4,16 +4,18 @@
 #include <cmath>
 #include <utility>
 
+#include "romujoco/common/math.hpp"
+
 #include "common/compare.hpp"
-#include "log/logging.hpp"
 #include "common/macro.hpp"
+#include "log/logging.hpp"
 
 namespace romujoco {
 
 JointComponent::JointComponent(JointInfo info)
 : SimulationComponent(info.joint_name, info.period), info_(std::move(info)) {}
 
-bool JointComponent::init(const mjContext& context) {
+bool JointComponent::init(const SimulationContext& context) {
     initialized_ = false;
     if (!configure(context) || !validate_info()) return false;
 
@@ -71,7 +73,7 @@ bool JointComponent::init(const mjContext& context) {
     return true;
 }
 
-bool JointComponent::validate_actuator(const mjContext& context) const {
+bool JointComponent::validate_actuator(const SimulationContext& context) const {
     const mjModel& model = *context.model;
     if (model.actuator_trntype[joint_.actuator_id] != mjTRN_JOINT) {
         SIM_ERROR << "joint '" << info_.joint_name << "' actuator '" << info_.actuator_name
@@ -118,7 +120,7 @@ bool JointComponent::validate_actuator(const mjContext& context) const {
     return true;
 }
 
-bool JointComponent::validate_actuator_uniqueness(const mjContext& context) const {
+bool JointComponent::validate_actuator_uniqueness(const SimulationContext& context) const {
     const mjModel& model = *context.model;
     int count = 0;
     for (int actuator_id = 0; actuator_id < model.nu; ++actuator_id) {
@@ -174,12 +176,12 @@ bool JointComponent::validate_info() const {
     return true;
 }
 
-bool JointComponent::reset(const mjContext& context) {
+bool JointComponent::reset(const SimulationContext& context) {
     JointCommand command;
     return reset(context, command);
 }
 
-bool JointComponent::reset(const mjContext& context, JointCommand& command) {
+bool JointComponent::reset(const SimulationContext& context, JointCommand& command) {
     if (!is_initialized()) {
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
         return false;
@@ -199,7 +201,8 @@ bool JointComponent::supports_mode(std::uint8_t mode_value) const noexcept {
     return mode != JointMode::None && info_.allowed_modes.contains(mode);
 }
 
-bool JointComponent::make_reset_command(const mjContext& context, JointCommand& command) const {
+bool JointComponent::make_reset_command(
+    const SimulationContext& context, JointCommand& command) const {
     if (!is_initialized() || !context.valid()) return false;
     command = {};
     command.id = info_.id;
@@ -219,12 +222,12 @@ bool JointComponent::make_reset_command(const mjContext& context, JointCommand& 
     return true;
 }
 
-bool JointComponent::advance(const mjContext& context) {
+bool JointComponent::advance(const SimulationContext& context) {
     UNUSED(context);
     return true;
 }
 
-bool JointComponent::update(const mjContext& context) {
+bool JointComponent::update(const SimulationContext& context) {
     if (!is_initialized()) {
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
         return false;
@@ -241,7 +244,7 @@ bool JointComponent::update(const mjContext& context) {
     return true;
 }
 
-bool JointComponent::write(const mjContext& context, const JointCommand& command) {
+bool JointComponent::write(const SimulationContext& context, const JointCommand& command) {
     if (!is_initialized()) {
         SIM_ERROR << "joint '" << info_.joint_name << "' is not initialized.";
         return false;
@@ -289,7 +292,7 @@ bool JointComponent::read_state(std::shared_ptr<const JointState>& state) const 
     return state != nullptr;
 }
 
-bool JointComponent::read(const mjContext& context, JointState& state) const {
+bool JointComponent::read(const SimulationContext& context, JointState& state) const {
     UNUSED(context);
     std::shared_ptr<const JointState> snapshot;
     if (!read_state(snapshot)) {
@@ -311,15 +314,14 @@ bool JointComponent::is_passive_joint() const noexcept {
 
 double JointComponent::position_error(double target, double current) const noexcept {
     if (!shortest_angular_distance_) return target - current;
-    constexpr double kPi = 3.14159265358979323846;
-    constexpr double kTwoPi = 6.28318530717958647692;
+    constexpr double kTwoPi = 2.0 * kPi;
     double error = std::remainder(target - current, kTwoPi);
     if (error >= kPi) error -= kTwoPi;
     return error;
 }
 
 bool JointComponent::write_position_command(
-    const mjContext& context, const JointCommand& command) const {
+    const SimulationContext& context, const JointCommand& command) const {
     if (!std::isfinite(command.position)) {
         SIM_ERROR << "joint '" << info_.joint_name << "' position command must be finite.";
         return false;
@@ -339,7 +341,7 @@ bool JointComponent::write_position_command(
 }
 
 bool JointComponent::write_velocity_command(
-    const mjContext& context, const JointCommand& command) const {
+    const SimulationContext& context, const JointCommand& command) const {
     if (!std::isfinite(command.velocity)) {
         SIM_ERROR << "joint '" << info_.joint_name << "' velocity command must be finite.";
         return false;
@@ -355,7 +357,7 @@ bool JointComponent::write_velocity_command(
 }
 
 bool JointComponent::write_effort_command(
-    const mjContext& context, const JointCommand& command) const {
+    const SimulationContext& context, const JointCommand& command) const {
     if (!std::isfinite(command.effort)) {
         SIM_ERROR << "joint '" << info_.joint_name << "' effort command must be finite.";
         return false;
@@ -369,7 +371,7 @@ bool JointComponent::write_effort_command(
 }
 
 bool JointComponent::write_hybrid_command(
-    const mjContext& context, const JointCommand& command) const {
+    const SimulationContext& context, const JointCommand& command) const {
     if (!std::isfinite(command.position) || !std::isfinite(command.velocity) ||
         !std::isfinite(command.effort) || !std::isfinite(command.stiffness) ||
         !std::isfinite(command.damping)) {
@@ -398,7 +400,7 @@ bool JointComponent::write_hybrid_command(
     return true;
 }
 
-double JointComponent::gravity_compensation_effort(const mjContext& context) const {
+double JointComponent::gravity_compensation_effort(const SimulationContext& context) const {
     const mjModel& model = *context.model;
     mjData& gravity_data = *gravity_data_;
 
@@ -414,7 +416,7 @@ double JointComponent::clamp_limits(const JointLimit& limits, double value) cons
     return std::clamp(value, limits.min, limits.max);
 }
 
-double JointComponent::clamp_ctrl_limits(const mjContext& context, double value) const {
+double JointComponent::clamp_ctrl_limits(const SimulationContext& context, double value) const {
     if (context.model->actuator_ctrllimited[joint_.actuator_id] == 0) {
         return value;
     }
@@ -422,7 +424,7 @@ double JointComponent::clamp_ctrl_limits(const mjContext& context, double value)
     return std::clamp(value, static_cast<double>(range[0]), static_cast<double>(range[1]));
 }
 
-double JointComponent::clamp_force_limits(const mjContext& context, double value) const {
+double JointComponent::clamp_force_limits(const SimulationContext& context, double value) const {
     if (context.model->actuator_forcelimited[joint_.actuator_id] == 0) {
         return value;
     }

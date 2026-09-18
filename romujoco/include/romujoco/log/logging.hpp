@@ -111,10 +111,10 @@ private:
 }  // namespace romujoco::logging
 
 #define SIMULATE_LOG(level)                                                         \
-    !::romujoco::logging::is_enabled(level)                                \
+    !::romujoco::logging::is_enabled(level)                                         \
         ? (void)0                                                                   \
-        : ::romujoco::logging::impl::LogMessageStream::Expression{} &      \
-              ::romujoco::logging::impl::LogMessageStream(                 \
+        : ::romujoco::logging::impl::LogMessageStream::Expression{} &               \
+              ::romujoco::logging::impl::LogMessageStream(                          \
                   level, {__FILE__, __func__, static_cast<std::int32_t>(__LINE__)}) \
                   .stream()
 
@@ -122,8 +122,8 @@ private:
 // LogMessageStream preserves stream syntax without a separate discard stream.
 #define SIMULATE_LOG_COMPILE_DISABLED(level)                                         \
     true ? (void)0                                                                   \
-         : ::romujoco::logging::impl::LogMessageStream::Expression{} &      \
-               ::romujoco::logging::impl::LogMessageStream(                 \
+         : ::romujoco::logging::impl::LogMessageStream::Expression{} &               \
+               ::romujoco::logging::impl::LogMessageStream(                          \
                    level, {__FILE__, __func__, static_cast<std::int32_t>(__LINE__)}) \
                    .stream()
 

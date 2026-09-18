@@ -41,6 +41,7 @@ set(ROMUJOCO_RUNTIME_SOURCES
   src/component/component.cpp
   src/component/component_manager.cpp
   src/component/camera/camera_component.cpp
+  src/component/gripper/gripper_component.cpp
   src/component/imu/imu_component.cpp
   src/component/joint/joint_component.cpp
   src/component/lidar/lidar_component.cpp

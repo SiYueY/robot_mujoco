@@ -272,7 +272,7 @@ bool SimulationScheduler::step(std::size_t count) {
         }
     }
 
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t index = 0; index < count; ++index) {
         const bool task_succeeded = execute_task_once();
         std::lock_guard<std::mutex> lock(mutex_);
         if (!task_succeeded) {

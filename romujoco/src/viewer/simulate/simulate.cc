@@ -1945,8 +1945,7 @@ void UiEvent(mjuiState* state) {
                 model, data, action, state->dx / r.height, -state->dy / r.height, &sim->scn,
                 &sim->pert);
         } else {
-            mjv_moveCamera(
-                model, action, state->dx / r.height, -state->dy / r.height, &sim->cam);
+            mjv_moveCamera(model, action, state->dx / r.height, -state->dy / r.height, &sim->cam);
         }
         return;
     }

@@ -23,8 +23,7 @@ romujoco::StateSnapshots<State> make_states(std::initializer_list<std::size_t> i
         state->id = id;
         states->push_back(std::move(state));
     }
-    return std::static_pointer_cast<const std::vector<romujoco::StateSnapshot<State>>>(
-        states);
+    return std::static_pointer_cast<const std::vector<romujoco::StateSnapshot<State>>>(states);
 }
 
 bool check_sparse_indices() {
@@ -126,16 +125,12 @@ bool check_plural_reads() {
         return false;
     }
 
-    const romujoco::JointStates sentinel_joints =
-        make_states<romujoco::JointState>({7});
+    const romujoco::JointStates sentinel_joints = make_states<romujoco::JointState>({7});
     const romujoco::MobileBaseStates sentinel_mobile_bases =
         make_states<romujoco::MobileBaseState>({7});
-    const romujoco::ImuStates sentinel_imus =
-        make_states<romujoco::ImuState>({7});
-    const romujoco::CameraStates sentinel_cameras =
-        make_states<romujoco::CameraState>({7});
-    const romujoco::LidarStates sentinel_lidars =
-        make_states<romujoco::LidarState>({7});
+    const romujoco::ImuStates sentinel_imus = make_states<romujoco::ImuState>({7});
+    const romujoco::CameraStates sentinel_cameras = make_states<romujoco::CameraState>({7});
+    const romujoco::LidarStates sentinel_lidars = make_states<romujoco::LidarState>({7});
 
     romujoco::JointStates joints = sentinel_joints;
     romujoco::MobileBaseStates mobile_bases = sentinel_mobile_bases;

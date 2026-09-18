@@ -88,6 +88,45 @@ add_test(
   NAME romujoco.dynamic_swerve_mobile_base
   COMMAND romujoco_dynamic_swerve_mobile_base_test)
 
+add_executable(romujoco_gripper_component_test
+  unit/gripper_component_test.cpp)
+target_include_directories(romujoco_gripper_component_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+target_sources(romujoco_gripper_component_test PRIVATE
+  $<TARGET_OBJECTS:romujoco_runtime>)
+target_link_libraries(romujoco_gripper_component_test PRIVATE
+  romujoco::romujoco)
+add_test(
+  NAME romujoco.gripper_component
+  COMMAND romujoco_gripper_component_test)
+
+add_executable(romujoco_gripper_config_test
+  unit/gripper_config_test.cpp)
+target_include_directories(romujoco_gripper_config_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+target_sources(romujoco_gripper_config_test PRIVATE
+  $<TARGET_OBJECTS:romujoco_runtime>
+  $<TARGET_OBJECTS:romujoco_tinyxml2>)
+target_link_libraries(romujoco_gripper_config_test PRIVATE
+  romujoco::romujoco)
+add_test(
+  NAME romujoco.gripper_config
+  COMMAND romujoco_gripper_config_test)
+
+add_executable(romujoco_gripper_mfr3duo_integration_test
+  unit/gripper_mfr3duo_integration_test.cpp)
+target_include_directories(romujoco_gripper_mfr3duo_integration_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/src)
+target_sources(romujoco_gripper_mfr3duo_integration_test PRIVATE
+  $<TARGET_OBJECTS:romujoco_runtime>)
+target_link_libraries(romujoco_gripper_mfr3duo_integration_test PRIVATE
+  romujoco::romujoco)
+add_test(
+  NAME romujoco.gripper_mfr3duo_integration
+  COMMAND romujoco_gripper_mfr3duo_integration_test)
+
 add_executable(romujoco_component_manager_camera_reset_test
   unit/component_manager_camera_reset_test.cpp)
 target_include_directories(romujoco_component_manager_camera_reset_test PRIVATE
@@ -154,6 +193,16 @@ target_link_libraries(romujoco_lifecycle_test PRIVATE
 add_test(
   NAME romujoco.lifecycle
   COMMAND romujoco_lifecycle_test)
+
+add_executable(romujoco_gripper_runtime_test
+  public/gripper_runtime_test.cpp)
+target_include_directories(romujoco_gripper_runtime_test PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+target_link_libraries(romujoco_gripper_runtime_test PRIVATE
+  romujoco::romujoco)
+add_test(
+  NAME romujoco.gripper_runtime
+  COMMAND romujoco_gripper_runtime_test)
 
 add_executable(romujoco_component_header_contract_test
   public/component_header_contract_test.cpp)
@@ -350,12 +399,18 @@ foreach(test_target
     romujoco_scheduler_realtime_test
     romujoco_config_timing_test
     romujoco_component_period_test
+    romujoco_mobile_base_component_test
+    romujoco_dynamic_swerve_mobile_base_test
+    romujoco_gripper_component_test
+    romujoco_gripper_config_test
+    romujoco_gripper_mfr3duo_integration_test
     romujoco_component_manager_camera_reset_test
     romujoco_component_manager_sparse_command_test
     romujoco_joint_gravity_compensation_test
     romujoco_command_buffer_test
     romujoco_bitmask_test
     romujoco_lifecycle_test
+    romujoco_gripper_runtime_test
     romujoco_component_header_contract_test
     romujoco_logging_header_contract_test
     romujoco_logging_record_contract_test

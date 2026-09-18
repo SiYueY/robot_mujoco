@@ -5,7 +5,8 @@
 #include "romujoco/component/mobile_base/common.hpp"
 namespace romujoco {
 enum class MecanumWheelIndex : std::size_t { FrontLeft, FrontRight, RearLeft, RearRight, Count };
-inline constexpr std::size_t MecanumWheelCount = static_cast<std::size_t>(MecanumWheelIndex::Count);
+inline constexpr std::size_t kMecanumWheelCount =
+    static_cast<std::size_t>(MecanumWheelIndex::Count);
 struct MecanumWheelInfo {
     std::string joint_name;
     double radius{0.0};
@@ -16,6 +17,6 @@ struct MecanumMobileBaseInfo {
     MobileBaseCommonInfo common;
     double wheel_base{0.0};
     double track_width{0.0};
-    std::array<MecanumWheelInfo, MecanumWheelCount> wheels;
+    std::array<MecanumWheelInfo, kMecanumWheelCount> wheels;
 };
 }  // namespace romujoco

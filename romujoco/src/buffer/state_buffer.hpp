@@ -18,6 +18,8 @@ public:
     std::shared_ptr<const RobotState> read() const;
     bool read(JointState& state) const;
     bool read(JointStates& states) const;
+    bool read(GripperState& state) const;
+    bool read(GripperStates& states) const;
     bool read(MobileBaseState& state) const;
     bool read(MobileBaseStates& states) const;
     bool read(ImuState& state) const;
