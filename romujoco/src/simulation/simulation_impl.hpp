@@ -44,13 +44,15 @@ public:
     bool read_state(GripperState& state) const;
     bool read_state(ImuState& state) const;
     bool read_state(CameraState& state) const;
-    bool read_state(LidarState& state) const;
+    bool read_state(LaserScanState& state) const;
+    bool read_state(PointCloudState& state) const;
     bool read_state(MobileBaseState& state) const;
     bool read_state(JointStates& state) const;
     bool read_state(GripperStates& state) const;
     bool read_state(ImuStates& state) const;
     bool read_state(CameraStates& state) const;
-    bool read_state(LidarStates& state) const;
+    bool read_state(LaserScanStates& state) const;
+    bool read_state(PointCloudStates& state) const;
     bool read_state(MobileBaseStates& state) const;
     bool read_contacts(ContactStates& contacts) const;
     bool step(std::size_t count);

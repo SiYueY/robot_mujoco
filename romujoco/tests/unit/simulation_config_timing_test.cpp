@@ -81,9 +81,9 @@ int main() {
          gyro_sensor="gyro" accelerometer_sensor="accel" period="0.003"/>
     <camera id="2" name="camera" frame_id="camera" camera_name="camera"
             optical_frame_id="optical" width="16" height="12" period="0.004"/>
-    <lidar id="3" name="lidar" frame_id="lidar" sensor_prefix="lidar"
-           angle_min="0" angle_max="1" angle_increment="1" range_min="0"
-           range_max="1" period="0.005"/>
+    <lidar id="3" name="lidar" frame_id="lidar" site="lidar_site" output="laser_scan"
+           range_min="0" range_max="1" period="0.005"><scan azimuth_start="0"
+           azimuth_increment="1" azimuth_samples="2"/><channel elevation="0"/></lidar>
     <mobile_base id="4" name="base" base_body="base" base_joint="base_free"
                  wheel_base="0.2" track_width="0.2" period="0.006">
       <wheel index="front_left" name="front_left" radius="0.1" direction="1" speed_response="0"/>
@@ -379,36 +379,34 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
         }
     }
 
-    const std::array<InvalidConfig, 13> semantic_invalid_configs =
+    const std::array<InvalidConfig, 13> semantic_invalid_configs = {
         {
-            {
-                {"zero camera width",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="0" height="1"/></robot></robot_mujoco>)"},
-                {"negative camera height",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="1" height="-1"/></robot></robot_mujoco>)"},
-                {"oversized camera width",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="8193" height="1"/></robot></robot_mujoco>)"},
-                {"camera output too large",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="8192" height="8192" enable_rgb="true" enable_depth="true"/></robot></robot_mujoco>)"},
-                {"zero lidar increment",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" sensor_prefix="s" angle_min="0" angle_max="1" angle_increment="0" range_min="0" range_max="1"/></robot></robot_mujoco>)"},
-                {"reversed lidar angle",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" sensor_prefix="s" angle_min="1" angle_max="0" angle_increment="1" range_min="0" range_max="1"/></robot></robot_mujoco>)"},
-                {"negative lidar range",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" sensor_prefix="s" angle_min="0" angle_max="1" angle_increment="1" range_min="-1" range_max="1"/></robot></robot_mujoco>)"},
-                {"equal lidar range",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" sensor_prefix="s" angle_min="0" angle_max="1" angle_increment="1" range_min="1" range_max="1"/></robot></robot_mujoco>)"},
-                {"legacy base wheel radius",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_radius="1" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="1" speed_response="0"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
-                {"non-positive wheel radius",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="0" direction="1" speed_response="0"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
-                {"duplicate wheel name",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="1" speed_response="0"/><wheel index="front_right" name="a" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
-                {"invalid wheel direction",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="0" speed_response="0"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
-                {"negative wheel response",
-                 R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="1" speed_response="-1"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
-            }};
+            {"zero camera width",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="0" height="1"/></robot></robot_mujoco>)"},
+            {"negative camera height",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="1" height="-1"/></robot></robot_mujoco>)"},
+            {"oversized camera width",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="8193" height="1"/></robot></robot_mujoco>)"},
+            {"camera output too large",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><camera id="0" name="c" frame_id="f" camera_name="c" optical_frame_id="o" width="8192" height="8192" enable_rgb="true" enable_depth="true"/></robot></robot_mujoco>)"},
+            {"zero lidar increment",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" site="s" output="laser_scan" azimuth_increment="0" range_min="0" range_max="1"><scan azimuth_start="0" azimuth_increment="0" azimuth_samples="1"/><channel elevation="0"/></lidar></robot></robot_mujoco>)"},
+            {"empty lidar channels",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" site="s" output="laser_scan" range_min="0" range_max="1"><scan azimuth_start="0" azimuth_increment="1" azimuth_samples="1"/></lidar></robot></robot_mujoco>)"},
+            {"negative lidar range", R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" site="s" output="laser_scan" range_min="-1" range_max="1"><scan azimuth_start="0" azimuth_increment="1" azimuth_samples="1"/><channel elevation="0"/></lidar></robot></robot_mujoco>)"},
+            {"equal lidar range",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><lidar id="0" name="l" frame_id="f" site="s" output="laser_scan" range_min="1" range_max="1"><scan azimuth_start="0" azimuth_increment="1" azimuth_samples="1"/><channel elevation="0"/></lidar></robot></robot_mujoco>)"},
+            {"legacy base wheel radius",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_radius="1" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="1" speed_response="0"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
+            {"non-positive wheel radius",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="0" direction="1" speed_response="0"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
+            {"duplicate wheel name",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="1" speed_response="0"/><wheel index="front_right" name="a" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
+            {"invalid wheel direction",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="0" speed_response="0"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
+            {"negative wheel response",
+             R"(<robot_mujoco><mujoco><mjcf>model.xml</mjcf></mujoco><simulation><physics period=".001"/><viewer period=".02"/></simulation><robot><mobile_base id="0" name="b" base_body="b" base_joint="j" wheel_base="1" track_width="1"><wheel index="front_left" name="a" radius="1" direction="1" speed_response="-1"/><wheel index="front_right" name="b" radius="1" direction="1" speed_response="0"/><wheel index="rear_left" name="c" radius="1" direction="1" speed_response="0"/><wheel index="rear_right" name="d" radius="1" direction="1" speed_response="0"/></mobile_base></robot></robot_mujoco>)"},
+        }};
     for (const InvalidConfig& invalid_config : semantic_invalid_configs) {
         if (!check(write_file(path, invalid_config.content), invalid_config.name) ||
             !check(!parser.load_file(path.string(), config), invalid_config.name)) {
@@ -533,9 +531,10 @@ width="16" height="12" enable_depth="abc"/></robot></robot_mujoco>)"},
     romujoco::LidarInfo missing_lidar_name;
     missing_lidar_name.id = 0;
     missing_lidar_name.name = "lidar";
-    missing_lidar_name.sensor_prefix = "scan";
-    missing_lidar_name.angle_max = 1.0;
-    missing_lidar_name.angle_increment = 1.0;
+    missing_lidar_name.site_name = "scan";
+    missing_lidar_name.azimuth_increment = 1.0;
+    missing_lidar_name.azimuth_samples = 1;
+    missing_lidar_name.channels.push_back({});
     missing_lidar_name.range_max = 1.0;
     missing_lidar_name_config.components.emplace_back(missing_lidar_name);
     if (!check(

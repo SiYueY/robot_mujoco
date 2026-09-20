@@ -4,6 +4,6 @@
 namespace ros2_mujoco::hardware {
 class Lidar {
 public:
-    sensor_msgs::msg::LaserScan scan(const romujoco::LidarState& value) const;
+    sensor_msgs::msg::LaserScan scan(const romujoco::LaserScanState& value) const;
 };
 }  // namespace ros2_mujoco::hardware

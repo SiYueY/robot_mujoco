@@ -24,7 +24,10 @@ bool Simulation::Impl::read_state(ImuState& state) const { return state_buffer_.
 
 bool Simulation::Impl::read_state(CameraState& state) const { return state_buffer_.read(state); }
 
-bool Simulation::Impl::read_state(LidarState& state) const { return state_buffer_.read(state); }
+bool Simulation::Impl::read_state(LaserScanState& state) const { return state_buffer_.read(state); }
+bool Simulation::Impl::read_state(PointCloudState& state) const {
+    return state_buffer_.read(state);
+}
 
 bool Simulation::Impl::read_state(MobileBaseState& state) const {
     return state_buffer_.read(state);
@@ -58,10 +61,16 @@ bool Simulation::Impl::read_state(CameraStates& state) const {
     return state != nullptr;
 }
 
-bool Simulation::Impl::read_state(LidarStates& state) const {
+bool Simulation::Impl::read_state(LaserScanStates& state) const {
     const auto robot_state = state_buffer_.read();
     if (robot_state == nullptr) return false;
-    state = robot_state->lidars;
+    state = robot_state->laser_scans;
+    return state != nullptr;
+}
+bool Simulation::Impl::read_state(PointCloudStates& state) const {
+    const auto robot_state = state_buffer_.read();
+    if (robot_state == nullptr) return false;
+    state = robot_state->point_clouds;
     return state != nullptr;
 }
 bool Simulation::Impl::read_state(MobileBaseStates& state) const {

@@ -183,7 +183,8 @@ void ComponentManager::clear() {
     grippers_.reset();
     mobile_bases_.reset();
     imus_.reset();
-    lidars_.reset();
+    laser_scans_.reset();
+    point_clouds_.reset();
     cameras_.reset();
     camera_render_service_ = nullptr;
     active_camera_ticket_.reset();
@@ -222,7 +223,8 @@ bool ComponentManager::reset(const SimulationContext& context, RobotCommand& com
     grippers_.reset();
     mobile_bases_.reset();
     imus_.reset();
-    lidars_.reset();
+    laser_scans_.reset();
+    point_clouds_.reset();
     cameras_.reset();
     active_camera_ticket_.reset();
     pending_camera_ticket_.reset();
@@ -254,9 +256,56 @@ bool ComponentManager::update(const SimulationContext& context) {
             context, gripper_components_, grippers_) ||
         !update_components<MobileBaseComponent, MobileBaseState>(
             context, mobile_base_components_, mobile_bases_) ||
-        !update_components<ImuComponent, ImuState>(context, imu_components_, imus_) ||
-        !update_components<LidarComponent, LidarState>(context, lidar_components_, lidars_))
+        !update_components<ImuComponent, ImuState>(context, imu_components_, imus_))
         return false;
+    std::vector<LidarComponent*> due_lidars;
+    for (const auto& component : lidar_components_)
+        if (component != nullptr && component->poll_update(context.data->time))
+            due_lidars.push_back(component.get());
+    if (!due_lidars.empty()) {
+        auto laser_scans = std::make_shared<std::vector<StateSnapshot<LaserScanState>>>();
+        auto point_clouds = std::make_shared<std::vector<StateSnapshot<PointCloudState>>>();
+        if (laser_scans_ != nullptr) *laser_scans = *laser_scans_;
+        if (point_clouds_ != nullptr) *point_clouds = *point_clouds_;
+        for (LidarComponent* component : due_lidars) {
+            if (!component->update(context)) return false;
+            if (component->info().output == LidarOutput::LaserScan) {
+                std::shared_ptr<const LaserScanState> state;
+                if (!component->read_laser_scan_state(state)) return false;
+                const auto existing = std::find_if(
+                    laser_scans->begin(), laser_scans->end(),
+                    [&](const StateSnapshot<LaserScanState>& current) {
+                        return current->id == state->id;
+                    });
+                if (existing == laser_scans->end())
+                    laser_scans->push_back(std::move(state));
+                else
+                    *existing = std::move(state);
+            } else {
+                std::shared_ptr<const PointCloudState> state;
+                if (!component->read_point_cloud_state(state)) return false;
+                const auto existing = std::find_if(
+                    point_clouds->begin(), point_clouds->end(),
+                    [&](const StateSnapshot<PointCloudState>& current) {
+                        return current->id == state->id;
+                    });
+                if (existing == point_clouds->end())
+                    point_clouds->push_back(std::move(state));
+                else
+                    *existing = std::move(state);
+            }
+        }
+        std::sort(
+            laser_scans->begin(), laser_scans->end(),
+            [](const auto& left, const auto& right) { return left->id < right->id; });
+        std::sort(
+            point_clouds->begin(), point_clouds->end(),
+            [](const auto& left, const auto& right) { return left->id < right->id; });
+        laser_scans_ =
+            std::static_pointer_cast<const std::vector<StateSnapshot<LaserScanState>>>(laser_scans);
+        point_clouds_ = std::static_pointer_cast<const std::vector<StateSnapshot<PointCloudState>>>(
+            point_clouds);
+    }
     return consume_camera_results() && submit_due_cameras(context);
 }
 
@@ -451,7 +500,8 @@ bool ComponentManager::read_state(const SimulationContext&, RobotState& snapshot
     snapshot.grippers = grippers_;
     snapshot.mobile_bases = mobile_bases_;
     snapshot.imus = imus_;
-    snapshot.lidars = lidars_;
+    snapshot.laser_scans = laser_scans_;
+    snapshot.point_clouds = point_clouds_;
     snapshot.cameras = cameras_;
     return true;
 }

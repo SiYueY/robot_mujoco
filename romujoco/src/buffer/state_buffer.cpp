@@ -134,18 +134,33 @@ bool StateBuffer::read(CameraStates& states) const {
     return true;
 }
 
-bool StateBuffer::read(LidarState& state) const {
+bool StateBuffer::read(LaserScanState& state) const {
     if (id_resolver_ == nullptr) return false;
     const auto robot_state = read();
     if (robot_state == nullptr) return false;
-    return read_state(robot_state->lidars, id_resolver_->lidars(), state);
+    return read_state(robot_state->laser_scans, id_resolver_->laser_scans(), state);
 }
 
-bool StateBuffer::read(LidarStates& states) const {
+bool StateBuffer::read(LaserScanStates& states) const {
     if (id_resolver_ == nullptr) return false;
     const auto robot_state = read();
     if (robot_state == nullptr) return false;
-    states = robot_state->lidars;
+    states = robot_state->laser_scans;
+    return true;
+}
+
+bool StateBuffer::read(PointCloudState& state) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    return read_state(robot_state->point_clouds, id_resolver_->point_clouds(), state);
+}
+
+bool StateBuffer::read(PointCloudStates& states) const {
+    if (id_resolver_ == nullptr) return false;
+    const auto robot_state = read();
+    if (robot_state == nullptr) return false;
+    states = robot_state->point_clouds;
     return true;
 }
 
@@ -157,7 +172,8 @@ bool StateBuffer::write(std::shared_ptr<const RobotState> robot_state) {
     if (!validate_states(robot_state->mobile_bases, id_resolver_->mobile_bases())) return false;
     if (!validate_states(robot_state->imus, id_resolver_->imus())) return false;
     if (!validate_states(robot_state->cameras, id_resolver_->cameras())) return false;
-    if (!validate_states(robot_state->lidars, id_resolver_->lidars())) return false;
+    if (!validate_states(robot_state->laser_scans, id_resolver_->laser_scans())) return false;
+    if (!validate_states(robot_state->point_clouds, id_resolver_->point_clouds())) return false;
     std::atomic_store_explicit(&state_, std::move(robot_state), std::memory_order_release);
     return true;
 }

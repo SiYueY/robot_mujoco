@@ -26,8 +26,10 @@ public:
     bool read(ImuStates& states) const;
     bool read(CameraState& state) const;
     bool read(CameraStates& states) const;
-    bool read(LidarState& state) const;
-    bool read(LidarStates& states) const;
+    bool read(LaserScanState& state) const;
+    bool read(LaserScanStates& states) const;
+    bool read(PointCloudState& state) const;
+    bool read(PointCloudStates& states) const;
 
     bool write(std::shared_ptr<const RobotState> state);
 

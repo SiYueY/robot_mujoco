@@ -379,18 +379,88 @@ bool SimulationConfigParser::parse_components(
     for (const tinyxml2::XMLElement* e = robot->FirstChildElement(config_names::kLidar);
          e != nullptr; e = e->NextSiblingElement(config_names::kLidar)) {
         LidarInfo v;
-        if (!id(*e, maximum, v.id) || !required(*e, config_names::kName, v.name) ||
+        if (!allowed(*e, {config_names::kScan, config_names::kChannel, config_names::kRaycast}) ||
+            !id(*e, maximum, v.id) || !required(*e, config_names::kName, v.name) ||
             !required(*e, config_names::kFrameId, v.frame_id) ||
-            !required(*e, config_names::kSensorPrefix, v.sensor_prefix) ||
+            !required(*e, config_names::kSite, v.site_name) ||
             e->Attribute(config_names::kUpdateRate) != nullptr ||
             !number(*e, config_names::kPeriod, v.period) ||
-            !number(*e, config_names::kAngleMin, v.angle_min, true) ||
-            !number(*e, config_names::kAngleMax, v.angle_max, true) ||
-            !number(*e, config_names::kAngleIncrement, v.angle_increment, true) ||
             !number(*e, config_names::kRangeMin, v.range_min, true) ||
             !number(*e, config_names::kRangeMax, v.range_max, true)) {
             log_error(failure, e, "", "invalid lidar syntax or attribute value");
             return false;
+        }
+        const char* output = e->Attribute(config_names::kOutput);
+        if (output == nullptr) return false;
+        const std::string output_name = trim_copy(output);
+        if (output_name == "laser_scan")
+            v.output = LidarOutput::LaserScan;
+        else if (output_name == "point_cloud2")
+            v.output = LidarOutput::PointCloud2;
+        else
+            return false;
+        if (e->Attribute(config_names::kGeomGroupMask) != nullptr &&
+            e->QueryUnsignedAttribute(config_names::kGeomGroupMask, &v.geom_group_mask) !=
+                tinyxml2::XML_SUCCESS) {
+            log_error(failure, e, config_names::kGeomGroupMask, "must be an unsigned integer");
+            return false;
+        }
+        const tinyxml2::XMLElement* raycast = e->FirstChildElement(config_names::kRaycast);
+        if (raycast != nullptr) {
+            if (raycast->NextSiblingElement(config_names::kRaycast) != nullptr ||
+                !allowed(*raycast, {}) ||
+                !optional_bool(*raycast, config_names::kExcludeParentBody, v.exclude_parent_body)) {
+                log_error(failure, raycast, "", "invalid lidar raycast definition");
+                return false;
+            }
+            const char* groups = raycast->Attribute(config_names::kGeomGroups);
+            if (groups != nullptr) {
+                std::istringstream values(trim_copy(groups));
+                std::string value;
+                while (std::getline(values, value, ',')) {
+                    std::size_t parsed = 0;
+                    unsigned long group = 0;
+                    try {
+                        group = std::stoul(trim_copy(value), &parsed);
+                    } catch (const std::exception&) {
+                        log_error(
+                            failure, raycast, config_names::kGeomGroups,
+                            "must be comma-separated group indices");
+                        return false;
+                    }
+                    if (parsed != trim_copy(value).size() || group >= 32U) {
+                        log_error(
+                            failure, raycast, config_names::kGeomGroups,
+                            "group index is out of range");
+                        return false;
+                    }
+                    v.geom_group_mask |= 1U << static_cast<unsigned>(group);
+                }
+            }
+        } else if (!optional_bool(*e, config_names::kExcludeParentBody, v.exclude_parent_body)) {
+            log_error(failure, e, config_names::kExcludeParentBody, "must be boolean");
+            return false;
+        }
+        const tinyxml2::XMLElement* scan = e->FirstChildElement(config_names::kScan);
+        if (scan == nullptr || scan->NextSiblingElement(config_names::kScan) != nullptr ||
+            !allowed(*scan, {}) ||
+            !number(*scan, config_names::kAzimuthStart, v.azimuth_start, true) ||
+            !number(*scan, config_names::kAzimuthIncrement, v.azimuth_increment, true) ||
+            scan->QueryUnsignedAttribute(config_names::kAzimuthSamples, &v.azimuth_samples) !=
+                tinyxml2::XML_SUCCESS) {
+            log_error(failure, e, "", "invalid lidar scan definition");
+            return false;
+        }
+        for (const tinyxml2::XMLElement* channel = e->FirstChildElement(config_names::kChannel);
+             channel != nullptr; channel = channel->NextSiblingElement(config_names::kChannel)) {
+            LidarChannel item;
+            if (!allowed(*channel, {}) ||
+                !number(*channel, config_names::kElevation, item.elevation, true) ||
+                !number(*channel, config_names::kAzimuthOffset, item.azimuth_offset)) {
+                log_error(failure, channel, "", "invalid lidar channel definition");
+                return false;
+            }
+            v.channels.push_back(item);
         }
         out.emplace_back(std::move(v));
     }

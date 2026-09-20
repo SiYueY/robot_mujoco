@@ -62,7 +62,7 @@ bool check_sparse_indices() {
     snapshot->mobile_bases = make_states<romujoco::MobileBaseState>({0, 2, 255});
     snapshot->imus = make_states<romujoco::ImuState>({0, 2, 255});
     snapshot->cameras = make_states<romujoco::CameraState>({0, 2, 255});
-    snapshot->lidars = make_states<romujoco::LidarState>({0, 2, 255});
+    snapshot->laser_scans = make_states<romujoco::LaserScanState>({0, 2, 255});
     if (!check(buffer.write(std::move(snapshot)), "failed to publish sparse state snapshot"))
         return false;
 
@@ -74,12 +74,12 @@ bool check_sparse_indices() {
     imu.id = 255;
     romujoco::CameraState camera;
     camera.id = 255;
-    romujoco::LidarState lidar;
-    lidar.id = 255;
+    romujoco::LaserScanState laser_scan;
+    laser_scan.id = 255;
     if (!check(
             buffer.read(joint) && joint.id == 255 && buffer.read(mobile_base) &&
                 mobile_base.id == 255 && buffer.read(imu) && imu.id == 255 && buffer.read(camera) &&
-                camera.id == 255 && buffer.read(lidar) && lidar.id == 255,
+                camera.id == 255 && buffer.read(laser_scan) && laser_scan.id == 255,
             "sparse state index did not resolve a configured ID")) {
         return false;
     }
@@ -130,18 +130,19 @@ bool check_plural_reads() {
         make_states<romujoco::MobileBaseState>({7});
     const romujoco::ImuStates sentinel_imus = make_states<romujoco::ImuState>({7});
     const romujoco::CameraStates sentinel_cameras = make_states<romujoco::CameraState>({7});
-    const romujoco::LidarStates sentinel_lidars = make_states<romujoco::LidarState>({7});
+    const romujoco::LaserScanStates sentinel_laser_scans =
+        make_states<romujoco::LaserScanState>({7});
 
     romujoco::JointStates joints = sentinel_joints;
     romujoco::MobileBaseStates mobile_bases = sentinel_mobile_bases;
     romujoco::ImuStates imus = sentinel_imus;
     romujoco::CameraStates cameras = sentinel_cameras;
-    romujoco::LidarStates lidars = sentinel_lidars;
+    romujoco::LaserScanStates laser_scans = sentinel_laser_scans;
     if (!check(
             !buffer.read(joints) && joints == sentinel_joints && !buffer.read(mobile_bases) &&
                 mobile_bases == sentinel_mobile_bases && !buffer.read(imus) &&
                 imus == sentinel_imus && !buffer.read(cameras) && cameras == sentinel_cameras &&
-                !buffer.read(lidars) && lidars == sentinel_lidars,
+                !buffer.read(laser_scans) && laser_scans == sentinel_laser_scans,
             "plural read succeeded or modified output before a snapshot was published")) {
         return false;
     }
@@ -151,12 +152,12 @@ bool check_plural_reads() {
     snapshot->mobile_bases = make_states<romujoco::MobileBaseState>({0, 2, 255});
     snapshot->imus = make_states<romujoco::ImuState>({0, 2, 255});
     snapshot->cameras = make_states<romujoco::CameraState>({0, 2, 255});
-    snapshot->lidars = make_states<romujoco::LidarState>({0, 2, 255});
+    snapshot->laser_scans = make_states<romujoco::LaserScanState>({0, 2, 255});
     const romujoco::JointStates published_joints = snapshot->joints;
     const romujoco::MobileBaseStates published_mobile_bases = snapshot->mobile_bases;
     const romujoco::ImuStates published_imus = snapshot->imus;
     const romujoco::CameraStates published_cameras = snapshot->cameras;
-    const romujoco::LidarStates published_lidars = snapshot->lidars;
+    const romujoco::LaserScanStates published_laser_scans = snapshot->laser_scans;
     if (!check(buffer.write(std::move(snapshot)), "failed to publish plural-read snapshot")) {
         return false;
     }
@@ -165,7 +166,7 @@ bool check_plural_reads() {
             buffer.read(joints) && joints == published_joints && buffer.read(mobile_bases) &&
                 mobile_bases == published_mobile_bases && buffer.read(imus) &&
                 imus == published_imus && buffer.read(cameras) && cameras == published_cameras &&
-                buffer.read(lidars) && lidars == published_lidars,
+                buffer.read(laser_scans) && laser_scans == published_laser_scans,
             "plural read did not return the published snapshot")) {
         return false;
     }
@@ -173,7 +174,7 @@ bool check_plural_reads() {
     buffer.shutdown();
     return check(
         !buffer.read(joints) && !buffer.read(mobile_bases) && !buffer.read(imus) &&
-            !buffer.read(cameras) && !buffer.read(lidars),
+            !buffer.read(cameras) && !buffer.read(laser_scans),
         "plural read succeeded after shutdown");
 }
 }  // namespace

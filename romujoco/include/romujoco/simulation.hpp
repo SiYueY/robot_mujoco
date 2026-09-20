@@ -54,13 +54,15 @@ public:
     ROMUJOCO_PUBLIC bool read_state(GripperState& state) const;
     ROMUJOCO_PUBLIC bool read_state(ImuState& state) const;
     ROMUJOCO_PUBLIC bool read_state(CameraState& state) const;
-    ROMUJOCO_PUBLIC bool read_state(LidarState& state) const;
+    ROMUJOCO_PUBLIC bool read_state(LaserScanState& state) const;
+    ROMUJOCO_PUBLIC bool read_state(PointCloudState& state) const;
     ROMUJOCO_PUBLIC bool read_state(MobileBaseState& state) const;
     ROMUJOCO_PUBLIC bool read_state(JointStates& states) const;
     ROMUJOCO_PUBLIC bool read_state(GripperStates& states) const;
     ROMUJOCO_PUBLIC bool read_state(ImuStates& states) const;
     ROMUJOCO_PUBLIC bool read_state(CameraStates& states) const;
-    ROMUJOCO_PUBLIC bool read_state(LidarStates& states) const;
+    ROMUJOCO_PUBLIC bool read_state(LaserScanStates& states) const;
+    ROMUJOCO_PUBLIC bool read_state(PointCloudStates& states) const;
     ROMUJOCO_PUBLIC bool read_state(MobileBaseStates& states) const;
     // Thread-safe copy of contacts captured in the most recently published
     // RobotState.  An initialized simulation with no contacts returns true and

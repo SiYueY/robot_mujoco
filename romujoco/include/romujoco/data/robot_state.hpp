@@ -25,7 +25,8 @@ using JointStates = StateSnapshots<JointState>;
 using GripperStates = StateSnapshots<GripperState>;
 using MobileBaseStates = StateSnapshots<MobileBaseState>;
 using ImuStates = StateSnapshots<ImuState>;
-using LidarStates = StateSnapshots<LidarState>;
+using LaserScanStates = StateSnapshots<LaserScanState>;
+using PointCloudStates = StateSnapshots<PointCloudState>;
 using CameraStates = StateSnapshots<CameraState>;
 
 // Immutable contact data published with RobotState.  Names are copied while the
@@ -47,7 +48,8 @@ struct RobotState {
     GripperStates grippers;
     MobileBaseStates mobile_bases;
     ImuStates imus;
-    LidarStates lidars;
+    LaserScanStates laser_scans;
+    PointCloudStates point_clouds;
     CameraStates cameras;
     ContactStates contacts;
 };

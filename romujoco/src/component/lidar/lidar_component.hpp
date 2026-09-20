@@ -20,8 +20,8 @@ public:
     bool advance(const SimulationContext& context) override;
     bool update(const SimulationContext& context) override;
 
-    bool read_state(std::shared_ptr<const LidarState>& state) const;
-    bool read(const SimulationContext& context, LidarState& state) const;
+    bool read_laser_scan_state(std::shared_ptr<const LaserScanState>& state) const;
+    bool read_point_cloud_state(std::shared_ptr<const PointCloudState>& state) const;
 
     const LidarInfo& info() const noexcept { return info_; }
     bool is_initialized() const noexcept { return initialized_; }
@@ -33,8 +33,14 @@ public:
 
 private:
     LidarInfo info_;
-    std::vector<int> beam_addresses_;
-    std::shared_ptr<const LidarState> state_;
+    int site_id_{-1};
+    int body_id_{-1};
+    std::vector<mjtNum> local_directions_;
+    std::vector<mjtNum> world_directions_;
+    std::vector<mjtNum> distances_;
+    std::vector<mjtByte> geom_groups_;
+    std::shared_ptr<const LaserScanState> laser_scan_state_;
+    std::shared_ptr<const PointCloudState> point_cloud_state_;
     std::uint64_t sequence_{0};
     bool initialized_{false};
 };

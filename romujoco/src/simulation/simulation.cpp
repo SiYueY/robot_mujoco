@@ -54,13 +54,15 @@ bool Simulation::read_state(JointState& out) const { return impl_->read_state(ou
 bool Simulation::read_state(GripperState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(ImuState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(CameraState& out) const { return impl_->read_state(out); }
-bool Simulation::read_state(LidarState& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(LaserScanState& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(PointCloudState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(MobileBaseState& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(JointStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(GripperStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(ImuStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(CameraStates& out) const { return impl_->read_state(out); }
-bool Simulation::read_state(LidarStates& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(LaserScanStates& out) const { return impl_->read_state(out); }
+bool Simulation::read_state(PointCloudStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_state(MobileBaseStates& out) const { return impl_->read_state(out); }
 bool Simulation::read_contacts(ContactStates& out) const { return impl_->read_contacts(out); }
 

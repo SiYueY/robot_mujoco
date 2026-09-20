@@ -50,6 +50,19 @@ add_test(
   NAME romujoco.config_timing
   COMMAND romujoco_config_timing_test)
 
+add_executable(romujoco_lidar_config_test
+  unit/lidar_config_test.cpp)
+target_include_directories(romujoco_lidar_config_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/src)
+target_sources(romujoco_lidar_config_test PRIVATE
+  $<TARGET_OBJECTS:romujoco_runtime>
+  $<TARGET_OBJECTS:romujoco_tinyxml2>)
+target_link_libraries(romujoco_lidar_config_test PRIVATE
+  romujoco::romujoco)
+add_test(
+  NAME romujoco.lidar_config
+  COMMAND romujoco_lidar_config_test)
+
 add_executable(romujoco_component_period_test
   unit/simulation_component_period_test.cpp)
 target_include_directories(romujoco_component_period_test PRIVATE
@@ -203,6 +216,16 @@ target_link_libraries(romujoco_gripper_runtime_test PRIVATE
 add_test(
   NAME romujoco.gripper_runtime
   COMMAND romujoco_gripper_runtime_test)
+
+add_executable(romujoco_lidar_runtime_test
+  public/lidar_runtime_test.cpp)
+target_include_directories(romujoco_lidar_runtime_test PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+target_link_libraries(romujoco_lidar_runtime_test PRIVATE
+  romujoco::romujoco)
+add_test(
+  NAME romujoco.lidar_runtime
+  COMMAND romujoco_lidar_runtime_test)
 
 add_executable(romujoco_component_header_contract_test
   public/component_header_contract_test.cpp)

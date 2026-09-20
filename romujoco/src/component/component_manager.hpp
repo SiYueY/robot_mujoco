@@ -60,7 +60,8 @@ private:
     GripperStates grippers_;
     MobileBaseStates mobile_bases_;
     ImuStates imus_;
-    LidarStates lidars_;
+    LaserScanStates laser_scans_;
+    PointCloudStates point_clouds_;
     CameraStates cameras_;
     CameraRenderService* camera_render_service_{nullptr};
     std::optional<CameraRenderTicket> active_camera_ticket_;

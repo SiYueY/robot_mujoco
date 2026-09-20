@@ -5,6 +5,8 @@
 #include <type_traits>
 #include <unordered_set>
 
+#include <mujoco/mujoco.h>
+
 #include "common/compare.hpp"
 #include "log/logging.hpp"
 #include "config/simulation_config_data.hpp"
@@ -14,6 +16,9 @@ namespace {
 constexpr std::size_t kMaximumComponentId{255};
 constexpr int kMaximumCameraDimension{8192};
 constexpr std::size_t kMaximumCameraOutputBytes{256U * 1024U * 1024U};
+constexpr std::size_t kDirectionDimensions{3U};
+constexpr std::uint32_t kPointStep{12U};
+constexpr double kHalfPi{1.57079632679489661923};
 
 template <typename Values>
 bool values_are_finite(const Values& values) {
@@ -75,8 +80,8 @@ bool SimulationConfigValidator::validate_lidar_names(const LidarInfo& lidar) {
         log_error(config_names::kFrameId, "lidar frame_id must not be empty");
         return false;
     }
-    if (lidar.sensor_prefix.empty()) {
-        log_error(config_names::kSensorPrefix, "lidar sensor prefix must not be empty");
+    if (lidar.site_name.empty()) {
+        log_error(config_names::kSite, "lidar site name must not be empty");
         return false;
     }
     return true;
@@ -91,18 +96,46 @@ bool SimulationConfigValidator::validate_mobile_base_names(const MobileBaseCommo
 }
 
 bool SimulationConfigValidator::validate_lidar(const LidarInfo& lidar) {
-    if (!std::isfinite(lidar.angle_min) || !std::isfinite(lidar.angle_max) ||
-        !std::isfinite(lidar.angle_increment) || !std::isfinite(lidar.range_min) ||
-        !std::isfinite(lidar.range_max)) {
-        log_error(config_names::kAngleMin, "lidar parameters must be finite");
+    if (!std::isfinite(lidar.azimuth_start) || !std::isfinite(lidar.azimuth_increment) ||
+        !std::isfinite(lidar.range_min) || !std::isfinite(lidar.range_max)) {
+        log_error(config_names::kAzimuthStart, "lidar parameters must be finite");
         return false;
     }
-    if (lidar.angle_increment <= 0.0) {
-        log_error(config_names::kAngleIncrement, "lidar angle_increment must be positive");
+    if (lidar.azimuth_increment == 0.0) {
+        log_error(config_names::kAzimuthIncrement, "lidar azimuth increment must not be zero");
         return false;
     }
-    if (!math::less(lidar.angle_min, lidar.angle_max)) {
-        log_error(config_names::kAngleMin, "lidar angle_min must be less than angle_max");
+    if (lidar.azimuth_samples == 0U) {
+        log_error(config_names::kAzimuthSamples, "lidar azimuth samples must be positive");
+        return false;
+    }
+    if (lidar.channels.empty()) {
+        log_error(config_names::kChannel, "lidar must define at least one channel");
+        return false;
+    }
+    for (const LidarChannel& channel : lidar.channels) {
+        if (!std::isfinite(channel.elevation) || !std::isfinite(channel.azimuth_offset)) {
+            log_error(config_names::kChannel, "lidar channel angles must be finite");
+            return false;
+        }
+        if (channel.elevation < -kHalfPi || channel.elevation > kHalfPi) {
+            log_error(config_names::kElevation, "lidar channel elevation must be in [-pi/2, pi/2]");
+            return false;
+        }
+    }
+    const std::size_t samples = static_cast<std::size_t>(lidar.azimuth_samples);
+    if (lidar.channels.size() > std::numeric_limits<std::size_t>::max() / samples ||
+        lidar.channels.size() * samples >
+            static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
+        lidar.channels.size() * samples >
+            std::numeric_limits<std::size_t>::max() / kDirectionDimensions) {
+        log_error(config_names::kAzimuthSamples, "lidar ray count exceeds MuJoCo int capacity");
+        return false;
+    }
+    const std::uint32_t valid_geom_groups = (1U << mjNGROUP) - 1U;
+    if ((lidar.geom_group_mask & ~valid_geom_groups) != 0U) {
+        log_error(
+            config_names::kGeomGroupMask, "lidar geom group mask contains an unsupported group");
         return false;
     }
     if (lidar.range_min < 0.0) {
@@ -111,6 +144,23 @@ bool SimulationConfigValidator::validate_lidar(const LidarInfo& lidar) {
     }
     if (!math::less(lidar.range_min, lidar.range_max)) {
         log_error(config_names::kRangeMin, "lidar range_min must be less than range_max");
+        return false;
+    }
+    if (lidar.output == LidarOutput::LaserScan &&
+        (lidar.channels.size() != 1U || !math::equal(lidar.channels.front().elevation, 0.0))) {
+        log_error(config_names::kChannel, "laser_scan requires exactly one zero-elevation channel");
+        return false;
+    }
+    if (lidar.output != LidarOutput::LaserScan && lidar.output != LidarOutput::PointCloud2) {
+        log_error(config_names::kOutput, "lidar output must be laser_scan or point_cloud2");
+        return false;
+    }
+    if (lidar.output == LidarOutput::PointCloud2 &&
+        (lidar.azimuth_samples > std::numeric_limits<std::uint32_t>::max() / kPointStep ||
+         lidar.channels.size() * samples > std::numeric_limits<std::size_t>::max() / kPointStep)) {
+        log_error(
+            config_names::kAzimuthSamples,
+            "lidar PointCloud2 byte layout exceeds its representable size");
         return false;
     }
     return true;

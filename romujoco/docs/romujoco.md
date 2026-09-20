@@ -90,9 +90,9 @@ Simulation
   - `read_state(std::shared_ptr<const RobotState>&)`
   - `read_state(RobotState&)`
   - 按组件 ID 读取 `JointState`、`GripperState`、`ImuState`、`CameraState`、
-    `LidarState` 与 `MobileBaseState`
+    `LaserScanState`、`PointCloudState` 与 `MobileBaseState`
   - 分别读取 `JointStates`、`GripperStates`、`ImuStates`、`CameraStates`、
-    `LidarStates` 与 `MobileBaseStates` 聚合状态
+    `LaserScanStates`、`PointCloudStates` 与 `MobileBaseStates` 聚合状态
 
 ## 组件模型与调度模型
 
@@ -201,17 +201,17 @@ joint。详细设计见 [gripper.md](./component/gripper.md)。
 
 ### Lidar
 
-`Lidar` 依赖一组 `rangefinder` 传感器阵列拼装 `LidarState`。
+`Lidar` 使用 MuJoCo site、预编译 ray pattern 和 `mj_multiRay()` 发布
+`LaserScanState` 或 `PointCloudState`；MJCF 无需展开 rangefinder beam sensor。
 
-- beam 名称需满足 `<prefix>-<index>`
-- 按 index 决定 beam 顺序
-- 每个 beam 数据来自 `sensordata`
+- 扫描 pattern 由 azimuth samples 与 channel elevation/offset 描述
+- 每帧使用 site 位姿与批量 `mj_multiRay()` 求交
+- 2D 输出 `LaserScanState`，3D 输出 organized `PointCloudState`
 
 当前不处理：
 
-- 点云输出
 - intensity 真实建模
-- 无命名规则的自动拓扑推断
+- multi-echo、rolling scan 与噪声模型
 
 ### Camera
 
@@ -272,7 +272,7 @@ steering actuator 如何驱动属于各 chassis 自己的实现。详细契约�
 | --- | --- |
 | `Joint` | `qpos` / `qvel` / `ctrl` / `qfrc_actuator` |
 | `Imu` | `sensordata` |
-| `Lidar` | `sensordata` |
+| `Lidar` | site pose + `mj_multiRay()` |
 | `Camera` | 渲染管线，不走 `sensordata` |
 | `Gripper` | `qpos` / `qvel` / `ctrl` / `actuator_force`（+ MJCF equality） |
 | `MobileBase` | 多个 `Joint` 的读写组合 |

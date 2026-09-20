@@ -1,129 +1,96 @@
 #include "component/lidar/lidar_component.hpp"
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <utility>
 
-#include "common/compare.hpp"
-#include "log/logging.hpp"
 #include "common/macro.hpp"
+#include "log/logging.hpp"
 
 namespace romujoco {
+namespace {
+constexpr std::uint32_t kPointStep = 12U;
+constexpr std::uint32_t kFloat32Size = 4U;
+
+std::uint64_t timestamp_ns(double simulation_time) {
+    constexpr double kNanosecondsPerSecond = 1.0e9;
+    const double timestamp = simulation_time * kNanosecondsPerSecond;
+    if (!std::isfinite(timestamp) || timestamp <= 0.0) return 0U;
+    if (timestamp >= static_cast<double>(std::numeric_limits<std::uint64_t>::max()))
+        return std::numeric_limits<std::uint64_t>::max();
+    return static_cast<std::uint64_t>(timestamp);
+}
+
+void write_float32_le(std::vector<std::uint8_t>& data, std::size_t offset, float value) {
+    static_assert(sizeof(float) == kFloat32Size, "PointCloud2 requires float32");
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    data[offset] = static_cast<std::uint8_t>(bits & 0xFFU);
+    data[offset + 1U] = static_cast<std::uint8_t>((bits >> 8U) & 0xFFU);
+    data[offset + 2U] = static_cast<std::uint8_t>((bits >> 16U) & 0xFFU);
+    data[offset + 3U] = static_cast<std::uint8_t>((bits >> 24U) & 0xFFU);
+}
+}  // namespace
 
 LidarComponent::LidarComponent(LidarInfo info)
 : SimulationComponent(info.name, info.period), info_(std::move(info)) {}
 
 bool LidarComponent::init(const SimulationContext& context) {
     initialized_ = false;
-    beam_addresses_.clear();
-    if (!configure(context)) {
-        return false;
-    }
-
+    local_directions_.clear();
+    world_directions_.clear();
+    distances_.clear();
+    geom_groups_.clear();
+    laser_scan_state_.reset();
+    point_cloud_state_.reset();
+    if (!configure(context)) return false;
     const mjModel& model = *context.model;
-    if (info_.sensor_prefix.empty()) {
-        SIM_ERROR << "lidar '" << info_.name << "' sensor prefix must not be empty.";
+    site_id_ = mj_name2id(&model, mjOBJ_SITE, info_.site_name.c_str());
+    if (site_id_ < 0) {
+        SIM_ERROR << "lidar '" << info_.name << "' site '" << info_.site_name
+                  << "' was not found in the MuJoCo model.";
         return false;
     }
-    if (!std::isfinite(info_.angle_min) || !std::isfinite(info_.angle_max) ||
-        !std::isfinite(info_.angle_increment)) {
-        SIM_ERROR << "lidar '" << info_.name << "' angular configuration must be finite.";
-        return false;
-    }
-    if (!std::isfinite(info_.range_min) || !std::isfinite(info_.range_max)) {
-        SIM_ERROR << "lidar '" << info_.name << "' range configuration must be finite.";
-        return false;
-    }
-    if (info_.angle_increment <= 0.0) {
-        SIM_ERROR << "lidar '" << info_.name << "' angle increment must be positive.";
-        return false;
-    }
-    if (math::less(info_.angle_max, info_.angle_min)) {
-        SIM_ERROR << "lidar '" << info_.name << "' angle maximum is less than angle minimum.";
-        return false;
-    }
-    if (math::less(info_.range_max, info_.range_min)) {
-        SIM_ERROR << "lidar '" << info_.name << "' range maximum is less than range minimum.";
-        return false;
-    }
-
-    const double span = (info_.angle_max - info_.angle_min) / info_.angle_increment;
-    const double rounded_span = std::round(span);
-    if (!math::equal(span, rounded_span) ||
-        rounded_span > static_cast<double>(std::numeric_limits<int>::max() - 1)) {
-        SIM_ERROR << "lidar '" << info_.name
-                  << "' angle span must be an integral number of increments.";
-        return false;
-    }
-    const int beam_count = static_cast<int>(rounded_span) + 1;
-
-    beam_addresses_.resize(static_cast<std::size_t>(beam_count), -1);
-    for (int beam_index = 0; beam_index < beam_count; ++beam_index) {
-        const std::string sensor_name = info_.sensor_prefix + "-" + std::to_string(beam_index);
-        const int sensor_id = mj_name2id(&model, mjOBJ_SENSOR, sensor_name.c_str());
-        if (sensor_id < 0) {
-            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
-                      << "' was not found in the model.";
-            return false;
+    body_id_ = model.site_bodyid[site_id_];
+    const std::size_t ray_count =
+        info_.channels.size() * static_cast<std::size_t>(info_.azimuth_samples);
+    local_directions_.resize(ray_count * 3U);
+    world_directions_.resize(ray_count * 3U);
+    distances_.resize(ray_count);
+    for (std::size_t channel_index = 0; channel_index < info_.channels.size(); ++channel_index) {
+        const LidarChannel& channel = info_.channels[channel_index];
+        const double cos_elevation = std::cos(channel.elevation);
+        for (std::uint32_t azimuth_index = 0; azimuth_index < info_.azimuth_samples;
+             ++azimuth_index) {
+            const std::size_t index = channel_index * info_.azimuth_samples + azimuth_index;
+            const double azimuth = info_.azimuth_start +
+                                   static_cast<double>(azimuth_index) * info_.azimuth_increment +
+                                   channel.azimuth_offset;
+            local_directions_[index * 3U] = cos_elevation * std::cos(azimuth);
+            local_directions_[index * 3U + 1U] = cos_elevation * std::sin(azimuth);
+            local_directions_[index * 3U + 2U] = std::sin(channel.elevation);
         }
-        if (model.sensor_type[sensor_id] != mjSENS_RANGEFINDER) {
-            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
-                      << "' has type " << model.sensor_type[sensor_id] << ", expected "
-                      << mjSENS_RANGEFINDER << ".";
-            return false;
-        }
-        if (model.sensor_dim[sensor_id] != 1) {
-            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
-                      << "' has dimension " << model.sensor_dim[sensor_id] << ", expected 1.";
-            return false;
-        }
-        const int address = model.sensor_adr[sensor_id];
-        if (address < 0 || address >= model.nsensordata) {
-            SIM_ERROR << "lidar '" << info_.name << "' beam sensor '" << sensor_name
-                      << "' has an out-of-range sensor address.";
-            return false;
-        }
-        beam_addresses_[static_cast<std::size_t>(beam_index)] = address;
     }
-
+    if (info_.geom_group_mask != 0U) {
+        geom_groups_.resize(mjNGROUP);
+        for (int group = 0; group < mjNGROUP; ++group)
+            geom_groups_[static_cast<std::size_t>(group)] =
+                (info_.geom_group_mask & (1U << static_cast<unsigned>(group))) != 0U;
+    }
     sequence_ = 0;
-    auto state = std::make_shared<LidarState>();
-    state->id = info_.id;
-    state->frame_id = info_.frame_id;
-    state->angle_min = info_.angle_min;
-    state->angle_max = info_.angle_max;
-    state->angle_increment = info_.angle_increment;
-    state->range_min = info_.range_min;
-    state->range_max = info_.range_max;
-    state->ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
-    state->intensities.assign(beam_addresses_.size(), 0.0);
-    state_ = std::move(state);
     initialized_ = true;
-    return true;
+    return reset(context);
 }
 
 bool LidarComponent::reset(const SimulationContext& context) {
     UNUSED(context);
-    if (!initialized_) {
-        SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
-        return false;
-    }
-
+    if (!initialized_) return false;
     sequence_ = 0;
-    auto state = std::make_shared<LidarState>();
-    state->id = info_.id;
-    state->frame_id = info_.frame_id;
-    state->angle_min = info_.angle_min;
-    state->angle_max = info_.angle_max;
-    state->angle_increment = info_.angle_increment;
-    state->range_min = info_.range_min;
-    state->range_max = info_.range_max;
-    state->ranges.assign(beam_addresses_.size(), std::numeric_limits<double>::infinity());
-    state->intensities.assign(beam_addresses_.size(), 0.0);
-    state_ = std::move(state);
+    laser_scan_state_.reset();
+    point_cloud_state_.reset();
     return true;
 }
-
 bool LidarComponent::advance(const SimulationContext& context) {
     UNUSED(context);
     return true;
@@ -134,52 +101,92 @@ bool LidarComponent::update(const SimulationContext& context) {
         SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
         return false;
     }
-
-    auto state = std::make_shared<LidarState>();
+    const std::size_t ray_count = distances_.size();
+    for (std::size_t index = 0; index < ray_count; ++index)
+        mju_mulMatVec3(
+            world_directions_.data() + index * 3U, context.data->site_xmat + site_id_ * 9,
+            local_directions_.data() + index * 3U);
+    mj_multiRay(
+        context.model, context.data, context.data->site_xpos + site_id_ * 3,
+        world_directions_.data(), geom_groups_.empty() ? nullptr : geom_groups_.data(), 1,
+        info_.exclude_parent_body ? body_id_ : -1, nullptr, distances_.data(), nullptr,
+        static_cast<int>(ray_count), info_.range_max);
+    const std::uint64_t timestamp = timestamp_ns(context.data->time);
+    if (info_.output == LidarOutput::LaserScan) {
+        auto state = std::make_shared<LaserScanState>();
+        state->id = info_.id;
+        state->sequence = ++sequence_;
+        LaserScan& scan = state->scan;
+        scan.timestamp = timestamp;
+        scan.frame_id = info_.frame_id;
+        scan.angle_min =
+            static_cast<float>(info_.azimuth_start + info_.channels.front().azimuth_offset);
+        scan.angle_increment = static_cast<float>(info_.azimuth_increment);
+        scan.angle_max =
+            scan.angle_min + static_cast<float>(info_.azimuth_samples - 1U) * scan.angle_increment;
+        scan.time_increment = 0.0F;
+        scan.scan_time = static_cast<float>(info_.period);
+        scan.range_min = static_cast<float>(info_.range_min);
+        scan.range_max = static_cast<float>(info_.range_max);
+        scan.ranges.resize(ray_count);
+        for (std::size_t index = 0; index < ray_count; ++index) {
+            const mjtNum distance = distances_[index];
+            scan.ranges[index] =
+                !std::isfinite(distance) || distance < info_.range_min || distance > info_.range_max
+                    ? std::numeric_limits<float>::infinity()
+                    : static_cast<float>(distance);
+        }
+        scan.intensities.clear();
+        laser_scan_state_ = std::move(state);
+        point_cloud_state_.reset();
+        return true;
+    }
+    auto state = std::make_shared<PointCloudState>();
     state->id = info_.id;
     state->sequence = ++sequence_;
-    state->timestamp = context.data->time;
-    state->frame_id = info_.frame_id;
-    state->angle_min = info_.angle_min;
-    state->angle_max = info_.angle_max;
-    state->angle_increment = info_.angle_increment;
-    state->range_min = info_.range_min;
-    state->range_max = info_.range_max;
-    state->scan_time = info_.period > 0.0 ? info_.period : context.model->opt.timestep;
-    state->time_increment = 0.0;
-    state->ranges.resize(beam_addresses_.size());
-    state->intensities.resize(beam_addresses_.size());
-
-    for (std::size_t beam_index = 0; beam_index < beam_addresses_.size(); ++beam_index) {
-        const double range = context.data->sensordata[beam_addresses_[beam_index]];
-        state->ranges[beam_index] =
-            (!std::isfinite(range) || range < info_.range_min || range > info_.range_max)
-                ? std::numeric_limits<double>::infinity()
-                : range;
-        state->intensities[beam_index] = 0.0;
+    PointCloud2& cloud = state->cloud;
+    cloud.timestamp = timestamp;
+    cloud.frame_id = info_.frame_id;
+    cloud.height = static_cast<std::uint32_t>(info_.channels.size());
+    cloud.width = info_.azimuth_samples;
+    cloud.fields = {
+        {"x", 0U, PointFieldType::Float32, 1U},
+        {"y", 4U, PointFieldType::Float32, 1U},
+        {"z", 8U, PointFieldType::Float32, 1U}};
+    cloud.is_bigendian = false;
+    cloud.point_step = kPointStep;
+    cloud.row_step = static_cast<std::uint32_t>(
+        static_cast<std::size_t>(cloud.width) * static_cast<std::size_t>(cloud.point_step));
+    cloud.data.resize(ray_count * static_cast<std::size_t>(cloud.point_step));
+    cloud.is_dense = true;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    for (std::size_t index = 0; index < ray_count; ++index) {
+        const mjtNum distance = distances_[index];
+        const bool valid =
+            std::isfinite(distance) && distance >= info_.range_min && distance <= info_.range_max;
+        const std::size_t offset = index * kPointStep;
+        if (!valid) cloud.is_dense = false;
+        write_float32_le(
+            cloud.data, offset,
+            valid ? static_cast<float>(distance * local_directions_[index * 3U]) : nan);
+        write_float32_le(
+            cloud.data, offset + 4U,
+            valid ? static_cast<float>(distance * local_directions_[index * 3U + 1U]) : nan);
+        write_float32_le(
+            cloud.data, offset + 8U,
+            valid ? static_cast<float>(distance * local_directions_[index * 3U + 2U]) : nan);
     }
-    state_ = std::move(state);
-
+    point_cloud_state_ = std::move(state);
+    laser_scan_state_.reset();
     return true;
 }
 
-bool LidarComponent::read_state(std::shared_ptr<const LidarState>& state) const {
-    if (!initialized_) {
-        SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
-        return false;
-    }
-    state = state_;
-    return state != nullptr;
+bool LidarComponent::read_laser_scan_state(std::shared_ptr<const LaserScanState>& state) const {
+    state = laser_scan_state_;
+    return initialized_ && state != nullptr;
 }
-
-bool LidarComponent::read(const SimulationContext& context, LidarState& state) const {
-    UNUSED(context);
-    std::shared_ptr<const LidarState> snapshot;
-    if (!read_state(snapshot)) {
-        return false;
-    }
-    state = *snapshot;
-    return true;
+bool LidarComponent::read_point_cloud_state(std::shared_ptr<const PointCloudState>& state) const {
+    state = point_cloud_state_;
+    return initialized_ && state != nullptr;
 }
-
 }  // namespace romujoco
