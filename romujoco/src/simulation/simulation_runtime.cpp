@@ -154,7 +154,7 @@ bool Simulation::Impl::scheduler_run_task() {
         // kinematic update before integration: writing it after mj_step() would
         // overwrite a state that has already been solved by MuJoCo and, for this
         // free-base model, suppresses the articulated body's gravity response.
-        if (!component_manager_.advance(runtime_->context()) || !runtime_->forward()) {
+        if (!component_manager_.advance(runtime_->context())) {
             SIM_ERROR << "failed to advance simulation components.";
             return false;
         }

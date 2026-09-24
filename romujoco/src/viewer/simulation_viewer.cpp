@@ -437,21 +437,33 @@ bool SimulationViewer::submit(const SimulationContext& context) {
 }
 
 bool SimulationViewer::sync_render_data(const mjData& data) {
-    std::lock_guard<std::mutex> state_lock(mutex_);
-    if (state_ != ViewerState::Ready || simulate_ == nullptr || viewer_data_ == nullptr ||
-        viewer_model_ == nullptr) {
-        return false;
+    mujoco::Simulate* simulate = nullptr;
+    mjData* viewer_data = nullptr;
+    mjModel* viewer_model = nullptr;
+    {
+        std::lock_guard<std::mutex> state_lock(mutex_);
+        if (state_ != ViewerState::Ready || simulate_ == nullptr || viewer_data_ == nullptr ||
+            viewer_model_ == nullptr) {
+            return false;
+        }
+        simulate = simulate_.get();
+        viewer_data = viewer_data_;
+        viewer_model = viewer_model_;
     }
 
     try {
-        std::unique_lock<std::recursive_mutex> simulate_lock(simulate_->mtx);
-        if (simulate_->exitrequest.load()) {
+        std::unique_lock<std::recursive_mutex> simulate_lock(simulate->mtx);
+        if (simulate->exitrequest.load()) {
             return false;
         }
-        if (mj_copyData(viewer_data_, viewer_model_, &data) == nullptr) {
+        if (mj_copyData(viewer_data, viewer_model, &data) == nullptr) {
             return false;
         }
-        simulate_->Sync(false);
+        // Simulation owns an immutable runtime model. The passive viewer copied
+        // that model during startup, so per-frame synchronization only needs the
+        // integration state. Sync(false) would call mjv_copyModel every frame,
+        // which dominates the viewer CPU cost for large mesh-heavy models.
+        simulate->Sync(true);
     } catch (const std::exception&) {
         return false;
     }
