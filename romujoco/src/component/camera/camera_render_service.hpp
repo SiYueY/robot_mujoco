@@ -61,6 +61,9 @@ struct CameraRenderTask {
     // The component owns immutable configuration for the lifetime of a batch.
     // Direct renderer callers can continue to populate config instead.
     const CameraConfig* config_ref{nullptr};
+    // ComponentManager consumes CameraState directly. Direct renderer callers
+    // keep the default CameraFrame result contract.
+    bool state_only{false};
     std::uint64_t sequence{0};
     std::uint64_t timestamp{0};
 };

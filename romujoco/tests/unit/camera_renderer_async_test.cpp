@@ -122,6 +122,24 @@ int main() {
             return 1;
         }
 
+        romujoco::CameraRenderTask state_only = task;
+        state_only.sequence = 2;
+        state_only.config_ref = &task.config;
+        state_only.state_only = true;
+        const auto state_ticket = renderer.submit(context, {state_only});
+        romujoco::CameraBatchResult state_result;
+        if (!check(state_ticket.has_value() && renderer.wait(*state_ticket) &&
+                       renderer.take_result(*state_ticket, state_result) &&
+                       state_result.cameras.size() == 1U &&
+                       state_result.cameras.front().frame.image.data.empty() &&
+                       state_result.cameras.front().prepared_state != nullptr &&
+                       state_result.cameras.front().prepared_state->image.data ==
+                           first_result.cameras.front().frame.image.data,
+                   "state-only camera result retained a duplicate frame or lost image data")) {
+            renderer.release();
+            return 1;
+        }
+
         // submit() must copy mjData before it returns. Queue a deliberately large
         // render first, submit at qpos=0, then move the live model before the
         // queued job can be consumed. The queued image must differ from a later

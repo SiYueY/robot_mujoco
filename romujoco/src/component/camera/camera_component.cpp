@@ -79,6 +79,7 @@ CameraRenderTask CameraComponent::make_render_task(std::uint64_t timestamp) {
     task.height = static_cast<std::uint32_t>(config_.height);
     task.render_depth = config_.enable_depth;
     task.config_ref = &config_;
+    task.state_only = true;
     task.sequence = ++sample_sequence_;
     task.timestamp = timestamp;
     return task;

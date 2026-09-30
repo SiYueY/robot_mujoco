@@ -537,22 +537,24 @@ void CameraRenderer::worker_loop() {
                         continue;
                     }
                     CameraRenderTaskResult completed{
-                        task.camera_id, CameraTaskStatus::Completed,
-                        frame_from_render_state(*state), batch.ticket.generation,
-                        batch.ticket.sequence, batch.simulation_step, batch.simulation_time,
-                        task.sequence, task.timestamp, ""};
-                    auto prepared = std::make_shared<CameraState>();
-                    prepared->id = task.camera_id;
-                    prepared->sequence = task.sequence;
-                    prepared->timestamp = task.timestamp;
-                    const CameraConfig& camera_config =
-                        task.config_ref != nullptr ? *task.config_ref : task.config;
-                    prepared->frame_id = camera_config.frame_id;
-                    prepared->optical_frame_id = camera_config.optical_frame_id;
-                    prepared->image = completed.frame.image;
-                    prepared->depth_image = completed.frame.depth_image;
-                    prepared->camera_info = completed.frame.camera_info;
-                    completed.prepared_state = std::move(prepared);
+                        task.camera_id, CameraTaskStatus::Completed, {},
+                        batch.ticket.generation, batch.ticket.sequence, batch.simulation_step,
+                        batch.simulation_time, task.sequence, task.timestamp, ""};
+                    completed.frame = frame_from_render_state(*state);
+                    if (task.state_only) {
+                        auto prepared = std::make_shared<CameraState>();
+                        prepared->id = task.camera_id;
+                        prepared->sequence = task.sequence;
+                        prepared->timestamp = task.timestamp;
+                        const CameraConfig& camera_config =
+                            task.config_ref != nullptr ? *task.config_ref : task.config;
+                        prepared->frame_id = camera_config.frame_id;
+                        prepared->optical_frame_id = camera_config.optical_frame_id;
+                        prepared->image = std::move(completed.frame.image);
+                        prepared->depth_image = std::move(completed.frame.depth_image);
+                        prepared->camera_info = std::move(completed.frame.camera_info);
+                        completed.prepared_state = std::move(prepared);
+                    }
                     batch.cameras.push_back(std::move(completed));
                 }
             } else {
