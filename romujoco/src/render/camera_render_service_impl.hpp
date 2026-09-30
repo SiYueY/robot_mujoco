@@ -17,6 +17,8 @@ public:
     CameraRenderWaitStatus query(const CameraRenderTicket& ticket) const override;
     bool read_batch_result(
         const CameraRenderTicket& ticket, CameraRenderBatchResult& result) override;
+    bool take_batch_result(
+        const CameraRenderTicket& ticket, CameraRenderBatchResult& result) override;
     bool reset() override;
     bool shutdown() override;
 

@@ -58,6 +58,9 @@ struct CameraRenderTask {
     // Component configuration and sampling metadata remain internal renderer
     // details, while the fields above are the batch protocol contract.
     CameraConfig config;
+    // The component owns immutable configuration for the lifetime of a batch.
+    // Direct renderer callers can continue to populate config instead.
+    const CameraConfig* config_ref{nullptr};
     std::uint64_t sequence{0};
     std::uint64_t timestamp{0};
 };
@@ -114,6 +117,8 @@ struct CameraRenderTaskResult {
     std::uint64_t sequence{0};
     std::uint64_t timestamp{0};
     std::string message;
+    // Built by the render worker so the simulation thread only publishes a pointer.
+    std::shared_ptr<const CameraState> prepared_state;
 };
 
 struct CameraRenderBatchResult {
@@ -164,6 +169,10 @@ public:
     virtual CameraRenderWaitStatus query(const CameraRenderTicket& ticket) const = 0;
     virtual bool read_batch_result(
         const CameraRenderTicket& ticket, CameraRenderBatchResult& result) = 0;
+    virtual bool take_batch_result(
+        const CameraRenderTicket& ticket, CameraRenderBatchResult& result) {
+        return read_batch_result(ticket, result);
+    }
     virtual bool reset() = 0;
     virtual bool shutdown() = 0;
 

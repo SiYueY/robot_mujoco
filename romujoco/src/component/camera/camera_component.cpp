@@ -78,7 +78,7 @@ CameraRenderTask CameraComponent::make_render_task(std::uint64_t timestamp) {
     task.width = static_cast<std::uint32_t>(config_.width);
     task.height = static_cast<std::uint32_t>(config_.height);
     task.render_depth = config_.enable_depth;
-    task.config = config_;
+    task.config_ref = &config_;
     task.sequence = ++sample_sequence_;
     task.timestamp = timestamp;
     return task;
@@ -88,6 +88,11 @@ bool CameraComponent::apply_render_result(const CameraRenderTaskResult& result) 
     if (result.camera_id != config_.id || result.status != CameraTaskStatus::Completed ||
         result.sequence <= last_applied_sequence_) {
         return false;
+    }
+    if (result.prepared_state != nullptr) {
+        state_ = result.prepared_state;
+        last_applied_sequence_ = result.sequence;
+        return true;
     }
     auto state = std::make_shared<CameraState>();
     state->id = config_.id;

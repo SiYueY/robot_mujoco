@@ -206,7 +206,7 @@ bool Simulation::Impl::write_state_snapshot_locked() {
 }
 
 bool Simulation::Impl::create_state_snapshot_locked(std::uint64_t step, double simulation_time) {
-    auto snapshot = std::make_shared<RobotState>();
+    auto snapshot = state_snapshots_.acquire();
     if (!create_state_snapshot(*snapshot)) {
         SIM_ERROR << "component manager failed to create the state snapshot.";
         return false;
@@ -237,14 +237,15 @@ bool Simulation::Impl::create_state_snapshot(RobotState& snapshot) const {
         return false;
     }
     const SimulationContext& context = runtime_->context();
-    snapshot.contacts.clear();
-    snapshot.contacts.reserve(context.data->ncon);
+    snapshot.contacts.resize(static_cast<std::size_t>(context.data->ncon));
     for (int index = 0; index < context.data->ncon; ++index) {
         const mjContact& contact = context.data->contact[index];
         const char* geom1 = mj_id2name(context.model, mjOBJ_GEOM, contact.geom1);
         const char* geom2 = mj_id2name(context.model, mjOBJ_GEOM, contact.geom2);
-        snapshot.contacts.push_back(ContactState{
-            geom1 == nullptr ? "" : geom1, geom2 == nullptr ? "" : geom2, contact.dist});
+        ContactState& output = snapshot.contacts[static_cast<std::size_t>(index)];
+        output.geom1 = geom1 == nullptr ? "" : geom1;
+        output.geom2 = geom2 == nullptr ? "" : geom2;
+        output.distance = contact.dist;
     }
     return true;
 }

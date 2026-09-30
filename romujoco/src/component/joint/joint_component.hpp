@@ -8,6 +8,7 @@
 #include "romujoco/component/joint.hpp"
 
 #include "component/component.hpp"
+#include "buffer/snapshot_pool.hpp"
 
 namespace romujoco {
 
@@ -72,6 +73,7 @@ private:
     JointInfo info_;
     JointCommand command_{};
     std::shared_ptr<const JointState> state_;
+    SnapshotPool<JointState> state_pool_;
     mutable std::unique_ptr<mjData, MjDataDeleter> gravity_data_;
 };
 

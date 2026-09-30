@@ -1,6 +1,8 @@
 #include <cmath>
+#include <chrono>
 #include <cstring>
 #include <iostream>
+#include <thread>
 
 #include "romujoco/simulation.hpp"
 #include "test_support.hpp"
@@ -134,5 +136,55 @@ int main() {
                 simulation.read_state(full) && full.sequence == 2U,
             "scan sequence did not advance") &&
         check(simulation.shutdown(), "simulation shutdown failed");
-    return passed ? 0 : 1;
+    if (!passed) return 1;
+
+    romujoco::SimulationConfig async_config;
+    async_config.model.model_path = model.path().string();
+    async_config.viewer_enabled = false;
+    romujoco::LidarInfo async_lidar;
+    async_lidar.id = 2;
+    async_lidar.name = "lidar";
+    async_lidar.frame_id = "lidar_frame";
+    async_lidar.site_name = "lidar_site";
+    async_lidar.output = romujoco::LidarOutput::LaserScan;
+    async_lidar.period = 0.001;
+    async_lidar.azimuth_start = 0.0;
+    async_lidar.azimuth_increment = 1.57079632679489661923;
+    async_lidar.azimuth_samples = 2;
+    async_lidar.channels.push_back({});
+    async_lidar.range_min = 0.1;
+    async_lidar.range_max = 10.0;
+    async_lidar.async_update = true;
+    async_config.components.emplace_back(async_lidar);
+    romujoco::Simulation async_simulation;
+    romujoco::LaserScanState async_state;
+    async_state.id = 2;
+    if (!check(async_simulation.initialize(async_config), "async lidar initialization failed") ||
+        !check(async_simulation.read_state(async_state) && async_state.sequence == 1U,
+               "async lidar initial scan was not published")) return 1;
+    bool fresh_scan = false;
+    for (int attempt = 0; attempt < 50 && !fresh_scan; ++attempt) {
+        if (!check(async_simulation.step(), "async lidar step failed")) return 1;
+        fresh_scan = async_simulation.read_state(async_state) && async_state.sequence >= 2U;
+        if (!fresh_scan) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    if (!check(fresh_scan && async_state.scan.ranges.size() == 2U &&
+                   std::abs(async_state.scan.ranges[0] - 2.9F) < 1.0e-4F &&
+                   std::abs(async_state.scan.ranges[1] - 3.9F) < 1.0e-4F &&
+                   async_state.scan.timestamp <= 50'000'000U,
+               "async lidar sample geometry or timestamp is invalid")) return 1;
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        if (!check(async_simulation.reset(), "async lidar reset failed") ||
+            !check(async_simulation.read_state(async_state) && async_state.sequence == 1U &&
+                       async_state.scan.timestamp == 0U,
+                   "async lidar reset did not publish the initial sample")) return 1;
+        fresh_scan = false;
+        for (int attempt = 0; attempt < 50 && !fresh_scan; ++attempt) {
+            if (!check(async_simulation.step(), "async lidar post-reset step failed")) return 1;
+            fresh_scan = async_simulation.read_state(async_state) && async_state.sequence >= 2U;
+            if (!fresh_scan) std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        if (!check(fresh_scan, "async lidar worker did not restart after reset")) return 1;
+    }
+    return check(async_simulation.shutdown(), "async lidar shutdown failed") ? 0 : 1;
 }

@@ -1,11 +1,11 @@
 #include "render/camera_renderer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <exception>
 #include <limits>
-#include <unordered_set>
 #include <utility>
 
 #include <EGL/egl.h>
@@ -226,15 +226,16 @@ std::optional<CameraRenderTicket> CameraRenderer::submit(
         SIM_ERROR << "camera renderer is not initialized.";
         return std::nullopt;
     }
-    std::unordered_set<CameraId> ids;
+    std::array<bool, kMaximumCameraId + 1> seen{};
     for (const CameraRenderTask& task : request.tasks) {
         // camera_id is the batch protocol contract; CameraConfig remains the
         // legacy rendering payload and carries no id authority.
         const CameraId id = task.camera_id;
-        if (id > kMaximumCameraId || !ids.insert(id).second) {
+        if (id > kMaximumCameraId || seen[id]) {
             SIM_ERROR << "camera render task id is invalid, outside range, or duplicated.";
             return std::nullopt;
         }
+        seen[id] = true;
     }
     CameraRenderTicket ticket;
     {
@@ -393,6 +394,16 @@ CameraRenderWaitStatus CameraRenderer::query(
                : CameraRenderWaitStatus::Failed;
 }
 
+bool CameraRenderer::take_result(CameraRenderTicket requested, CameraBatchResult& result) {
+    std::lock_guard<std::mutex> lock(job_mutex_);
+    if (requested.is_noop() || requested.generation != ticket_epoch_.load()) return false;
+    const auto completed = completed_results_.find({requested.generation, requested.sequence});
+    if (completed == completed_results_.end()) return false;
+    result = std::move(completed->second);
+    completed_results_.erase(completed);
+    return true;
+}
+
 bool CameraRenderer::wait(CameraRenderTicket ticket, CameraBatchResult* result) {
     return wait_result(ticket, result) == CameraRenderWaitStatus::Completed;
 }
@@ -486,7 +497,8 @@ void CameraRenderer::worker_loop() {
                     break;
                 }
                 std::swap(render_data_, pending_data_);
-                tasks = std::move(pending_tasks_);
+                // Keep the submission vector's capacity on the simulation thread.
+                tasks = pending_tasks_;
                 pending_tasks_.clear();
                 ticket = pending_ticket_;
                 simulation_step = pending_simulation_step_;
@@ -524,11 +536,24 @@ void CameraRenderer::worker_loop() {
                         SIM_WARN << "camera render request failed; keeping the prior frame.";
                         continue;
                     }
-                    batch.cameras.push_back(
-                        {task.camera_id, CameraTaskStatus::Completed,
-                         frame_from_render_state(*state), batch.ticket.generation,
-                         batch.ticket.sequence, batch.simulation_step, batch.simulation_time,
-                         task.sequence, task.timestamp, ""});
+                    CameraRenderTaskResult completed{
+                        task.camera_id, CameraTaskStatus::Completed,
+                        frame_from_render_state(*state), batch.ticket.generation,
+                        batch.ticket.sequence, batch.simulation_step, batch.simulation_time,
+                        task.sequence, task.timestamp, ""};
+                    auto prepared = std::make_shared<CameraState>();
+                    prepared->id = task.camera_id;
+                    prepared->sequence = task.sequence;
+                    prepared->timestamp = task.timestamp;
+                    const CameraConfig& camera_config =
+                        task.config_ref != nullptr ? *task.config_ref : task.config;
+                    prepared->frame_id = camera_config.frame_id;
+                    prepared->optical_frame_id = camera_config.optical_frame_id;
+                    prepared->image = completed.frame.image;
+                    prepared->depth_image = completed.frame.depth_image;
+                    prepared->camera_info = completed.frame.camera_info;
+                    completed.prepared_state = std::move(prepared);
+                    batch.cameras.push_back(std::move(completed));
                 }
             } else {
                 for (const CameraRenderTask& task : tasks) {
@@ -644,7 +669,7 @@ bool CameraRenderer::render_task(
         if (error != nullptr) *error = message;
         return false;
     };
-    const CameraConfig& spec = task.config;
+    const CameraConfig& spec = task.config_ref == nullptr ? task.config : *task.config_ref;
     if (model_ == nullptr || render_data_ == nullptr) {
         SIM_ERROR << "camera render resources are not initialized.";
         return fail("camera render resources are not initialized");

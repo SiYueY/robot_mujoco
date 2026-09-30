@@ -233,7 +233,7 @@ bool JointComponent::update(const SimulationContext& context) {
         return false;
     }
 
-    auto state = std::make_shared<JointState>();
+    auto state = state_pool_.acquire();
     state->id = info_.id;
     state->timestamp = context.data->time;
     state->position = context.data->qpos[joint_.qpos_address];

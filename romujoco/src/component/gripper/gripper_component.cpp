@@ -282,7 +282,7 @@ bool GripperComponent::update(const SimulationContext& context) {
         SIM_ERROR << "gripper '" << info_.name << "' is not initialized.";
         return false;
     }
-    auto state = std::make_shared<GripperState>();
+    auto state = state_pool_.acquire();
     state->id = info_.id;
     state->timestamp = context.data->time;
     state->width = measured_width(context);

@@ -34,6 +34,8 @@ struct LidarInfo {
     double range_max{0.0};
     std::uint32_t geom_group_mask{0};  // Zero includes every MuJoCo geom group.
     bool exclude_parent_body{true};
+    // Run ray casting on a private mjData snapshot outside the physics step.
+    bool async_update{false};
 };
 
 struct LaserScan {

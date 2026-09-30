@@ -128,7 +128,8 @@ bool ImuComponent::init(const SimulationContext& context) {
     }
 
     sequence_ = 0;
-    auto state = std::make_shared<ImuState>();
+    state_.reset();
+    auto state = state_pool_.acquire();
     state->id = info_.id;
     state->frame_id = info_.frame_id;
     state->orientation = {0.0, 0.0, 0.0, 1.0};
@@ -170,7 +171,8 @@ bool ImuComponent::update(const SimulationContext& context) {
         return false;
     }
 
-    auto state = std::make_shared<ImuState>(*state_);
+    auto state = state_pool_.acquire(state_.get());
+    *state = *state_;
     state->sequence = ++sequence_;
     state->timestamp = context.data->time;
     const double* sensor_data = context.data->sensordata;

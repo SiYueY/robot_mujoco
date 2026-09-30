@@ -29,6 +29,7 @@ bool Simulation::Impl::initialize(const SimulationConfig& config) {
     applied_command_ = {};
     command_buffer_.shutdown();
     state_buffer_.shutdown();
+    state_snapshots_.clear();
     id_resolver_.reset();
     const auto cleanup = [this] {
         if (scheduler_ != nullptr) {

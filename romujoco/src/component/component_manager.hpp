@@ -18,6 +18,7 @@
 #include "component/joint/joint_component.hpp"
 #include "component/lidar/lidar_component.hpp"
 #include "component/mobile_base/mobile_base_component.hpp"
+#include "buffer/snapshot_pool.hpp"
 
 namespace romujoco {
 
@@ -63,7 +64,15 @@ private:
     LaserScanStates laser_scans_;
     PointCloudStates point_clouds_;
     CameraStates cameras_;
+    SnapshotPool<std::vector<StateSnapshot<JointState>>> joint_snapshots_;
+    SnapshotPool<std::vector<StateSnapshot<GripperState>>> gripper_snapshots_;
+    SnapshotPool<std::vector<StateSnapshot<MobileBaseState>>> mobile_base_snapshots_;
+    SnapshotPool<std::vector<StateSnapshot<ImuState>>> imu_snapshots_;
+    SnapshotPool<std::vector<StateSnapshot<LaserScanState>>> laser_scan_snapshots_;
+    SnapshotPool<std::vector<StateSnapshot<PointCloudState>>> point_cloud_snapshots_;
+    SnapshotPool<std::vector<StateSnapshot<CameraState>>> camera_snapshots_;
     CameraRenderService* camera_render_service_{nullptr};
+    CameraRenderBatchRequest camera_request_;
     std::optional<CameraRenderTicket> active_camera_ticket_;
     std::optional<CameraRenderTicket> pending_camera_ticket_;
     std::uint64_t camera_request_sequence_{0};

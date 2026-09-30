@@ -9,6 +9,7 @@
 #include "romujoco/component/gripper.hpp"
 
 #include "component/component.hpp"
+#include "buffer/snapshot_pool.hpp"
 
 namespace romujoco {
 
@@ -67,6 +68,7 @@ private:
     double reference_velocity_{0.0};
     GripperCommand command_{};
     std::shared_ptr<const GripperState> state_;
+    SnapshotPool<GripperState> state_pool_;
     bool stalled_{false};
     bool stall_timer_active_{false};
     double stall_start_time_{0.0};

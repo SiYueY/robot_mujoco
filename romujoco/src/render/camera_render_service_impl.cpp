@@ -42,6 +42,11 @@ bool CameraRenderServiceImpl::read_batch_result(
            status == CameraRenderWaitStatus::Failed || status == CameraRenderWaitStatus::Superseded;
 }
 
+bool CameraRenderServiceImpl::take_batch_result(
+    const CameraRenderTicket& ticket, CameraRenderBatchResult& result) {
+    return renderer_.take_result(ticket, result);
+}
+
 bool CameraRenderServiceImpl::reset() { return renderer_.release(); }
 
 bool CameraRenderServiceImpl::shutdown() { return renderer_.release(); }

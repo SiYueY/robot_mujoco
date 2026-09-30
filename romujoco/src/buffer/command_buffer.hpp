@@ -35,14 +35,21 @@ public:
     bool read(std::uint64_t last_sequence, std::shared_ptr<const RobotCommand>& command) const;
 
 private:
+    std::shared_ptr<RobotCommand> writable_snapshot();
+    bool validate(const JointCommand& command) const;
     bool validate(const JointCommands& commands) const;
+    bool validate(const GripperCommand& command) const;
     bool validate(const GripperCommands& commands) const;
+    bool validate(const MobileBaseCommand& command) const;
     bool validate(const MobileBaseCommands& commands) const;
 
 private:
     bool initialized_{false};
     std::uint64_t sequence_{0};
     std::shared_ptr<const RobotCommand> command_;
+    // A snapshot is writable only while the pool is its sole owner. Readers
+    // and the physics thread may retain older immutable publications.
+    std::vector<std::shared_ptr<RobotCommand>> snapshots_;
     std::shared_ptr<const ComponentIdResolver> id_resolver_;
     std::vector<std::size_t> active_joint_indices_;
     std::vector<JointMode> active_joint_default_modes_;

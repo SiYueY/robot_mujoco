@@ -11,6 +11,7 @@
 
 #include "buffer/command_buffer.hpp"
 #include "buffer/state_buffer.hpp"
+#include "buffer/snapshot_pool.hpp"
 #include "component/camera/camera_render_service.hpp"
 #include "component/component_id_resolver.hpp"
 #include "component/component_manager.hpp"
@@ -77,6 +78,7 @@ public:
     std::unique_ptr<CameraRenderService> camera_render_service_;
     CommandBuffer command_buffer_;
     StateBuffer state_buffer_;
+    SnapshotPool<RobotState> state_snapshots_;
     std::shared_ptr<const ComponentIdResolver> id_resolver_;
     std::unique_ptr<SimulationRuntime> runtime_;
     mutable std::mutex lifecycle_mutex_;

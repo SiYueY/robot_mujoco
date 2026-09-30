@@ -110,7 +110,9 @@ int main() {
             buffer.read()->sequence == sequence_before_update + 1U &&
                 find_joint(*buffer.read(), 0U)->effort == 2.5 &&
                 find_joint(*buffer.read(), 2U)->effort == 4.0,
-            "partial command update did not preserve prior commands")) {
+            "partial command update did not preserve prior commands") ||
+        !check(find_joint(*after_batch, 2U)->effort == 1.5,
+               "published command snapshot changed while held by a reader")) {
         return 1;
     }
 

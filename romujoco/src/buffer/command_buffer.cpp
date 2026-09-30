@@ -1,6 +1,7 @@
 #include "buffer/command_buffer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace romujoco {
@@ -38,7 +39,7 @@ template <typename Command, typename IsValid>
 bool validate_commands(
     const std::vector<Command>& commands, const std::vector<std::size_t>& indices,
     IsValid is_valid) {
-    std::vector<std::uint8_t> seen(indices.size(), 0U);
+    std::array<std::uint8_t, 256> seen{};
     for (const Command& command : commands) {
         if (command.id >= indices.size()) return false;
         if (indices[command.id] == kInvalidCommandIndex) return false;
@@ -113,6 +114,10 @@ bool CommandBuffer::configure(
     configure_commands(id_resolver->grippers(), robot_command->grippers);
     configure_commands(id_resolver->mobile_bases(), robot_command->mobile_bases);
     robot_command->sequence = ++sequence_;
+    snapshots_.reserve(3);
+    snapshots_.push_back(robot_command);
+    snapshots_.push_back(std::make_shared<RobotCommand>(*robot_command));
+    snapshots_.push_back(std::make_shared<RobotCommand>(*robot_command));
     command_ = std::move(robot_command);
     id_resolver_ = std::move(id_resolver);
     initialized_ = true;
@@ -125,7 +130,8 @@ void CommandBuffer::clear() {
     // A stopped simulation may be started again without rebuilding its command
     // channels.  Preserve the last validated snapshot so an Active Joint never
     // resumes with JointMode::None or a zeroed target.
-    auto preserved_command = std::make_shared<RobotCommand>(*command_);
+    auto preserved_command = writable_snapshot();
+    *preserved_command = *command_;
     preserved_command->sequence = ++sequence_;
     command_ = std::move(preserved_command);
 }
@@ -133,6 +139,7 @@ void CommandBuffer::clear() {
 void CommandBuffer::shutdown() {
     std::lock_guard<std::mutex> lock(mutex_);
     command_.reset();
+    snapshots_.clear();
     id_resolver_.reset();
     active_joint_indices_.clear();
     active_joint_default_modes_.clear();
@@ -149,7 +156,8 @@ bool CommandBuffer::write(const RobotCommand& command) {
     if (!command.joints.empty() && !validate(command.joints)) return false;
     if (!command.grippers.empty() && !validate(command.grippers)) return false;
     if (!command.mobile_bases.empty() && !validate(command.mobile_bases)) return false;
-    auto robot_command = std::make_shared<RobotCommand>(*command_);
+    auto robot_command = writable_snapshot();
+    *robot_command = *command_;
     write_commands(robot_command->joints, command.joints, active_joint_indices_);
     write_commands(robot_command->grippers, command.grippers, id_resolver_->grippers());
     write_commands(robot_command->mobile_bases, command.mobile_bases, id_resolver_->mobile_bases());
@@ -161,13 +169,10 @@ bool CommandBuffer::write(const RobotCommand& command) {
 bool CommandBuffer::write(const JointCommand& command) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_ || command_ == nullptr) return false;
-    if (!validate(JointCommands{command})) return false;
-    auto robot_command = std::make_shared<RobotCommand>(*command_);
-    std::size_t slot = 0;
-    if (command.id >= active_joint_indices_.size() ||
-        active_joint_indices_[command.id] == kInvalidCommandIndex)
-        return false;
-    slot = active_joint_indices_[command.id];
+    if (!validate(command)) return false;
+    auto robot_command = writable_snapshot();
+    *robot_command = *command_;
+    const std::size_t slot = active_joint_indices_[command.id];
     robot_command->joints[slot] = command;
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -179,7 +184,8 @@ bool CommandBuffer::write(const JointCommands& commands) {
     if (!initialized_ || command_ == nullptr) return false;
     if (commands.empty()) return true;
     if (!validate(commands)) return false;
-    auto robot_command = std::make_shared<RobotCommand>(*command_);
+    auto robot_command = writable_snapshot();
+    *robot_command = *command_;
     write_commands(robot_command->joints, commands, active_joint_indices_);
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -189,8 +195,9 @@ bool CommandBuffer::write(const JointCommands& commands) {
 bool CommandBuffer::write(const GripperCommand& command) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_ || command_ == nullptr) return false;
-    if (!validate(GripperCommands{command})) return false;
-    auto robot_command = std::make_shared<RobotCommand>(*command_);
+    if (!validate(command)) return false;
+    auto robot_command = writable_snapshot();
+    *robot_command = *command_;
     robot_command->grippers[id_resolver_->grippers()[command.id]] = command;
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -202,7 +209,8 @@ bool CommandBuffer::write(const GripperCommands& commands) {
     if (!initialized_ || command_ == nullptr) return false;
     if (commands.empty()) return true;
     if (!validate(commands)) return false;
-    auto robot_command = std::make_shared<RobotCommand>(*command_);
+    auto robot_command = writable_snapshot();
+    *robot_command = *command_;
     write_commands(robot_command->grippers, commands, id_resolver_->grippers());
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -212,8 +220,9 @@ bool CommandBuffer::write(const GripperCommands& commands) {
 bool CommandBuffer::write(const MobileBaseCommand& command) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_ || command_ == nullptr) return false;
-    if (!validate(MobileBaseCommands{command})) return false;
-    auto robot_command = std::make_shared<RobotCommand>(*command_);
+    if (!validate(command)) return false;
+    auto robot_command = writable_snapshot();
+    *robot_command = *command_;
     robot_command->mobile_bases[id_resolver_->mobile_bases()[command.id]] = command;
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -225,7 +234,8 @@ bool CommandBuffer::write(const MobileBaseCommands& commands) {
     if (!initialized_ || command_ == nullptr) return false;
     if (commands.empty()) return true;
     if (!validate(commands)) return false;
-    auto robot_command = std::make_shared<RobotCommand>(*command_);
+    auto robot_command = writable_snapshot();
+    *robot_command = *command_;
     write_commands(robot_command->mobile_bases, commands, id_resolver_->mobile_bases());
     robot_command->sequence = ++sequence_;
     command_ = std::move(robot_command);
@@ -235,6 +245,24 @@ bool CommandBuffer::write(const MobileBaseCommands& commands) {
 std::shared_ptr<const RobotCommand> CommandBuffer::read() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return command_;
+}
+
+std::shared_ptr<RobotCommand> CommandBuffer::writable_snapshot() {
+    for (const auto& snapshot : snapshots_)
+        if (snapshot.use_count() == 1) return snapshot;
+    // A caller may retain any number of old publications. Grow only when all
+    // preallocated snapshots are still in use; never overwrite a live reader.
+    auto snapshot = std::make_shared<RobotCommand>(*command_);
+    snapshots_.push_back(snapshot);
+    return snapshot;
+}
+
+bool CommandBuffer::validate(const JointCommand& command) const {
+    if (command.id >= active_joint_indices_.size()) return false;
+    const std::size_t slot = active_joint_indices_[command.id];
+    const JointMode mode = static_cast<JointMode>(command.mode);
+    return slot != kInvalidCommandIndex && mode != JointMode::None &&
+           active_joint_allowed_modes_[slot].contains(mode) && is_valid(command);
 }
 
 bool CommandBuffer::read(
@@ -248,7 +276,7 @@ bool CommandBuffer::read(
 
 bool CommandBuffer::validate(const JointCommands& commands) const {
     const auto& indices = active_joint_indices_;
-    std::vector<std::uint8_t> seen(indices.size(), 0U);
+    std::array<std::uint8_t, 256> seen{};
     for (const JointCommand& command : commands) {
         if (command.id >= indices.size() || indices[command.id] == kInvalidCommandIndex)
             return false;
@@ -268,10 +296,22 @@ bool CommandBuffer::validate(const GripperCommands& commands) const {
     });
 }
 
+bool CommandBuffer::validate(const GripperCommand& command) const {
+    const auto& indices = id_resolver_->grippers();
+    return command.id < indices.size() && indices[command.id] != kInvalidCommandIndex &&
+           is_valid(command);
+}
+
 bool CommandBuffer::validate(const MobileBaseCommands& commands) const {
     return validate_commands(
         commands, id_resolver_->mobile_bases(),
         [](const MobileBaseCommand& command) { return is_valid(command); });
+}
+
+bool CommandBuffer::validate(const MobileBaseCommand& command) const {
+    const auto& indices = id_resolver_->mobile_bases();
+    return command.id < indices.size() && indices[command.id] != kInvalidCommandIndex &&
+           is_valid(command);
 }
 
 }  // namespace romujoco

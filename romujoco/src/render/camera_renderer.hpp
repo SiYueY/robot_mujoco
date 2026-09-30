@@ -53,6 +53,7 @@ public:
         CameraBatchResult* result = nullptr);
     CameraRenderWaitStatus query(
         CameraRenderTicket ticket, CameraBatchResult* result = nullptr) const;
+    bool take_result(CameraRenderTicket ticket, CameraBatchResult& result);
     /// Compatibility wrapper for callers that only need success/failure.
     bool wait(CameraRenderTicket ticket, CameraBatchResult* result = nullptr);
     /// 停止 worker 并释放全部资源；未初始化时重复调用不执行额外操作。

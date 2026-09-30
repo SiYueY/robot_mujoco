@@ -8,6 +8,7 @@
 #include "romujoco/component/imu.hpp"
 
 #include "component/component.hpp"
+#include "buffer/snapshot_pool.hpp"
 #include "runtime/simulation_context.hpp"
 
 namespace romujoco {
@@ -40,6 +41,7 @@ private:
     std::uint64_t sequence_{0};
     // Imu 状态
     std::shared_ptr<const ImuState> state_;
+    SnapshotPool<ImuState> state_pool_;
     // 初始化标志
     bool initialized_{false};
 };

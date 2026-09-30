@@ -1,6 +1,7 @@
 #include "component/component_manager.hpp"
 
 #include <algorithm>
+#include <array>
 #include <utility>
 #include <vector>
 
@@ -41,22 +42,24 @@ std::size_t component_count(const std::vector<std::unique_ptr<Component>>& v) {
 template <typename Component, typename State>
 bool update_components(
     const SimulationContext& context, const std::vector<std::unique_ptr<Component>>& components,
-    StateSnapshots<State>& published) {
-    std::vector<Component*> due;
-    due.reserve(components.size());
+    StateSnapshots<State>& published,
+    SnapshotPool<std::vector<StateSnapshot<State>>>& pool) {
+    std::array<Component*, 256> due{};
+    std::size_t due_count = 0;
     for (const auto& component : components) {
         if (component != nullptr && component->poll_update(context.data->time)) {
-            due.push_back(component.get());
+            due[due_count++] = component.get();
         }
     }
-    for (Component* component : due) {
-        if (!component->update(context)) return false;
-    }
-    if (due.empty()) return true;
+    for (std::size_t index = 0; index < due_count; ++index)
+        if (!due[index]->update(context)) return false;
+    if (due_count == 0) return true;
 
-    auto states = std::make_shared<std::vector<StateSnapshot<State>>>();
+    auto states = pool.acquire(published.get());
     if (published != nullptr) *states = *published;
-    for (Component* component : due) {
+    else states->clear();
+    for (std::size_t index = 0; index < due_count; ++index) {
+        Component* component = due[index];
         std::shared_ptr<const State> state;
         if (!component->read_state(state) || state == nullptr) return false;
         const auto existing =
@@ -186,7 +189,15 @@ void ComponentManager::clear() {
     laser_scans_.reset();
     point_clouds_.reset();
     cameras_.reset();
+    joint_snapshots_.clear();
+    gripper_snapshots_.clear();
+    mobile_base_snapshots_.clear();
+    imu_snapshots_.clear();
+    laser_scan_snapshots_.clear();
+    point_cloud_snapshots_.clear();
+    camera_snapshots_.clear();
     camera_render_service_ = nullptr;
+    camera_request_ = {};
     active_camera_ticket_.reset();
     pending_camera_ticket_.reset();
     camera_request_sequence_ = 0;
@@ -251,23 +262,29 @@ bool ComponentManager::advance(const SimulationContext& context) {
 bool ComponentManager::update(const SimulationContext& context) {
     if (!context.valid()) return false;
     ++simulation_step_;
-    if (!update_components<JointComponent, JointState>(context, joints_components_, joints_) ||
+    if (!update_components<JointComponent, JointState>(
+            context, joints_components_, joints_, joint_snapshots_) ||
         !update_components<GripperComponent, GripperState>(
-            context, gripper_components_, grippers_) ||
+            context, gripper_components_, grippers_, gripper_snapshots_) ||
         !update_components<MobileBaseComponent, MobileBaseState>(
-            context, mobile_base_components_, mobile_bases_) ||
-        !update_components<ImuComponent, ImuState>(context, imu_components_, imus_))
+            context, mobile_base_components_, mobile_bases_, mobile_base_snapshots_) ||
+        !update_components<ImuComponent, ImuState>(
+            context, imu_components_, imus_, imu_snapshots_))
         return false;
-    std::vector<LidarComponent*> due_lidars;
+    std::array<LidarComponent*, 256> due_lidars{};
+    std::size_t due_lidar_count = 0;
     for (const auto& component : lidar_components_)
         if (component != nullptr && component->poll_update(context.data->time))
-            due_lidars.push_back(component.get());
-    if (!due_lidars.empty()) {
-        auto laser_scans = std::make_shared<std::vector<StateSnapshot<LaserScanState>>>();
-        auto point_clouds = std::make_shared<std::vector<StateSnapshot<PointCloudState>>>();
+            due_lidars[due_lidar_count++] = component.get();
+    if (due_lidar_count != 0) {
+        auto laser_scans = laser_scan_snapshots_.acquire(laser_scans_.get());
+        auto point_clouds = point_cloud_snapshots_.acquire(point_clouds_.get());
         if (laser_scans_ != nullptr) *laser_scans = *laser_scans_;
+        else laser_scans->clear();
         if (point_clouds_ != nullptr) *point_clouds = *point_clouds_;
-        for (LidarComponent* component : due_lidars) {
+        else point_clouds->clear();
+        for (std::size_t index = 0; index < due_lidar_count; ++index) {
+            LidarComponent* component = due_lidars[index];
             if (!component->update(context)) return false;
             if (component->info().output == LidarOutput::LaserScan) {
                 std::shared_ptr<const LaserScanState> state;
@@ -351,7 +368,7 @@ bool ComponentManager::consume_camera_results() {
         camera_render_service_->query(*active_camera_ticket_);
     if (wait_status == CameraRenderWaitStatus::Timeout) return true;
     CameraRenderBatchResult result;
-    if (!camera_render_service_->read_batch_result(*active_camera_ticket_, result)) {
+    if (!camera_render_service_->take_batch_result(*active_camera_ticket_, result)) {
         active_camera_ticket_.reset();
         if (pending_camera_ticket_.has_value()) {
             active_camera_ticket_ = pending_camera_ticket_;
@@ -362,8 +379,9 @@ bool ComponentManager::consume_camera_results() {
                wait_status == CameraRenderWaitStatus::Cancelled;
     }
     active_camera_ticket_.reset();
-    auto states = std::make_shared<std::vector<StateSnapshot<CameraState>>>();
+    auto states = camera_snapshots_.acquire(cameras_.get());
     if (cameras_ != nullptr) *states = *cameras_;
+    else states->clear();
     bool changed = false;
     for (const CameraRenderTaskResult& camera : result.cameras) {
         const CameraId id = camera.camera_id;
@@ -399,7 +417,12 @@ bool ComponentManager::consume_camera_results() {
 bool ComponentManager::submit_due_cameras(const SimulationContext& context) {
     if (!has_cameras()) return true;
     if (camera_render_service_ == nullptr) return false;
-    std::vector<CameraRenderTask> tasks;
+    // Preserve the last scheduled sample until it has been consumed. This also
+    // keeps the renderer's supersede bookkeeping off the simulation thread.
+    if (active_camera_ticket_.has_value() || pending_camera_ticket_.has_value()) return true;
+    auto& request = camera_request_;
+    auto& tasks = request.tasks;
+    tasks.clear();
     const auto timestamp =
         context.data->time > 0.0 ? static_cast<std::uint64_t>(context.data->time * 1.0e9) : 0U;
     for (const auto& component : camera_components_) {
@@ -407,14 +430,12 @@ bool ComponentManager::submit_due_cameras(const SimulationContext& context) {
             tasks.push_back(component->make_render_task(timestamp));
     }
     if (!tasks.empty()) {
-        CameraRenderBatchRequest request;
         request.generation = camera_generation_;
         request.sequence = ++camera_request_sequence_;
         request.simulation_step = simulation_step_;
         request.simulation_time = context.data->time;
         request.model = context.model;
         request.data = context.data;
-        request.tasks = std::move(tasks);
         CameraRenderTicket ticket;
         const CameraRenderSubmitResult submit_result =
             camera_render_service_->submit(request, ticket);

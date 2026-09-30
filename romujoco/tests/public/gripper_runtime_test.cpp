@@ -102,6 +102,25 @@ int main() {
               check(read_gripper(simulation, state), "initial state was not published") &&
               check(std::abs(state.width - 0.06) < 1.0e-9, "initial width was not published");
 
+    std::shared_ptr<const romujoco::RobotState> held_snapshot;
+    std::shared_ptr<const romujoco::RobotState> newer_snapshot;
+    if (success) {
+        success = check(simulation.read_state(held_snapshot) && held_snapshot != nullptr &&
+                            held_snapshot->grippers != nullptr &&
+                            !held_snapshot->grippers->empty(),
+                        "initial immutable snapshot was not readable");
+    }
+    if (success) {
+        const auto initial_sequence = held_snapshot->sequence;
+        const auto initial_timestamp = (*held_snapshot->grippers)[0]->timestamp;
+        success = check(simulation.step(5) && simulation.read_state(newer_snapshot) &&
+                            newer_snapshot != nullptr && newer_snapshot->sequence > initial_sequence &&
+                            held_snapshot->sequence == initial_sequence &&
+                            (*held_snapshot->grippers)[0]->timestamp == initial_timestamp &&
+                            (*newer_snapshot->grippers)[0]->timestamp > initial_timestamp,
+                        "retained gripper snapshot changed after later steps");
+    }
+
     romujoco::GripperCommand unknown;
     unknown.id = kGripperId + 1U;
     success =

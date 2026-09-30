@@ -12,6 +12,8 @@ namespace romujoco {
 namespace {
 constexpr std::uint32_t kPointStep = 12U;
 constexpr std::uint32_t kFloat32Size = 4U;
+constexpr unsigned int kRaycastState =
+    mjSTATE_TIME | mjSTATE_QPOS | mjSTATE_MOCAP_POS | mjSTATE_MOCAP_QUAT;
 
 std::uint64_t timestamp_ns(double simulation_time) {
     constexpr double kNanosecondsPerSecond = 1.0e9;
@@ -36,7 +38,10 @@ void write_float32_le(std::vector<std::uint8_t>& data, std::size_t offset, float
 LidarComponent::LidarComponent(LidarInfo info)
 : SimulationComponent(info.name, info.period), info_(std::move(info)) {}
 
+LidarComponent::~LidarComponent() { stop_worker(); }
+
 bool LidarComponent::init(const SimulationContext& context) {
+    stop_worker();
     initialized_ = false;
     local_directions_.clear();
     world_directions_.clear();
@@ -79,16 +84,29 @@ bool LidarComponent::init(const SimulationContext& context) {
                 (info_.geom_group_mask & (1U << static_cast<unsigned>(group))) != 0U;
     }
     sequence_ = 0;
+    model_ = context.model;
+    if (info_.async_update) {
+        worker_data_.reset(mj_makeData(context.model));
+        if (worker_data_ == nullptr) return false;
+        job_state_.resize(static_cast<std::size_t>(mj_stateSize(context.model, kRaycastState)));
+    }
     initialized_ = true;
     return reset(context);
 }
 
 bool LidarComponent::reset(const SimulationContext& context) {
-    UNUSED(context);
     if (!initialized_) return false;
+    stop_worker();
     sequence_ = 0;
     laser_scan_state_.reset();
     point_cloud_state_.reset();
+    if (info_.async_update) {
+        // Publish a coherent first frame before the worker receives its first
+        // physics snapshot; initialization/reset are outside the control cycle.
+        scan(context.model, context.data, ++sequence_, laser_scan_state_, point_cloud_state_);
+        worker_stop_ = false;
+        worker_ = std::thread(&LidarComponent::run_worker, this);
+    }
     return true;
 }
 bool LidarComponent::advance(const SimulationContext& context) {
@@ -101,21 +119,42 @@ bool LidarComponent::update(const SimulationContext& context) {
         SIM_ERROR << "lidar '" << info_.name << "' is not initialized.";
         return false;
     }
+    if (!info_.async_update) {
+        scan(context.model, context.data, ++sequence_, laser_scan_state_, point_cloud_state_);
+        return true;
+    }
+    std::lock_guard<std::mutex> lock(worker_mutex_);
+    if (completed_laser_ != nullptr) laser_scan_state_ = std::move(completed_laser_);
+    if (completed_cloud_ != nullptr) point_cloud_state_ = std::move(completed_cloud_);
+    if (!worker_busy_) {
+        mj_getState(context.model, context.data, job_state_.data(), kRaycastState);
+        job_sequence_ = ++sequence_;
+        job_pending_ = true;
+        worker_busy_ = true;
+        worker_ready_.notify_one();
+    }
+    return true;
+}
+
+void LidarComponent::scan(
+    const mjModel* model, mjData* data, std::uint64_t sequence,
+    std::shared_ptr<const LaserScanState>& laser,
+    std::shared_ptr<const PointCloudState>& cloud_result) {
     const std::size_t ray_count = distances_.size();
     for (std::size_t index = 0; index < ray_count; ++index)
         mju_mulMatVec3(
-            world_directions_.data() + index * 3U, context.data->site_xmat + site_id_ * 9,
+            world_directions_.data() + index * 3U, data->site_xmat + site_id_ * 9,
             local_directions_.data() + index * 3U);
     mj_multiRay(
-        context.model, context.data, context.data->site_xpos + site_id_ * 3,
+        model, data, data->site_xpos + site_id_ * 3,
         world_directions_.data(), geom_groups_.empty() ? nullptr : geom_groups_.data(), 1,
         info_.exclude_parent_body ? body_id_ : -1, nullptr, distances_.data(), nullptr,
         static_cast<int>(ray_count), info_.range_max);
-    const std::uint64_t timestamp = timestamp_ns(context.data->time);
+    const std::uint64_t timestamp = timestamp_ns(data->time);
     if (info_.output == LidarOutput::LaserScan) {
         auto state = std::make_shared<LaserScanState>();
         state->id = info_.id;
-        state->sequence = ++sequence_;
+        state->sequence = sequence;
         LaserScan& scan = state->scan;
         scan.timestamp = timestamp;
         scan.frame_id = info_.frame_id;
@@ -137,13 +176,13 @@ bool LidarComponent::update(const SimulationContext& context) {
                     : static_cast<float>(distance);
         }
         scan.intensities.clear();
-        laser_scan_state_ = std::move(state);
-        point_cloud_state_.reset();
-        return true;
+        laser = std::move(state);
+        cloud_result.reset();
+        return;
     }
     auto state = std::make_shared<PointCloudState>();
     state->id = info_.id;
-    state->sequence = ++sequence_;
+    state->sequence = sequence;
     PointCloud2& cloud = state->cloud;
     cloud.timestamp = timestamp;
     cloud.frame_id = info_.frame_id;
@@ -176,9 +215,44 @@ bool LidarComponent::update(const SimulationContext& context) {
             cloud.data, offset + 8U,
             valid ? static_cast<float>(distance * local_directions_[index * 3U + 2U]) : nan);
     }
-    point_cloud_state_ = std::move(state);
-    laser_scan_state_.reset();
-    return true;
+    cloud_result = std::move(state);
+    laser.reset();
+}
+
+void LidarComponent::run_worker() {
+    for (;;) {
+        std::unique_lock<std::mutex> lock(worker_mutex_);
+        worker_ready_.wait(lock, [this] { return worker_stop_ || job_pending_; });
+        if (worker_stop_) return;
+        const auto sequence = job_sequence_;
+        job_pending_ = false;
+        lock.unlock();
+
+        std::shared_ptr<const LaserScanState> laser;
+        std::shared_ptr<const PointCloudState> cloud;
+        mj_setState(model_, worker_data_.get(), job_state_.data(), kRaycastState);
+        mj_fwdPosition(model_, worker_data_.get());
+        scan(model_, worker_data_.get(), sequence, laser, cloud);
+
+        lock.lock();
+        completed_laser_ = std::move(laser);
+        completed_cloud_ = std::move(cloud);
+        worker_busy_ = false;
+    }
+}
+
+void LidarComponent::stop_worker() {
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        worker_stop_ = true;
+        worker_ready_.notify_one();
+    }
+    if (worker_.joinable()) worker_.join();
+    std::lock_guard<std::mutex> lock(worker_mutex_);
+    job_pending_ = false;
+    worker_busy_ = false;
+    completed_laser_.reset();
+    completed_cloud_.reset();
 }
 
 bool LidarComponent::read_laser_scan_state(std::shared_ptr<const LaserScanState>& state) const {
